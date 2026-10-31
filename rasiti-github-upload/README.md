@@ -1,0 +1,129 @@
+# Rasiti: receipts that reward
+
+RSL Taxathon 2026, Challenge 1 prototype. Customers get receipts and prize-draw entries, sellers get a free sales book, and RSL gets a live, mapped picture of where trade happens.
+
+- **Public side (no sign-in):** Start here, and the seller and customer phones. The keypad phone dials `*999#` and runs a live session against `/api/ussd`; the smartphone has a home screen where you open WhatsApp, start a chat with the Rasiti contact and register.
+- **RSL side (sign-in):** Fraud Shield, Community watch with satellite map, Officer console with leads map, Monthly draw, Users and activity log.
+- **Data:** Neon Postgres. Tables are created automatically on first request.
+
+## What you need
+
+1. A **Neon** account (free tier is fine) for the database: https://neon.tech
+2. A free hosting account. Two options are set up in this repository:
+   - **Vercel (recommended):** never sleeps, because it only runs code when someone visits.
+   - **Render:** runs a small server. On the free plan it sleeps after a period with no visitors; see "Keeping Render awake".
+3. Access to the **DNS settings** of your domain, to point your subdomain at the host.
+
+## 1. Create the database (Neon)
+
+1. In Neon, create a project. Pick the region closest to your users.
+2. On the project dashboard, click **Connect** and copy the connection string. It looks like
+   `postgresql://user:password@ep-xxxx-pooler.region.aws.neon.tech/neondb?sslmode=require`
+3. Optional: open the **SQL editor** and run `schema.sql`. If you skip this, the app creates the tables itself.
+
+## 2. Settings (the same on any host)
+
+| Name | Value |
+|---|---|
+| `DATABASE_URL` | Your Neon connection string |
+| `SESSION_SECRET` | A random string of 32+ characters. Generate one with `openssl rand -base64 48` |
+| `ADMIN_EMAIL` | The email for the first owner account |
+| `ADMIN_PASSWORD` | A strong password for that account (10+ characters) |
+
+## 3A. Deploy on Vercel (recommended)
+
+1. In Vercel: **Add New → Project**, import this GitHub repository. Framework preset: **Other**. Leave build settings empty.
+2. Add the four settings under **Environment Variables**, then deploy.
+3. Subdomain: **Project → Settings → Domains → Add**, type e.g. `rasiti.yourdomain.co.ls`, and create the DNS record Vercel shows (usually `CNAME` → `cname.vercel-dns.com`).
+4. If you change settings later: **Deployments → … → Redeploy**.
+
+## 3B. Deploy on Render
+
+1. In Render: **New → Web Service**, connect this GitHub repository (or use **New → Blueprint**, which reads `render.yaml`).
+2. Runtime **Node**, Build command `npm install`, Start command `npm start`, Instance type **Free**.
+3. Add the four settings under **Environment**.
+4. Health check path: `/api/health`.
+5. Subdomain: **Settings → Custom Domains → Add**, then create the DNS record Render shows (usually `CNAME` → `your-service.onrender.com`).
+
+### Keeping Render awake
+
+Free Render services go to sleep when nobody visits for a while, and the next visitor waits while it wakes up. To keep it awake for demos, use a free uptime monitor such as UptimeRobot or cron-job.org:
+
+1. Create a monitor of type **HTTP(s)**.
+2. URL: `https://your-subdomain/api/health`
+3. Interval: every **10 minutes**.
+
+This page does not touch the database, so it costs nothing to check. Check Render's current free-plan limits on monthly hours before relying on this long term.
+
+## Test on a real USSD connection (free sandbox)
+
+The on-screen phones are a simulation. To show the menus working over a real USSD connection, use the free Africa's Talking sandbox. Its USSD format (CON / END replies, answers joined by `*`) is the common standard, so a Lesotho gateway can use the same endpoint later.
+
+1. Create a free account at africastalking.com and open the **Sandbox** app.
+2. Go to **USSD → Create channel**. Pick any channel number the sandbox offers.
+3. **Callback URL:** `https://your-subdomain/api/ussd`
+   - Optional, to stop others calling it: set `USSD_KEY` in your host's environment to a random word, and use `https://your-subdomain/api/ussd?key=THAT-WORD` as the callback.
+4. Open the sandbox **Simulator** (Launch Simulator), enter a phone number, and dial the service code the sandbox shows (it looks like `*384*1234#`).
+5. Choose **1** for customer or **2** for seller. A seller logs in with their 4-digit code (e.g. `3307`), or `0` to join.
+
+Everything done through USSD is saved to the database and shows on the RSL screens (receipts are marked as USSD). Type `00` at any menu to go back to the start.
+
+Note: the sandbox simulator runs on the provider's website. Dialling from a real handset needs a short code from Vodacom Lesotho and Econet Telecom Lesotho, approved by the Lesotho Communications Authority, through a USSD gateway.
+
+## 4. First sign-in and test data
+
+1. Open `https://your-subdomain/#officer` and sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`. This creates the owner account.
+2. Click **Load demo dataset** in the banner. Testers and officers now share the same data.
+3. Open **Users and activity** to add officers. Roles:
+   - **Owner:** everything, including adding admins and resetting demo data
+   - **Admin:** adds and manages officers and viewers
+   - **Officer:** reviews held receipts, works the worklist, runs draws
+   - **Viewer:** read only
+4. Share `https://your-subdomain/` with testers. They can use the phones without an account.
+
+After the first sign-in you can remove `ADMIN_PASSWORD` from your host's settings; it is only used while there are no users.
+
+## Run it on your own computer
+
+```bash
+npm install
+cp .env.example .env      # then fill in the values
+npm run dev               # http://localhost:3000
+```
+
+`DATABASE_URL` can point at Neon or at any local Postgres.
+
+## Files
+
+```
+public/index.html   Page, styles and layout
+public/app.js       Phones, Fraud Shield, maps, officer console, draw, users
+public/vendor/      Leaflet map library (served locally)
+api/state.js        GET all demo data
+api/event.js        POST actions from the public phones (validated)
+api/auth.js         Sign in, sign out, change password
+api/users.js        Add and manage users, activity log
+api/admin.js        Reviews, worklist actions, draws, load/reset demo data
+api/health.js       Health check for uptime monitors (no database)
+api/ussd.js         Real USSD menus for a gateway (Africa's Talking format)
+api/_lib/           Database, sessions, schema, receipt code checks
+schema.sql          Same tables as the app creates automatically
+dev-server.mjs      Server used by Render (npm start) and for local testing
+vercel.json         Vercel settings
+render.yaml         Render settings (optional blueprint)
+docs/               Rasiti solution brief (PDF)
+```
+
+## Changing the brand colours
+
+All colours are at the top of `public/index.html`. To switch to RSL brand colours, change `--accent` (orange) and `--side` (navy sidebar).
+
+## Before a real pilot
+
+This build is for the competition and uses mock data only. Before live taxpayer data:
+
+- Split `/api/state` into a public endpoint without phone numbers and an officer-only endpoint.
+- Store phone numbers hashed, and follow the Data Protection Act 2011.
+- Add rate limiting to `/api/event` and sign-in.
+- Check the licence terms for Esri satellite imagery for production use, or use RSL's own map service.
+- Agree the USSD short code with the mobile networks and set up a WhatsApp Business API account.
