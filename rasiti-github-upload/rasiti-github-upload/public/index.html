@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rasiti Receipt Network</title>
+<meta name="description" content="Rasiti: receipts that reward customers, grow sellers and widen the tax net. RSL Taxathon 2026, Challenge 1.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;800&display=swap">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<style>
+/* Layout benchmarked on the MAC admin portal: navy sidebar, light grey canvas, white cards with an orange edge, Inter throughout.
+   To apply RSL brand colours, change --accent and --side only. */
+:root{
+  --accent:#e8793a; --side:#1a1b2e; --side-ink:#d9dbe4; --side-muted:#8b8fa6;
+  --bg:#f5f6f8; --surface:#ffffff; --sunk:#f0f1f4; --ink:#1a1b2e; --muted:#5f6475; --line:#e6e7ec;
+  --blue:#bf5a1f; --blue-soft:#fdeee4; --navy:#1a1b2e; --on-navy:#ffffff;
+  --green:#1d7f47; --green-soft:#e1f3e8; --warn:#9a5c00; --warn-soft:#fcefd8; --bad:#b3261e; --bad-soft:#fbe2df;
+  --paper:#fffdf8; --paper-ink:#23262d;
+  --f-body:"Inter","Segoe UI",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11121c; --surface:#1a1b2a; --sunk:#232537; --ink:#eceef4; --muted:#a3a7b9; --line:#2d2f44;
+  --blue:#f39a62; --blue-soft:#3a2516; --navy:#e8793a; --on-navy:#1a1b2e;
+  --green:#5cc994; --green-soft:#16362a; --warn:#eeae4b; --warn-soft:#3b2c12; --bad:#ff8277; --bad-soft:#40201f;
+  --paper:#1f2133; --paper-ink:#e4e6ee; --side:#0b0c15; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11121c; --surface:#1a1b2a; --sunk:#232537; --ink:#eceef4; --muted:#a3a7b9; --line:#2d2f44;
+  --blue:#f39a62; --blue-soft:#3a2516; --navy:#e8793a; --on-navy:#1a1b2e;
+  --green:#5cc994; --green-soft:#16362a; --warn:#eeae4b; --warn-soft:#3b2c12; --bad:#ff8277; --bad-soft:#40201f;
+  --paper:#1f2133; --paper-ink:#e4e6ee; --side:#0b0c15; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--side)}
+a{color:var(--blue)}
+button{font:inherit;cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.5}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* shell */
+.app{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:100vh}
+aside.side{background:var(--side);color:var(--side-ink);position:sticky;top:env(safe-area-inset-top,0px);height:100vh;overflow:auto;display:flex;flex-direction:column;padding-left:env(safe-area-inset-left,0px)}
+.logo{background:var(--surface);text-align:center;padding:22px 16px 18px;border-bottom:1px solid var(--line)}
+.logo .mark{width:170px;max-width:100%;display:block;margin:0 auto}
+.logo .tag{font-size:.6rem;letter-spacing:.3em;text-transform:uppercase;color:var(--accent);font-weight:600;margin-top:8px}
+.logo .who{margin-top:12px;font-weight:700;color:var(--ink);font-size:.95rem}
+.logo .who span{display:block;font-weight:400;color:var(--muted);font-size:.82rem}
+nav.tabs{display:flex;flex-direction:column;gap:3px;padding:18px 12px;flex:1}
+nav.tabs .grp{font-size:.76rem;font-weight:600;color:var(--side-muted);padding:10px 12px 4px}
+nav.tabs a{color:var(--side-ink);text-decoration:none;font-weight:500;font-size:.95rem;padding:10px 14px;border-radius:9px;display:flex;gap:12px;align-items:center}
+nav.tabs a svg{width:16px;height:16px;flex:none;opacity:.85}
+nav.tabs a:hover{background:rgba(255,255,255,.07)}
+nav.tabs a[aria-current="page"]{background:var(--accent);color:#fff;font-weight:700}
+.side-foot{border-top:1px solid rgba(255,255,255,.08);padding:14px 20px 18px;font-size:.8rem;color:var(--side-muted)}
+.side-foot b{display:block;color:#fff;font-size:.9rem}
+.side-foot button{margin-top:8px;background:transparent;border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:99px;padding:4px 12px;font-size:.78rem}
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:500;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;padding-block:14px;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px))}
+.topbar h1{margin:0;font-size:1.35rem;font-weight:700;flex:1;min-width:0}
+.chip{display:inline-block;font-size:.76rem;font-weight:600;color:var(--blue);background:var(--blue-soft);padding:5px 12px;border-radius:99px;white-space:nowrap}
+.chip.ok{color:var(--green);background:var(--green-soft)}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;font-weight:700;font-size:.78rem;flex:none}
+main{padding-block:24px 48px;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px));max-width:1360px}
+@media (max-width:900px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  aside.side{position:static;height:auto;padding-left:0}
+  .logo{display:flex;align-items:center;gap:12px;text-align:left;padding:10px max(16px,env(safe-area-inset-left,0px))}
+  .logo .mark{width:110px;margin:0}.logo .tag{display:none}.logo .who{margin:0;font-size:.85rem}
+  nav.tabs{flex-direction:row;overflow-x:auto;padding:8px max(16px,env(safe-area-inset-left,0px))}
+  nav.tabs .grp{display:none} nav.tabs a{white-space:nowrap;padding:8px 12px}
+  .side-foot{display:none}
+  .topbar{position:static;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .topbar .chip{display:none}
+  main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+}
+
+/* common */
+.lede{color:var(--muted);margin:0 0 20px;max-width:75ch}
+h3{font-size:1.05rem;color:var(--ink);margin:0 0 14px;font-weight:700}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px 22px;min-width:0}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:7px 16px;font-weight:600;font-size:.86rem}
+.btn:hover:not(:disabled){border-color:var(--accent);color:var(--blue)}
+.btn.primary{background:var(--navy);border-color:var(--navy);color:var(--on-navy)}
+.btn.primary:hover:not(:disabled){filter:brightness(1.15);color:var(--on-navy)}
+.btn.danger{color:var(--bad);border-color:var(--bad-soft)}
+.btn.small{padding:4px 11px;font-size:.8rem}
+select,input[type=text],input[type=number],input[type=email],input[type=password]{font:inherit;color:var(--ink);background:var(--surface);border:1px solid #c9cbd4;border-radius:99px;padding:8px 14px;min-width:0}
+select:focus,input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--blue-soft);outline:none}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:16px 18px}
+.kpi .v{font-size:1.9rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi .l{color:var(--muted);font-size:.86rem;margin-top:6px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px;align-items:start}
+@media (max-width:420px){.two{grid-template-columns:minmax(0,1fr)}}
+.stack{display:flex;flex-direction:column;gap:18px;min-width:0}
+.mt{margin-top:18px}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:.86rem}
+th{font-size:.8rem;color:var(--muted);text-align:left;font-weight:600;background:var(--sunk);padding:10px 12px;white-space:nowrap}
+td{padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.mono{font-family:var(--f-mono);font-size:.8rem}
+.pill{display:inline-block;font-size:.72rem;font-weight:600;padding:2px 9px;border-radius:99px;white-space:nowrap}
+.p-ok{background:var(--green-soft);color:var(--green)} .p-warn{background:var(--warn-soft);color:var(--warn)} .p-bad{background:var(--bad-soft);color:var(--bad)} .p-info{background:var(--blue-soft);color:var(--blue)} .p-mute{background:var(--sunk);color:var(--muted)}
+.flag{display:inline-block;font-size:.72rem;border:1px solid var(--line);border-radius:4px;padding:1px 6px;margin:1px 3px 1px 0;white-space:nowrap}
+.why{margin:4px 0 0;padding-left:16px;color:var(--muted);font-size:.8rem}
+.note{font-size:.82rem;color:var(--muted)}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.filters button{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:99px;padding:4px 12px;font-size:.8rem;font-weight:600}
+.filters button[aria-pressed="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.funnel{display:flex;flex-direction:column;gap:10px}
+.fn{display:grid;grid-template-columns:150px 1fr 40px;gap:10px;align-items:center;font-size:.86rem}
+.fn .bar{height:12px;background:var(--sunk);border-radius:99px;overflow:hidden}
+.fn .bar i{display:block;height:100%;background:var(--accent);border-radius:99px}
+.fn b{text-align:right;font-variant-numeric:tabular-nums}
+.banner{border:1px solid var(--line);border-left:4px solid var(--accent);background:var(--surface);border-radius:12px;padding:12px 16px;margin-bottom:18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.banner p{margin:0;flex:1;min-width:220px;font-size:.9rem}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--navy);color:var(--on-navy);padding:10px 18px;border-radius:99px;font-size:.88rem;z-index:2000;max-width:calc(100% - 32px)}
+details summary{cursor:pointer;color:var(--blue);font-size:.8rem;font-weight:600}
+@media (prefers-reduced-motion: no-preference){.flash{animation:fl 1.2s ease-out}@keyframes fl{from{background:var(--warn-soft)}to{background:transparent}}}
+@media (max-width:560px){.fn{grid-template-columns:110px 1fr 32px}}
+
+/* guide */
+.guide{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:18px;align-items:start}
+@media (max-width:420px){.guide{grid-template-columns:minmax(0,1fr)}}
+.steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:12px}
+.steps b{display:block}
+.codebox{font-family:var(--f-mono);background:var(--sunk);border-radius:6px;padding:1px 6px;font-size:.85rem;white-space:nowrap}
+
+/* phones view */
+.grid-phones{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:22px;align-items:start}
+.phone-col{display:flex;flex-direction:column;gap:12px;min-width:0;align-items:stretch}
+.phone-head{display:flex;flex-direction:column;gap:8px}
+.phone-head label{font-size:1.05rem;font-weight:700}
+.chan{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--sunk);padding:4px;border-radius:12px}
+.chan button{border:0;background:transparent;color:var(--muted);padding:8px 10px;border-radius:9px;font-weight:600;font-size:.86rem;display:flex;gap:8px;align-items:center;justify-content:center}
+.chan button svg{width:18px;height:18px}
+.chan button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.chan button[data-m="wa"][aria-pressed="true"] svg{color:#25d366}
+
+/* device frame */
+.device{width:300px;max-width:100%;height:620px;margin:0 auto;background:#0f0f10;border-radius:46px;padding:11px;box-shadow:0 18px 40px rgba(16,18,40,.22),inset 0 0 0 2px #2b2b2e;position:relative}
+.device .scr{width:100%;height:100%;border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:#fff}
+.island{position:absolute;top:9px;left:50%;transform:translateX(-50%);width:84px;height:24px;background:#000;border-radius:14px;z-index:6}
+.sbar{height:40px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 22px 6px 28px;font-size:.78rem;font-weight:600;font-family:-apple-system,"SF Pro Text","Inter",system-ui,sans-serif}
+.sbar .ic{display:flex;gap:5px;align-items:center;font-size:.68rem}
+.sbar svg{height:10px}
+.homebar{height:20px;flex:none;display:grid;place-items:center}
+.homebar i{width:110px;height:4px;border-radius:3px;background:#111;opacity:.85}
+
+
+/* USSD: basic keypad phone (candybar, real proportions: screen ~60% of body width) */
+.fphone{width:238px;max-width:100%;margin:0 auto;border-radius:26px;padding:0 0 18px;position:relative;color:#fff;
+  background:linear-gradient(90deg,#0c0c0d 0%,#1c1c1e 6%,#202022 50%,#1a1a1c 94%,#0b0b0c 100%);
+  box-shadow:0 22px 40px -10px rgba(10,12,30,.45),0 4px 10px rgba(0,0,0,.35),inset 0 0 0 1.5px #3a3a3e,inset 0 2px 1px rgba(255,255,255,.14),inset 0 -2px 2px rgba(0,0,0,.6)}
+.fp-face{background:linear-gradient(170deg,#262629 0%,#141416 55%,#0f0f10 100%);border-radius:24px 24px 6px 6px;margin:3px 3px 0;padding:22px 0 18px;box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+.fp-ear{width:46px;height:6px;border-radius:3px;margin:0 auto 26px;background:repeating-linear-gradient(90deg,#000 0 2px,#2a2a2d 2px 3px);box-shadow:0 1px 0 rgba(255,255,255,.07),inset 0 1px 1px #000}
+.fp-screen{position:relative;width:150px;margin:0 auto;background:#fdfdfd;color:#16243f;height:150px;display:flex;flex-direction:column;overflow:hidden;font-family:Tahoma,Verdana,"DejaVu Sans",sans-serif;
+  outline:7px solid #050506;border-radius:1px;box-shadow:0 0 0 8px #0a0a0b,0 0 0 9px #2c2c30}
+.fp-screen::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(125deg,rgba(255,255,255,.28) 0%,rgba(255,255,255,0) 38%);z-index:4}
+.fp-status{display:flex;justify-content:space-between;align-items:center;padding:1px 3px;font-size:7px;color:#16243f;background:linear-gradient(#f2f5fa,#e2e8f2);border-bottom:1px solid #c9d3e3}
+.fp-status b{letter-spacing:.06em;font-size:6.5px;font-weight:700}
+.fp-status .sig{display:flex;gap:1px;align-items:flex-end;height:7px}
+.fp-status .sig i{width:1.6px;background:#16243f;display:block}
+.fp-status .sig i:nth-child(1){height:2px}.fp-status .sig i:nth-child(2){height:3.5px}.fp-status .sig i:nth-child(3){height:5px}.fp-status .sig i:nth-child(4){height:7px}
+.fp-status .bat{width:12px;height:6px;border:1px solid #16243f;border-radius:1px;position:relative;padding:.8px}
+.fp-status .bat i{display:block;height:100%;width:75%;background:#2e9d3a}
+.fp-status .bat::after{content:"";position:absolute;right:-2.6px;top:1.2px;width:1.6px;height:2px;background:#16243f}
+.fp-msg{flex:1;margin:0;padding:1px 3px 1px 4px;font:9px/1.17 Tahoma,Verdana,"DejaVu Sans",sans-serif;white-space:pre-wrap;overflow:auto;word-break:break-word;color:#0f1d38;scrollbar-width:thin;scrollbar-color:#2f62c4 #e3e9f4}
+.fp-msg::-webkit-scrollbar{width:3px}.fp-msg::-webkit-scrollbar-thumb{background:#2f62c4}.fp-msg::-webkit-scrollbar-track{background:#e3e9f4}
+.fp-in{margin:0 3px 1px}
+.fp-in input{width:100%;border:1px solid #8ea2c4;border-radius:0;background:#fff;color:#0f1d38;padding:0 3px;font:9px Tahoma,Verdana,sans-serif;height:11px}
+.fp-in input:focus{box-shadow:none;outline:1px solid #2d62c9}
+.fp-soft{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;background:linear-gradient(#6f9be6 0%,#3a6ccc 55%,#2a5bbd 100%);color:#fff;font-weight:700;font-size:8.6px;height:14px;text-shadow:0 1px 0 rgba(0,0,0,.35)}
+.fp-soft span:nth-child(2){background:linear-gradient(#2c5ab5,#163c85);padding:0 9px;height:100%;display:grid;place-items:center;box-shadow:inset 1px 0 0 #9cbaf0,inset -1px 0 0 #9cbaf0}
+.fp-soft span:nth-child(3){text-align:right;padding-right:4px;font-weight:600}
+.fp-screen .u-busy{position:absolute;inset:0;display:grid;place-items:center;background:rgba(255,255,255,.75);z-index:3}
+.fp-screen .u-busy div{background:#16243f;color:#fff;border-radius:1px;padding:4px 7px;font-size:8px;display:flex;gap:5px;align-items:center}
+.fp-screen .u-busy i{width:8px;height:8px;border:1.5px solid #6c8399;border-top-color:#fff;border-radius:50%;display:block}
+.fp-nav{display:grid;grid-template-columns:1fr 46px 1fr;grid-template-rows:20px 24px;gap:0 12px;margin:22px 16px 0;align-items:center}
+.fp-sk{height:3px;border:0;border-radius:2px;background:linear-gradient(#f4f4f6,#bdbdc2);width:30px;justify-self:center;padding:0;position:relative;box-shadow:0 1px 1px #000}
+.fp-sk::before{content:"";position:absolute;inset:-10px -8px}
+.fp-sk.l{grid-column:1;grid-row:1}.fp-sk.r{grid-column:3;grid-row:1}
+.fp-dpad{grid-row:span 2;grid-column:2;width:46px;height:42px;justify-self:center;border-radius:13px;border:0;background:radial-gradient(ellipse at 50% 20%,#3a3a3e,#151517 75%);box-shadow:inset 0 0 0 1.5px #46464b,inset 0 2px 1px rgba(255,255,255,.12),0 2px 3px #000;display:grid;place-items:center}
+.fp-dpad i{width:22px;height:18px;border-radius:6px;background:linear-gradient(#1c1c1f,#0e0e10);box-shadow:inset 0 0 0 1.3px #5c5c62,0 1px 0 rgba(255,255,255,.08);display:block}
+.fp-call{grid-row:2;border:0;background:transparent;display:grid;place-items:center;color:#e6e6e9;padding:0;height:24px}
+.fp-call svg{width:19px;height:12px}
+.fp-call.g{grid-column:1}.fp-call.r{grid-column:3}
+.fp-keys{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin:14px 10px 0;border-radius:4px 4px 14px 14px;overflow:hidden;box-shadow:0 0 0 1px #050506}
+.fp-keys button{height:37px;border:0;background:linear-gradient(#1f1f22,#141416);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),inset 0 -1px 0 #050506,inset 1px 0 0 #050506;color:#fff;display:flex;align-items:baseline;justify-content:center;gap:3px;padding-top:9px}
+.fp-keys button b{font-size:15px;font-weight:400;font-family:Arial,sans-serif}
+.fp-keys button small{font-size:8px;color:#c8c8cd;font-family:Arial,sans-serif;letter-spacing:.02em}
+.fp-keys button:hover{background:linear-gradient(#26262a,#18181b)}
+.fp-keys button:active,.fp-nav button:active{filter:brightness(1.5)}
+
+
+/* USSD idle and dialling screens */
+.fp-msg.idle{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:2px;white-space:normal}
+.fp-msg.idle .fp-time{font:300 30px/1 Tahoma,Verdana,sans-serif;color:#0f1d38}
+.fp-msg.idle .fp-date{font-size:8.5px;color:#3a4a68;margin-bottom:8px}
+.fp-msg.idle .fp-hint{font-size:8.5px;color:#14306e;background:#e8eef9;border:1px solid #c3d1ec;padding:3px 5px;border-radius:2px;line-height:1.3}
+.fp-msg.idle .fp-hint b{font-size:9.5px}
+.fp-msg.dial{display:flex;align-items:flex-end;justify-content:flex-end;font:400 22px/1.1 Tahoma,Verdana,sans-serif;color:#0f1d38;padding:6px 6px 10px;word-break:break-all;text-align:right}
+
+/* smartphone: home screen */
+.device .scr.wa.on-home{background:linear-gradient(165deg,#1a1b2e 0%,#33366b 42%,#b9643a 82%,#e8793a 100%)}
+.device .scr.wa.on-home .sbar{background:transparent;color:#fff}
+.device .scr.wa.on-home .homebar i{background:#fff}
+.wv{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+.wv.hs{padding:6px 12px 8px;color:#fff}
+.hs-clock{text-align:center;margin:6px 0 8px}
+.hs-clock b{display:block;font:200 46px/1 -apple-system,"Inter",system-ui,sans-serif;letter-spacing:-.02em}
+.hs-clock span{font-size:.74rem;opacity:.9}
+.hs-tip{align-self:center;font-size:.68rem;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.35);padding:4px 10px;border-radius:99px;margin-bottom:12px;text-align:center}
+.hs-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px 6px}
+.hs-dock{margin-top:auto;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:rgba(255,255,255,.22);border-radius:22px;padding:8px 6px}
+.hs-dock .papp span{display:none}
+.papp{border:0;background:none;color:#fff;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0;font-size:.6rem;font-family:-apple-system,"Inter",system-ui,sans-serif}
+.papp i{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.papp i svg{width:28px;height:28px}
+.papp[data-app="whatsapp"] i{box-shadow:0 0 0 2px rgba(255,255,255,.9),0 2px 8px rgba(0,0,0,.3)}
+.papp:active i{filter:brightness(.85)}
+.hs-toast{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);background:rgba(20,20,22,.88);color:#fff;font-size:.7rem;padding:6px 11px;border-radius:99px;white-space:nowrap;z-index:9}
+button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:pointer}
+
+/* smartphone: WhatsApp chat list and contacts */
+.wv.wc,.wv.wk{background:#fff;color:#111b21}
+.wc-top{display:flex;justify-content:space-between;align-items:center;padding:4px 14px 6px}
+.wc-top b{font-size:1.35rem;font-weight:700;color:#111b21}
+.wc-top .acts{display:flex;gap:14px;color:#111b21}.wc-top .acts svg{width:20px;height:20px}
+.wc-search{margin:0 12px 8px;background:#f0f2f5;border-radius:99px;padding:7px 12px;font-size:.8rem;color:#667781;display:flex;gap:8px;align-items:center}
+.wc-search svg{width:15px;height:15px}
+.wc-chips{display:flex;gap:6px;padding:0 12px 6px}
+.wc-chips span{font-size:.68rem;background:#f0f2f5;color:#54656f;padding:3px 9px;border-radius:99px}
+.wc-chips span.on{background:#d9fdd3;color:#008069;font-weight:600}
+.wc-list{flex:1;overflow:auto}
+.wc-row,.wk-row{display:flex;gap:10px;align-items:center;width:100%;border:0;background:none;padding:8px 14px;text-align:left;color:#111b21;font:inherit}
+.wc-row:hover,.wk-row:hover{background:#f5f6f6}
+.av{width:40px;height:40px;border-radius:50%;flex:none;display:grid;place-items:center;color:#fff;font-weight:700;font-size:.8rem}
+.av.rasiti{background:#fff;border:1px solid #e3e3e3}.av.rasiti svg{width:26px;height:26px}
+.wc-mid{flex:1;min-width:0;display:flex;flex-direction:column}
+.wc-mid b,.wk-row b{font-size:.84rem;display:flex;align-items:center;gap:4px}
+.wc-mid b svg,.wk-row b svg{width:13px;height:13px}
+.wc-mid small,.wk-row small{font-size:.72rem;color:#667781;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.wc-time{font-size:.66rem;color:#667781;align-self:flex-start;margin-top:3px}
+.wc-hint{font-size:.72rem;color:#667781;text-align:center;margin:14px 20px}
+.wc-fab{position:absolute;right:14px;bottom:44px;width:48px;height:48px;border-radius:14px;border:0;background:#25d366;color:#fff;display:grid;place-items:center;box-shadow:0 3px 8px rgba(0,0,0,.25)}
+.wc-fab svg{width:24px;height:24px}
+.wc-tabs{display:flex;justify-content:space-around;border-top:1px solid #e9edef;padding:8px 4px 2px;font-size:.62rem;color:#54656f}
+.wc-tabs span.on{color:#008069;font-weight:700}
+.wk-top{display:flex;align-items:center;gap:8px;padding:4px 10px 8px;border-bottom:1px solid #e9edef}
+.wk-top button{border:0;background:none;font-size:1.6rem;line-height:1;color:#111b21;padding:0 4px}
+.wk-top b{display:block;font-size:.95rem}.wk-top small{font-size:.7rem;color:#667781}
+.wk-list{flex:1;overflow:auto;padding-top:4px}
+.wk-row span:last-child{flex:1;min-width:0}
+.wk-h{font-size:.72rem;color:#667781;padding:10px 14px 4px}
+.wa-top button.back{border:0;background:none;color:#0a84ff;font-size:1.5rem;line-height:1;padding:0 2px}
+.wv.wchat{background:#efe7de}
+
+/* WhatsApp screen */
+.device .scr.wa{background:#f6f6f6;color:#111b21}
+.wa .sbar{background:#f6f6f6;color:#111}
+.wa-top{flex:none;display:flex;align-items:center;gap:8px;padding:6px 10px 8px;background:#f6f6f6;border-bottom:1px solid #e3e3e3}
+.wa-top .back{color:#0a84ff;font-size:1.5rem;line-height:1;padding:0 2px}
+.wa-av{width:34px;height:34px;border-radius:50%;background:#fff;border:1px solid #e3e3e3;display:grid;place-items:center;flex:none}
+.wa-av svg{width:24px}
+.wa-id{flex:1;min-width:0;line-height:1.15}
+.wa-id b{font-size:.92rem;display:flex;align-items:center;gap:4px}
+.wa-id b svg{width:14px;height:14px}
+.wa-id small{font-size:.7rem;color:#667781}
+.wa-top .acts{display:flex;gap:14px;color:#0a84ff}
+.wa-top .acts svg{width:20px;height:20px}
+.wa-log{flex:1;overflow:auto;padding:10px 10px 6px;display:flex;flex-direction:column;gap:6px;background:#efe7de;background-image:radial-gradient(rgba(0,0,0,.035) 1px,transparent 1px);background-size:14px 14px}
+.bb{max-width:84%;padding:7px 9px 4px;border-radius:9px;font-size:.84rem;white-space:pre-wrap;color:#111b21;line-height:1.38;box-shadow:0 1px 1px rgba(0,0,0,.1)}
+.bb.bot{background:#fff;align-self:flex-start;border-top-left-radius:2px}
+.bb.me{background:#d9fdd3;align-self:flex-end;border-top-right-radius:2px}
+.bb time{display:block;text-align:right;font-size:.64rem;color:#667781;margin-top:2px}
+.bb time .tk{color:#53bdeb}
+.quote{background:rgba(0,0,0,.05);border-left:4px solid #7f66ff;border-radius:6px;padding:4px 7px;margin-bottom:5px;font-size:.76rem;color:#54656f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.quote b{display:block;color:#7f66ff;font-size:.72rem}
+.wa-list{display:flex;gap:6px;align-items:center;justify-content:center;border-top:1px solid #eee;margin-top:6px;padding-top:6px;color:#0273a8;font-weight:600;background:none;border-left:0;border-right:0;border-bottom:0;width:100%;font-size:.84rem}
+.qr-btns{align-self:flex-start;max-width:84%;width:84%;display:flex;flex-direction:column;gap:4px;margin-top:-2px}
+.qr-btns button{background:#fff;border:0;border-radius:9px;padding:8px;color:#0273a8;font-weight:600;font-size:.82rem;box-shadow:0 1px 1px rgba(0,0,0,.1)}
+.wa-bar{flex:none;display:flex;gap:6px;align-items:center;padding:6px 8px;background:#f6f6f6}
+.wa-in{flex:1;display:flex;align-items:center;gap:6px;background:#fff;border-radius:22px;padding:4px 10px;min-width:0;border:1px solid #e3e3e3}
+.wa-in svg{width:18px;height:18px;color:#8696a0;flex:none}
+.wa-in input{flex:1;min-width:0;border:0;padding:5px 0;font:inherit;font-size:.86rem;background:transparent;color:#111b21;border-radius:0}
+.wa-in input:focus{box-shadow:none}
+.wa-send{width:38px;height:38px;border-radius:50%;border:0;background:#00a884;color:#fff;display:grid;place-items:center;flex:none}
+.wa-send svg{width:18px;height:18px}
+.sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:8;display:flex;align-items:flex-end}
+.sheet{background:#fff;width:100%;border-radius:14px 14px 0 0;padding:8px 0 14px;max-height:75%;overflow:auto}
+.sheet .grab{width:36px;height:4px;border-radius:2px;background:#d1d7db;margin:2px auto 8px}
+.sheet h4{margin:0 16px 6px;font-size:.92rem;display:flex;justify-content:space-between;align-items:center}
+.sheet h4 button{border:0;background:none;font-size:1.2rem;color:#54656f}
+.sheet .row{display:flex;justify-content:space-between;align-items:center;width:100%;border:0;background:none;padding:11px 16px;border-top:1px solid #f0f2f5;font-size:.88rem;color:#111b21;text-align:left}
+.sheet .row i{width:18px;height:18px;border-radius:50%;border:2px solid #8696a0;flex:none}
+
+/* USSD screen (iOS style) */
+.device .scr.ussd{background:#4b4b4e;color:#fff}
+.ussd .sbar{color:#fff}
+.ussd .homebar i{background:#fff}
+.u-top{flex:none;display:flex;justify-content:space-between;align-items:center;padding:8px 14px;font-size:.95rem}
+.u-top button{border:0;background:none;color:#0a84ff;font-size:.95rem;padding:2px}
+.u-top b{font-weight:600}
+.u-msg{flex:1;overflow:auto;margin:0;padding:10px 18px;white-space:pre-wrap;text-align:center;font:500 .92rem/1.42 -apple-system,"SF Pro Text","Inter",system-ui,sans-serif;display:flex;align-items:center;justify-content:center}
+.u-field{flex:none;margin:6px 12px 8px}
+.u-field input{width:100%;border-radius:8px;border:1px solid #8e8e93;background:#2c2c2e;color:#fff;padding:8px 10px;font:inherit;font-size:.92rem}
+.u-field input:focus{box-shadow:none;border-color:#0a84ff}
+.numpad{flex:none;background:#d1d3d9;padding:6px 5px 4px;display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.numpad button{background:#fff;border:0;border-radius:6px;height:40px;color:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;box-shadow:0 1px 0 #898a8d}
+.numpad button b{font-size:1.15rem;font-weight:400}
+.numpad button small{font-size:.5rem;letter-spacing:.14em;font-weight:600;margin-top:2px}
+.numpad button.fn{background:transparent;box-shadow:none}
+.u-busy{position:absolute;inset:0;display:grid;place-items:center;z-index:7;background:rgba(0,0,0,.25)}
+.u-busy div{background:#2c2c2e;color:#fff;border-radius:12px;padding:12px 18px;font-size:.84rem;display:flex;gap:10px;align-items:center}
+.u-busy i{width:14px;height:14px;border:2px solid #8e8e93;border-top-color:#fff;border-radius:50%;display:block}
+@media (prefers-reduced-motion: no-preference){.u-busy i{animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}}
+
+.qr-pay{display:grid;grid-template-columns:1fr 100px;gap:8px;align-items:end}
+.qr-pay label{display:flex;flex-direction:column;gap:3px;font-size:.8rem;color:var(--muted);min-width:0}
+.qr-pay button{grid-column:span 2}
+.cases{display:flex;flex-direction:column;gap:8px}
+.case{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;padding:11px 13px}
+.case:hover{border-color:var(--accent)}
+.case b{font-size:.9rem}
+.case small{grid-column:2;color:var(--muted);font-size:.8rem;line-height:1.35}
+.case .tag{grid-row:span 2;align-self:start;font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:99px;background:var(--blue-soft);color:var(--blue)}
+.case .tag.ex{background:var(--warn-soft);color:var(--warn)} .case .tag.hr{background:var(--bad-soft);color:var(--bad)} .case .tag.nx{background:var(--green-soft);color:var(--green)}
+.narr{border-left:4px solid var(--accent);background:var(--blue-soft);padding:10px 14px;border-radius:0 10px 10px 0;font-size:.88rem}
+.narr:empty{display:none}
+.feed{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:330px;overflow:auto}
+.feed li{display:grid;grid-template-columns:44px 1fr;gap:8px;font-size:.83rem;line-height:1.35}
+.feed time{font-family:var(--f-mono);color:var(--muted);font-size:.74rem;padding-top:1px}
+.k-ok{color:var(--green)} .k-warn{color:var(--warn)} .k-bad{color:var(--bad)} .k-info{color:var(--blue)}
+.receipt{background:var(--paper);color:var(--paper-ink);font-family:var(--f-mono);font-size:.78rem;padding:14px 16px 20px;max-width:300px;margin-inline:auto;border:1px solid var(--line);
+  -webkit-mask:radial-gradient(circle 5px at 50% 100%,transparent 98%,#000) 0 0/12px 100% repeat-x;mask:radial-gradient(circle 5px at 50% 100%,transparent 98%,#000) 0 0/12px 100% repeat-x}
+.receipt .rh{display:flex;justify-content:center;border-bottom:1px dashed currentColor;padding-bottom:8px;margin-bottom:8px}
+.receipt .rh svg{width:120px}
+.receipt .row{display:flex;justify-content:space-between;gap:8px}
+.receipt .code{font-size:.95rem;font-weight:600;text-align:center;margin:8px 0 4px}
+.receipt canvas{display:block;margin:8px auto 4px;image-rendering:pixelated;width:92px;height:92px}
+.receipt .foot{text-align:center;opacity:.8;font-size:.7rem;border-top:1px dashed currentColor;padding-top:6px;margin-top:6px}
+.receipt-empty{color:var(--muted);font-size:.86rem;text-align:center;padding:20px}
+
+/* maps */
+.map{height:420px;border-radius:12px;border:1px solid var(--line);overflow:hidden;background:#24262f;position:relative;z-index:0}
+.map.small{height:340px}
+.map-note{position:absolute;left:10px;bottom:10px;z-index:900;background:rgba(26,27,46,.85);color:#fff;font-size:.75rem;padding:5px 10px;border-radius:99px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.8rem;color:var(--muted);margin-top:10px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
+.leaflet-popup-content{font-family:var(--f-body);font-size:.84rem;line-height:1.4;margin:10px 14px}
+.leaflet-popup-content b{display:block;font-size:.9rem}
+
+/* draw */
+.winners{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.win{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:12px 14px;background:var(--surface)}
+.win .place{font-size:.8rem;font-weight:600;color:var(--blue)}
+.win .prize{font-size:1.35rem;font-weight:700}
+
+/* users */
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end}
+.form-grid label{display:flex;flex-direction:column;gap:4px;font-size:.82rem;color:var(--muted);font-weight:600;min-width:0}
+.err{color:var(--bad);font-size:.85rem;margin:8px 0 0}
+.err:empty{display:none}
+
+
+
+/* loading: a receipt goes into the till and comes out as a bank note */
+.loader{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;background:var(--bg);transition:opacity .4s ease}
+.loader.out{opacity:0;pointer-events:none}
+.ld-box{text-align:center;padding:24px}
+.ld-box .till{width:170px;height:auto;display:block;margin:0 auto 14px;overflow:visible}
+.ld-txt b{display:block;font-weight:800;letter-spacing:.35em;color:var(--accent);font-size:1.05rem;padding-left:.35em}
+.ld-txt span{display:block;color:var(--muted);font-size:.9rem;margin-top:4px}
+.till .ld-rc{transform:translateY(-58px)}
+.till .ld-note{transform:translateY(0)}
+@media (prefers-reduced-motion: no-preference){
+  .till .ld-rc{animation:ldRc 2.4s ease-in-out infinite}
+  .till .ld-note{animation:ldNote 2.4s ease-in-out infinite}
+  .till .ld-scr{animation:ldScr 2.4s linear infinite}
+  .till .ld-led{animation:ldLed 2.4s linear infinite}
+}
+@media (prefers-reduced-motion: reduce){.till .ld-rc{transform:translateY(-30px)}.till .ld-note{transform:translateY(52px)}}
+@keyframes ldRc{0%{transform:translateY(-58px)}40%,100%{transform:translateY(66px)}}
+@keyframes ldNote{0%,46%{transform:translateY(0);opacity:1}80%,92%{transform:translateY(52px);opacity:1}100%{transform:translateY(52px);opacity:0}}
+@keyframes ldScr{0%,36%{opacity:.25}44%,88%{opacity:1}100%{opacity:.25}}
+@keyframes ldLed{0%,38%{fill:#3a3d57}42%,60%{fill:#e8793a}64%,100%{fill:#3a3d57}}
+.busy{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:9000;display:flex;align-items:center;gap:8px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:99px;padding:5px 16px 5px 8px;box-shadow:0 6px 20px rgba(0,0,0,.15);font-size:.85rem;font-weight:600}
+.busy .till{width:34px;height:auto}
+.till-mini{display:inline-block;vertical-align:middle;margin-right:4px}.till-mini .till{width:30px;height:auto;display:block}
+/* community watch analytics */
+.wf-bar{margin-bottom:18px}
+.wf{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.wf label,.wf-inline{display:flex;flex-direction:column;gap:4px;font-size:.78rem;font-weight:600;color:var(--muted)}
+.wf-inline{flex-direction:row;align-items:center;gap:8px;margin-bottom:10px}
+.wf select{min-width:150px}
+.dl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.dl span{font-size:.78rem;font-weight:600;color:var(--muted);margin-right:4px}
+.chart svg{width:100%;height:auto;display:block}
+.chart [data-tip]{cursor:default}
+.viz-tip{position:fixed;z-index:9500;pointer-events:none;background:var(--navy);color:var(--on-navy);font-size:.78rem;font-weight:500;padding:6px 10px;border-radius:8px;max-width:280px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.bh-analyst{margin-bottom:0}
+.bh-ahead{display:flex;gap:12px;align-items:center;margin-bottom:12px}.bh-ahead b{display:block}.bh-ahead small{color:var(--muted)}
+.bh-analyst .bh-form{border-top:0;padding-top:0}
+.wa-out:not(:empty){margin-top:14px;display:flex;flex-direction:column;gap:10px}
+.leaflet-tooltip.area-tip{background:rgba(26,27,46,.85);color:#fff;border:0;font-weight:700;font-size:12px;box-shadow:none;padding:3px 8px;border-radius:6px}
+.leaflet-tooltip.area-tip::before{display:none}
+.h-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.nav-img{width:20px;height:20px;border-radius:6px;background:#fff;object-fit:contain;flex:none;padding:1px}
+
+/* Bohlale AI */
+.bh-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}
+@media (max-width:980px){.bh-grid{grid-template-columns:minmax(0,1fr)}}
+.bh-chat{display:flex;flex-direction:column;min-height:560px}
+.bh-head{display:flex;align-items:center;gap:12px;padding-bottom:14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.bh-head>div:not(.bh-logo){flex:1;min-width:140px}.bh-head b{display:block;font-size:1.05rem}.bh-head small{color:var(--muted)}
+.bh-logo,.bh-av{width:44px;height:44px;border-radius:12px;background:#fff;object-fit:contain;padding:2px;flex:none;border:1px solid var(--line)}
+.bh-av{width:32px;height:32px;border-radius:9px}
+.bh-log{flex:1;overflow:auto;display:flex;flex-direction:column;gap:12px;padding:16px 2px;max-height:560px;min-height:340px}
+.bh-msg{display:flex;gap:10px;align-items:flex-start;min-width:0}
+.bh-msg.me{justify-content:flex-end}
+.bh-bubble{max-width:88%;min-width:0;padding:10px 14px;border-radius:14px;font-size:.9rem;line-height:1.5;overflow-wrap:anywhere}
+.bh-msg.ai .bh-bubble{background:var(--sunk);border-top-left-radius:4px}
+.bh-msg.me .bh-bubble{background:var(--navy);color:var(--on-navy);border-top-right-radius:4px}
+.bh-bubble p{margin:0 0 6px}.bh-bubble p:last-child{margin-bottom:0}
+.bh-bubble ul,.bh-bubble ol{margin:2px 0 8px;padding-left:20px}.bh-bubble li{margin:2px 0}
+.bh-src{font-size:.78rem;color:var(--muted);border-top:1px dashed var(--line);padding-top:6px;margin-top:8px!important}
+.bh-meta{font-size:.72rem;color:var(--muted);margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.bh-copy{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:1px 9px;font-size:.72rem}
+.bh-form{display:flex;gap:8px;border-top:1px solid var(--line);padding-top:12px}
+.bh-form input{flex:1}
+.bh-pick{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted);font-weight:600;margin-bottom:12px}
+.bh-tasks{display:flex;flex-direction:column;gap:6px}
+.bh-task{text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:8px 12px;font-weight:600;font-size:.86rem}
+.bh-task:hover{border-color:var(--accent);color:var(--blue)}
+.bh-task small{display:block;font-weight:400;color:var(--muted);font-size:.72rem}
+.bh-rules{margin:0;padding-left:18px;font-size:.85rem;color:var(--muted)}.bh-rules li{margin:3px 0}
+.bh-dots{display:inline-flex;gap:3px;margin-right:6px;vertical-align:middle}.bh-dots i{width:6px;height:6px;border-radius:50%;background:var(--accent);display:block}
+@media (prefers-reduced-motion: no-preference){.bh-dots i{animation:bh 1s infinite ease-in-out}.bh-dots i:nth-child(2){animation-delay:.15s}.bh-dots i:nth-child(3){animation-delay:.3s}@keyframes bh{0%,80%,100%{opacity:.3}40%{opacity:1}}}
+.btn.bh-ask{color:var(--blue);border-color:var(--blue-soft)}
+
+/* login: clear photo, form on its own card */
+.login{position:fixed;inset:0;z-index:3000;overflow:auto;display:grid;grid-template-columns:minmax(0,1fr);place-items:center;padding:24px max(16px,env(safe-area-inset-left,0px));background:#1a1b2e url("img/login-bg.jpg") center/cover no-repeat}
+.login-card{width:100%;max-width:430px;box-sizing:border-box;text-align:center;display:flex;flex-direction:column;gap:12px;align-items:center;
+  background:rgba(255,255,255,.34);border:1px solid rgba(255,255,255,.7);
+  border-radius:22px;padding:30px 30px 22px;box-shadow:0 24px 60px rgba(10,12,30,.35)}
+.login-card .mark{width:190px}
+.login h2{margin:10px 0 0;font-size:clamp(1.6rem,4.6vw,2.15rem);font-weight:800;letter-spacing:.14em;color:#1a1b2e}
+.login h2 span{color:var(--accent)}
+.login .sub{margin:0 0 8px;color:#1a1b2e;font-weight:500;letter-spacing:.02em}
+.lfield{width:100%;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.88);border:1.5px solid var(--ink);border-radius:99px;padding:11px 18px}
+.lfield:focus-within{border-color:var(--accent);box-shadow:0 0 0 4px var(--blue-soft)}
+.lfield svg{width:20px;height:20px;color:var(--ink);flex:none}
+.lfield input{flex:1;min-width:0;border:0;padding:4px 0;font-size:1rem;background:transparent;border-radius:0}
+.lfield input:focus{box-shadow:none}
+.lfield button{border:0;background:none;color:var(--ink);padding:0;display:grid}
+.lbtn{width:100%;border:0;border-radius:99px;background:var(--navy);color:var(--on-navy);font-weight:700;font-size:1.02rem;padding:14px;margin-top:2px}
+.login .fine{font-size:.8rem;color:#14162a;max-width:40ch;margin:0;font-weight:500}
+.login .err{margin:0}
+.login-foot{display:flex;justify-content:space-between;gap:12px;width:100%;border-top:1px solid rgba(26,27,46,.18);padding-top:12px;margin-top:2px;font-size:.78rem;color:#23263a}
+.login-foot a{color:#8a3a0c;font-weight:700}
+.login-card h2,.login-card .sub,.login-card .fine,.login-foot{text-shadow:0 0 2px #fff,0 0 4px #fff,0 0 10px rgba(255,255,255,.95),0 0 18px rgba(255,255,255,.8)}
+.login-card h2 span{color:#d9601e}
+.login .lfield,.login .lfield input,.login .lfield svg,.login .lfield button{color:#1a1b2e;border-color:#1a1b2e}
+.login .lfield input::placeholder{color:#5f6475}
+.login .lbtn{background:#1a1b2e;color:#fff}
+.login .err{color:#a01d14;font-weight:600}
+@media (max-width:760px){.login{background-position:62% center}.login-card{padding:24px 20px 18px}}
+</style>
+</head>
+<body>
+<div id="loader" class="loader" role="status" aria-live="polite">
+  <div class="ld-box">
+    <svg class="till" viewBox="0 0 200 222" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g class="ld-rc"><path d="M72 0H128V58l-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4z" fill="#fffdf8" stroke="#c9c3b5" stroke-width="1.2"/><rect x="82" y="8" width="36" height="5" rx="1.5" fill="#e8793a"/><rect x="80" y="19" width="40" height="2.5" rx="1" fill="#b9b4a8"/><rect x="80" y="25" width="28" height="2.5" rx="1" fill="#b9b4a8"/><rect x="80" y="31" width="34" height="2.5" rx="1" fill="#b9b4a8"/><path d="M82 40v10M85 40v10M87 40v10M91 40v10M93 40v10M96 40v10M100 40v10M102 40v10M106 40v10M109 40v10M111 40v10M115 40v10M118 40v10" stroke="#23262d" stroke-width="1.3"/></g><g class="ld-note"><rect x="58" y="108" width="84" height="44" rx="3" fill="#2f8f5b" stroke="#1f6b42"/><rect x="61.5" y="111.5" width="77" height="37" rx="2" fill="none" stroke="#a8dcbc" stroke-width="1"/><path d="M66 140q10-8 20 0t20 0 20 0" fill="none" stroke="#5fbf8a" stroke-width="1.2"/><circle cx="100" cy="128" r="11" fill="#e8793a"/><text x="100" y="132.5" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">M</text><text x="66" y="120" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" fill="#e7f6ec">100</text><text x="134" y="146" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" fill="#e7f6ec" text-anchor="end">100</text></g><rect x="34" y="60" width="132" height="96" rx="14" fill="#1a1b2e" stroke="#3a3d57" stroke-width="1.5"/><rect x="58" y="54" width="84" height="10" rx="5" fill="#2c2e45"/><rect x="64" y="58" width="72" height="2.5" rx="1.2" fill="#0b0c15"/><rect x="48" y="74" width="104" height="30" rx="6" fill="#0e2a1d"/><text class="ld-scr" x="100" y="95" font-family="ui-monospace, Menlo, monospace" font-size="15" font-weight="700" fill="#5cc994" text-anchor="middle">M 100.00</text><circle class="ld-led" cx="148" cy="66.5" r="2.6" fill="#3a3d57"/><g fill="#3a3d57"><rect x="50" y="114" width="20" height="9" rx="3"/><rect x="76" y="114" width="20" height="9" rx="3"/><rect x="102" y="114" width="20" height="9" rx="3"/><rect x="50" y="128" width="20" height="9" rx="3"/><rect x="76" y="128" width="20" height="9" rx="3"/><rect x="102" y="128" width="20" height="9" rx="3"/></g><rect x="128" y="114" width="22" height="23" rx="4" fill="#e8793a"/><rect x="54" y="150" width="92" height="10" rx="5" fill="#2c2e45"/><rect x="60" y="153.5" width="80" height="2.5" rx="1.2" fill="#0b0c15"/></svg>
+    <div class="ld-txt"><b>RASITI</b><span>Turning receipts into rewards…</span></div>
+  </div>
+</div>
+<div id="busy" class="busy" role="status" hidden></div>
+<div id="vizTip" class="viz-tip" hidden></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="rasiti-mark" viewBox="0 0 176 100">
+      <path d="M4 4H172V82l-8.4 8-8.4-8-8.4 8-8.4-8-8.4 8-8.4-8-8.4 8-8.4-8-8.4 8-8.4-8-8.4 8-8.4-8-8.4 8-8.4-8-8.4 8-8.4-8-8.4 8-8.4-8-8.4 8L4 82Z" fill="#fff" stroke="#1a1b2e" stroke-width="3" stroke-linejoin="round"/>
+      <text x="88" y="19" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-size="7.5" font-weight="700" letter-spacing="2.6" fill="#e8793a">RSL · OFFICIAL RECEIPT</text>
+      <path d="M14 26H162" stroke="#1a1b2e" stroke-width="1.4" stroke-dasharray="3 3"/>
+      <text x="88" y="55" text-anchor="middle" font-family="'JetBrains Mono',ui-monospace,monospace" font-size="29" font-weight="800" letter-spacing="5" fill="#1a1b2e">RASITI</text>
+      <path d="M14 63H162" stroke="#1a1b2e" stroke-width="1.4" stroke-dasharray="3 3"/>
+      <g fill="#1a1b2e"><rect x="40" y="68" width="2" height="9"/><rect x="44" y="68" width="1" height="9"/><rect x="47" y="68" width="3" height="9"/><rect x="52" y="68" width="1" height="9"/><rect x="55" y="68" width="2" height="9"/><rect x="59" y="68" width="1" height="9"/><rect x="62" y="68" width="3" height="9"/><rect x="67" y="68" width="1" height="9"/><rect x="70" y="68" width="2" height="9"/><rect x="74" y="68" width="1" height="9"/><rect x="77" y="68" width="2" height="9"/></g>
+      <text x="136" y="76" text-anchor="end" font-family="'JetBrains Mono',ui-monospace,monospace" font-size="9" font-weight="800" fill="#e8793a">M 9.99</text>
+    </symbol>
+    <symbol id="ic-receipt" viewBox="0 0 24 24"><path d="M5 3h14v18l-2.3-1.6L14.3 21 12 19.4 9.7 21l-2.4-1.6L5 21z" fill="#e8793a"/><path d="M8.5 8h7M8.5 11.5h7M8.5 15h4" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+<aside class="side">
+  <div class="logo">
+    <svg class="mark" viewBox="0 0 176 100" role="img" aria-label="Rasiti"><use href="#rasiti-mark"/></svg>
+    <div class="tag">Receipts that reward</div>
+    <div class="who">RSL Taxathon 2026<span>Challenge 1 prototype</span></div>
+  </div>
+  <nav class="tabs" aria-label="Views" id="nav"></nav>
+  <div class="side-foot" id="sideFoot"></div>
+</aside>
+<div style="min-width:0">
+<header class="topbar"><h1 id="pageTitle">Start here</h1><span class="chip" id="modeChip">Mock data</span><button class="btn small" id="refreshBtn" hidden>Refresh</button><span class="avatar" id="avatar" aria-hidden="true">RSL</span></header>
+<main>
+
+<div class="banner" id="dbBanner" hidden><p id="dbBannerText"></p><button class="btn primary small" id="seedBtn" hidden>Load demo dataset</button></div>
+
+<section data-view="guide">
+  <p class="lede">Rasiti is a prototype for the RSL Taxathon 2026, Challenge 1. Customers get receipts and prize-draw entries, sellers get a free sales book, and RSL gets a live picture of where trade happens. All data is mock. Anyone can try the phones; the RSL screens need an officer account.</p>
+  <div class="guide">
+    <div class="panel">
+      <h3>Steps</h3>
+      <ol class="steps">
+        <li><b>Open Rasiti like a real user</b><a href="#phones">Phones</a>: on the <b>keypad phone</b>, press <span class="codebox">*999#</span> with the keys, then the green key. On the <b>smartphone</b>, tap <b>WhatsApp</b>, the green new-chat button, then <b>Rasiti</b>, and register.<div class="note">With the database connected, the keypad phone talks to the real USSD server, exactly as a mobile network would.</div></li>
+        <li><b>Run the guided cases</b>Click the six cases on the right of the Phones page, top to bottom. After each one, a note says what happened and what to press next.</li>
+        <li><b>Check a receipt as a customer</b>Customer phone: 2, then the genuine code <span class="codebox" id="sampleCode">…</span>. Then try the fake one <span class="codebox" id="sampleFake">…</span>.</li>
+        <li><b>Ask for a receipt after paying cash</b>Customer phone: 1, seller code <span class="codebox">3307</span>, any amount. Then on the seller phone (Ntate Thabo): 2, pick the request, 1 to confirm.</li>
+        <li><b>Join as a new seller</b>In the seller list choose "Someone not on Rasiti yet". Dial <span class="codebox">*999#</span>, choose 2 (seller), then 0 to join, and give a name, a place and what you sell.</li>
+        <li><b>Rate a shop</b>Customer phone: 3. On WhatsApp you can share your location, and the rating lands on the map in <a href="#watch">Community watch</a>.</li>
+        <li><b>Look at the RSL side</b>Sign in, then try <a href="#shield">Fraud Shield</a>, <a href="#watch">Community watch</a>, <a href="#officer">Officer console</a> and <a href="#draw">Draw</a>.</li>
+      </ol>
+    </div>
+    <div class="stack">
+      <div class="panel">
+        <h3>Test sellers</h3>
+        <div class="tbl-wrap"><table>
+          <tr><th>Code</th><th>Seller</th><th>Why it is interesting</th></tr>
+          <tr><td class="mono">3307</td><td>Ntate Thabo · snacks and drinks, Sefika rank</td><td>Registered, ordinary. Customers earn double entries.</td></tr>
+          <tr><td class="mono">4821</td><td>Mme Palesa · fruit and veg</td><td>On Rasiti but not registered. Option 4 registers her.</td></tr>
+          <tr><td class="mono">5140</td><td>Mme 'Mathabo · cooked food</td><td>Filed a nil return while her receipts show sales.</td></tr>
+          <tr><td class="mono">2264</td><td>Ntate Lebohang · shoe repair</td><td>Nil return that matches real inactivity. No action.</td></tr>
+          <tr><td class="mono">6018</td><td>Mme Lineo · hair salon</td><td>A group of new phones buying heavily. Held for review.</td></tr>
+          <tr><td class="mono">7735</td><td>Ntate Teboho · phone repairs</td><td>Bought from himself, which the Shield blocks.</td></tr>
+          <tr><td class="mono">3902</td><td>Mme Nthabiseng · clothes</td><td>One M2,400 sale that an officer should check.</td></tr>
+        </table></div>
+      </div>
+      <div class="panel">
+        <h3>Questions for testers</h3>
+        <ul class="steps" style="list-style:disc">
+          <li>Would you use USSD or WhatsApp, and why?</li>
+          <li>Would double draw entries make you choose a registered seller?</li>
+          <li>As a seller, what would make you join Rasiti, or stop you?</li>
+          <li>Was any screen confusing or too long for a basic phone?</li>
+        </ul>
+        <p class="note">Send your answers to the person who shared this link.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section data-view="phones" hidden>
+  <p class="lede">The same service runs on USSD, for any handset, and on WhatsApp, for people who prefer chat. Switch channel above each phone. On the keypad phone dial *999# and press the green key; on the smartphone open WhatsApp and start a chat with Rasiti. Everything you do here is saved and shows up on the RSL screens.</p>
+  <div class="grid-phones">
+    <div class="phone-col" id="col-t"></div>
+    <div class="phone-col" id="col-c"></div>
+    <div class="phone-col">
+      <div class="panel"><h3>Guided cases</h3><div class="cases" id="cases"></div></div>
+      <div class="narr" id="narr"></div>
+      <div class="panel"><h3>Pay by mobile-money QR</h3>
+        <form class="qr-pay" id="qrForm">
+          <label for="qrSeller">Seller<select id="qrSeller"></select></label>
+          <label for="qrAmt">Amount (M)<input id="qrAmt" type="number" min="1" value="30"></label>
+          <button class="btn primary" type="submit">Scan and pay as the customer</button>
+        </form></div>
+      <div class="panel"><h3>Latest receipt</h3><div id="receiptCard"><div class="receipt-empty">Run a case or make a sale to print a receipt.</div></div></div>
+      <div class="panel"><h3>Live activity</h3><ul class="feed" id="feed"></ul></div>
+    </div>
+  </div>
+</section>
+
+<section data-view="shield" hidden>
+  <p class="lede">Every receipt is scored against plain-language rules. A score of 30 or more holds its draw entries for an officer; 60 or more blocks them. The sale always stays in the seller's sales book. The Shield only decides who can win.</p>
+  <div class="kpis" id="shieldKpis"></div>
+  <div class="two">
+    <div class="stack">
+      <div class="panel"><h3>Rules</h3><div class="tbl-wrap"><table id="rulesTbl"></table></div></div>
+      <div class="panel"><h3>Fake and misused codes stopped</h3><div class="tbl-wrap"><table id="fakesTbl"></table></div></div>
+    </div>
+    <div class="panel"><h3>Receipt stream</h3><div class="filters" id="streamFilters"></div><div class="tbl-wrap"><table id="streamTbl"></table></div><p class="note" id="streamNote"></p></div>
+  </div>
+  <div class="panel mt">
+    <h3>Test on synthetic data</h3>
+    <p class="note" style="margin-top:0">Generates two months of trading for 25 made-up sellers, plants known fraud patterns plus genuine bulk purchases that look suspicious, then measures what the Shield catches and what it wrongly holds. Real rates come from the pilot.</p>
+    <p><button class="btn primary" id="runTest">Run test</button> <button class="btn" id="runTest2" hidden>Run again with a new seed</button></p>
+    <div id="testOut"></div>
+  </div>
+</section>
+
+<section data-view="watch" hidden>
+  <p class="lede">Every customer who rates a shop adds to a live picture of where trade happens and which retailers give receipts, including formal shops and sellers not on Rasiti. RSL looks at areas and patterns. No single customer's word triggers action, and shops that give receipts earn a public badge.</p>
+  <div class="panel wf-bar">
+    <div class="wf">
+      <label>Period<select id="wfDays"><option value="7">Last 7 days</option><option value="14">Last 14 days</option><option value="30" selected>Last 30 days</option></select></label>
+      <label>Area<select id="wfArea"></select></label>
+      <label>Shops<select id="wfWho"><option value="all">All shops</option><option value="on">Rasiti sellers</option><option value="off">Not on Rasiti</option></select></label>
+      <button class="btn small" id="wfReset" type="button">Reset filters</button>
+    </div>
+    <div class="dl"><span>Download</span><button class="btn small" type="button" data-csv="ratings">Ratings CSV</button><button class="btn small" type="button" data-csv="shops">Shops CSV</button><button class="btn small" type="button" data-csv="areas">Areas CSV</button><button class="btn small primary" type="button" id="wfPdf">PDF report</button></div>
+    <p class="note" id="wfNote" style="margin:10px 0 0"></p>
+  </div>
+  <div class="kpis" id="watchKpis"></div>
+  <div class="panel bh-analyst">
+    <div class="bh-ahead"><img class="bh-logo" src="img/bohlale-96.png" alt=""><div><b>Ask Bohlale about this view</b><small>Bohlale reads the filtered data on this page and answers like a data analyst. Its latest answer goes into the PDF report.</small></div></div>
+    <div class="filters" id="waTasks"></div>
+    <form class="bh-form" id="waForm"><input id="waIn" type="text" autocomplete="off" placeholder="e.g. Which area got worse in the last two weeks?" aria-label="Question about this data"><button class="btn primary" type="submit">Ask</button></form>
+    <div id="waOut" class="wa-out" aria-live="polite"></div>
+  </div>
+  <div class="panel mt">
+    <h3>Map of shop ratings</h3>
+    <div class="filters" id="shopFilters"></div>
+    <div class="map" id="watchMap"></div>
+    <div class="legend"><span><i style="background:#1d9e57"></i>Gives receipts</span><span><i style="background:#3b82f6"></i>Mixed</span><span><i style="background:#f0a020"></i>Low receipts</span><span><i style="background:#d93025"></i>New lead, not on Rasiti</span><span><i style="background:#9aa0ad"></i>Too few to judge</span></div>
+    <p class="note">Positions in the mock data are approximate places in Maseru. Live ratings shared from a phone use the customer's own location. The signal buttons also filter the shop table and the PDF.</p>
+  </div>
+  <div class="two mt">
+    <div class="panel"><h3>Hotspots: purchases without a receipt</h3><label class="wf-inline">Show <select id="wfType"></select></label><div class="map small" id="hotMap"></div><p class="note">Each dot is one customer rating. Darker clusters mean more problems reported in one place.</p></div>
+    <div class="panel"><h3>Receipt rate by area</h3><div class="map small" id="areaMap"></div><div class="legend"><span><i style="background:#1d9e57"></i>80% or more</span><span><i style="background:#3b82f6"></i>50 to 79%</span><span><i style="background:#f0a020"></i>Under 50%</span><span>Bigger circle: more ratings</span></div></div>
+  </div>
+  <div class="panel mt"><h3>Ratings per day</h3><div class="chart" id="chDaily"></div></div>
+  <div class="two mt">
+    <div class="panel"><h3>What customers reported</h3><div class="chart" id="chTypes"></div></div>
+    <div class="panel"><h3>Purchases without a receipt, by time of day</h3><div class="chart" id="chHours"></div><p class="note">Share of ratings in each time slot where the customer got no receipt or reported a problem.</p></div>
+  </div>
+  <div class="two mt">
+    <div class="panel"><h3>By area</h3><div class="tbl-wrap"><table id="areaTbl"></table></div><p class="note">Change compares the second half of the period with the first half, in percentage points.</p></div>
+    <div class="panel"><h3>By shop</h3><div class="tbl-wrap"><table id="shopTbl"></table></div>
+      <p class="note">Receipt rates show once 3 or more different people have rated a shop. Shops at 80% or more get the public "Gives receipts" badge.</p></div>
+  </div>
+  <div class="panel mt"><h3>Latest ratings</h3><p class="note" id="rateCount"></p><div class="tbl-wrap"><table id="rateTbl"></table></div></div>
+</section>
+
+<section data-view="officer" hidden>
+  <p class="lede">Rasiti turns customer receipts and ratings into a short, ranked worklist. Each item says why it is there. A nil return is never treated as non-compliance on its own, and no item triggers a penalty without an officer's decision.</p>
+  <div class="kpis" id="offKpis"></div>
+  <div class="two">
+    <div class="panel"><h3>Leads on the map</h3><div class="map small" id="leadMap"></div>
+      <div class="legend"><span><i style="background:#d93025"></i>High priority</span><span><i style="background:#f0a020"></i>Medium</span><span><i style="background:#9aa0ad"></i>Watching</span></div></div>
+    <div class="stack">
+      <div class="panel"><h3>Widening the tax net</h3><div class="funnel" id="funnel"></div><p class="note">Each step is a separate group of sellers today. In the pilot this becomes a monthly cohort chart.</p></div>
+      <div class="panel"><h3>Complaints from customers</h3><div class="tbl-wrap"><table id="reportsTbl"></table></div><p class="note">Action starts at 3 independent customers. Reporters are never shown to sellers.</p></div>
+    </div>
+  </div>
+  <div class="panel mt"><h3 class="h-row">Worklist <button class="btn small" id="wlCsv" type="button">Download CSV</button></h3><div class="tbl-wrap"><table id="workTbl"></table></div></div>
+  <div class="panel mt"><h3>Review queue: held draw entries</h3><div class="tbl-wrap"><table id="reviewTbl"></table></div></div>
+</section>
+
+<section data-view="draw" hidden>
+  <p class="lede">Customers earn 1 entry per M10 spent, up to 5 per receipt, at any Rasiti seller. Entries double at sellers who have registered for tax. Nobody is shut out: registering simply earns more. The draw runs once a month. Prizes come from sponsors first, then from a capped share of the extra tax the draw brings in.</p>
+  <div class="kpis" id="drawKpis"></div>
+  <div class="panel">
+    <h3 id="drawTitle">This month's draw</h3>
+    <p><button class="btn primary" id="runDraw">Draw 3 winners</button></p>
+    <div class="winners" id="winners"></div>
+    <p class="note" id="drawAudit"></p>
+  </div>
+  <div class="panel mt" id="pastDrawsPanel" hidden><h3>Recent draws</h3><div class="tbl-wrap"><table id="pastDraws"></table></div></div>
+</section>
+
+<section data-view="bohlale" hidden>
+  <p class="lede">Bohlale ("wisdom" in Sesotho) helps officers understand cases, draft messages and write reports from Rasiti's data. It only suggests; officers decide. Phone numbers stay masked and every question is written to the activity log.</p>
+  <div class="bh-grid">
+    <div class="panel bh-chat">
+      <div class="bh-head"><img class="bh-logo" src="img/bohlale-96.png" alt=""><div><b>Bohlale AI</b><small>RSL officer assistant</small></div><span class="chip" id="bhModel">Checking…</span></div>
+      <div class="bh-log" id="bhLog" aria-live="polite"></div>
+      <form class="bh-form" id="bhForm"><input id="bhIn" type="text" autocomplete="off" placeholder="Ask about a seller, an area, the review queue…" aria-label="Question for Bohlale"><button class="btn primary" id="bhSend" type="submit">Ask</button></form>
+      <p class="note" style="margin:8px 0 0">Bohlale can make mistakes. Check the figures before you act.</p>
+    </div>
+    <div class="stack">
+      <div class="panel"><h3>Tasks</h3>
+        <label class="bh-pick" for="bhSeller">Seller<select id="bhSeller"></select></label>
+        <div class="bh-tasks" id="bhTasks"></div></div>
+      <div class="panel"><h3>Rules Bohlale follows</h3>
+        <ul class="bh-rules"><li>Uses only Rasiti's data and says which records it used.</li><li>Never approves, rejects or penalises. Officers decide.</li><li>Treats a nil return as a reason to ask, not as wrongdoing.</li><li>Never sees full phone numbers.</li><li>Every question is logged with the officer's name.</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<section data-view="users" hidden>
+  <p class="lede">Add officers and choose what they can do. Owners manage everyone; admins manage officers and viewers. Every sign-in and decision is written to the activity log.</p>
+  <div class="panel">
+    <h3>Add a user</h3>
+    <form id="userForm" class="form-grid">
+      <label for="uName">Full name<input id="uName" type="text" required autocomplete="off"></label>
+      <label for="uEmail">Email<input id="uEmail" type="email" required autocomplete="off"></label>
+      <label for="uRole">Role<select id="uRole"><option value="officer">Officer: reviews and worklist</option><option value="viewer">Viewer: read only</option><option value="admin">Admin: manages officers</option><option value="owner">Owner: everything</option></select></label>
+      <label for="uPass">Temporary password<input id="uPass" type="text" required minlength="10" autocomplete="off"></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" id="genPass">Generate</button><button class="btn primary" type="submit">Add user</button></div>
+    </form>
+    <p class="err" id="userErr"></p>
+  </div>
+  <div class="panel mt"><h3>Users</h3><div class="tbl-wrap"><table id="usersTbl"></table></div></div>
+  <div class="two mt">
+    <div class="panel"><h3>Activity log</h3><div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="activityTbl"></table></div></div>
+    <div class="stack">
+      <div class="panel"><h3>My password</h3>
+        <form id="pwForm" class="form-grid">
+          <label for="pwCur">Current<input id="pwCur" type="password" required autocomplete="current-password"></label>
+          <label for="pwNew">New, 10 or more characters<input id="pwNew" type="password" required minlength="10" autocomplete="new-password"></label>
+          <div><button class="btn primary" type="submit">Change password</button></div>
+        </form><p class="err" id="pwErr"></p></div>
+      <div class="panel" id="dataPanel"><h3>Demo data</h3>
+        <p class="note" style="margin-top:0">Deletes all sellers, receipts, ratings, reviews and draws, so you can load a fresh dataset. Users and the activity log are kept.</p>
+        <button class="btn danger" id="resetBtn">Reset demo data</button></div>
+    </div>
+  </div>
+</section>
+
+</main>
+</div></div>
+
+<div class="login" id="login" hidden>
+  <form class="login-card" id="loginForm">
+    <svg class="mark" viewBox="0 0 176 100" role="img" aria-label="Rasiti"><use href="#rasiti-mark"/></svg>
+    <h2><span>ADMIN</span> PORTAL</h2>
+    <p class="sub">Revenue Services Lesotho · Rasiti</p>
+    <label class="lfield" for="lEmail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg><input id="lEmail" type="email" placeholder="Email" autocomplete="username" required></label>
+    <label class="lfield" for="lPass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input id="lPass" type="password" placeholder="Password" autocomplete="current-password" required><button type="button" id="lEye" aria-label="Show password"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></label>
+    <button class="lbtn" type="submit">Sign In</button>
+    <p class="err" id="loginErr"></p>
+    <p class="fine">This portal holds taxpayer information. Access is limited to authorised RSL staff and every action is logged.</p>
+    <div class="login-foot"><a href="#guide">Back to the public demo</a><span>Rasiti Admin Portal · v1.0</span></div>
+  </form>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+<script src="vendor/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
