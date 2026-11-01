@@ -681,16 +681,17 @@ function renderFeed() { $('#feed').innerHTML = S.feed.slice(0, 40).map(f => `<li
 const STATEPILL = {clear:'<span class="pill p-ok">Clear</span>', approved:'<span class="pill p-ok">Approved</span>', held:'<span class="pill p-warn">Held for review</span>', blocked:'<span class="pill p-bad">Blocked</span>', rejected:'<span class="pill p-bad">Rejected</span>'};
 const FAKEPILL = {forged:'Forged code', unknown:'Not in register', tampered:'Altered amount', duplicate:'Claimed twice'};
 function renderShield() {
-  const all = S.receipts; const st = r => shieldState(r); const n = s => all.filter(r => st(r) === s).length;
+  fillSel('#sfSeller', [['all', 'All sellers'], ...S.traders.map(t => [t.no, `${t.name} (${t.no})`])], SF.seller);
+  fillSel('#sfRule', [['all', 'All rules'], ...RULES.map(r => [r.id, r.name])], SF.rule);
+  const all = shieldRows(); $('#sfNote').textContent = 'Showing: ' + shieldLabel() + '. Counts and the receipt list follow these filters.'; const st = r => shieldState(r); const n = s => all.filter(r => st(r) === s).length;
   $('#shieldKpis').innerHTML = [[all.length.toLocaleString('en-US'), 'Receipts scored'], [n('clear') + n('approved'), 'Clear'], [n('held'), 'Held for an officer'], [n('blocked') + n('rejected'), 'Blocked from the draw'], [S.fakes.length, 'Fake or misused codes stopped']].map(kpi).join('');
   const hits = {}; for (const c in S.eval) S.eval[c].flags.forEach(f => hits[f.id] = (hits[f.id] || 0) + 1);
   $('#rulesTbl').innerHTML = '<tr><th>Rule</th><th class="num">Points</th><th class="num">Hits</th></tr>' + RULES.map(r => `<tr><td><b>${r.name}</b><div class="note">${r.what}</div></td><td class="num">${r.pts}</td><td class="num">${hits[r.id] || 0}</td></tr>`).join('') +
     '<tr><td colspan="3" class="note">Every code a customer enters is also checked: the check character, the register, the amount on paper, and whether another phone already claimed it.</td></tr>';
   $('#fakesTbl').innerHTML = '<tr><th>When</th><th>Code</th><th>What happened</th></tr>' + S.fakes.slice().sort((a, b) => b.t - a.t).slice(0, 30).map(f => `<tr><td class="mono">${fT(f.t)}</td><td class="mono">${esc(f.code)}</td><td><span class="pill p-bad">${FAKEPILL[f.kind]}</span><div class="note">${esc(f.detail)}</div></td></tr>`).join('');
-  const F = [['all', 'Flagged'], ['held', 'Held'], ['blocked', 'Blocked'], ['live', 'Latest']];
+  const F = [['all', 'Flagged'], ['held', 'Held'], ['blocked', 'Blocked'], ['live', 'Latest'], ['every', 'All receipts']];
   $('#streamFilters').innerHTML = F.map(f => `<button type="button" data-f="${f[0]}" aria-pressed="${S.filter === f[0]}">${f[1]}</button>`).join('');
-  let rows; if (S.filter === 'live') rows = all.slice(-25).reverse();
-  else rows = all.filter(r => { const s = st(r); return S.filter === 'all' ? s !== 'clear' : S.filter === 'held' ? s === 'held' : (s === 'blocked' || s === 'rejected'); }).reverse();
+  const rows = shieldStreamRows(all);
   const shown = rows.slice(0, 60);
   $('#streamTbl').innerHTML = '<tr><th>Receipt</th><th>Seller</th><th class="num">Amount</th><th>Phone</th><th>Score</th><th>Why</th></tr>' + shown.map(r => { const e = S.eval[r.code]; const tr = tByNo(r.no) || {name:r.no};
     return `<tr${r.live ? ' class="flash"' : ''}><td class="mono">${r.code}<div class="note">${fT(r.t)}</div></td><td>${esc(tr.name)}</td><td class="num">${M(r.amt)}</td><td class="mono">${mask(r.ph)}</td><td>${STATEPILL[st(r)]}<div class="note">${e.score} pts</div></td><td>${e.flags.map(f => `<span class="flag">${RULE[f.id].name}</span>`).join('')}${e.flags.length ? '<ul class="why">' + e.flags.map(f => `<li>${esc(f.why)}</li>`).join('') + '</ul>' : '<span class="note">No rule fired</span>'}${r.note ? `<div class="note">Officer hint: ${esc(r.note)}</div>` : ''}</td></tr>`; }).join('') + (shown.length ? '' : '<tr><td colspan="6" class="note">Nothing in this filter.</td></tr>');
@@ -940,10 +941,11 @@ const tillMini = () => `<span class="till-mini" aria-hidden="true">${TILL_SVG}</
 async function watchAsk(task, question) {
   if (WA.busy) return; WA.busy = true; const a = watchData();
   $('#waOut').innerHTML = `<div class="bh-msg ai"><img class="bh-av" src="${BH_LOGO}" alt=""><div class="bh-bubble">${tillMini()} Bohlale is analysing ${a.kp.ratings} ratings…</div></div>`;
-  const r = await bhCall(task, question, watchContext(a), []);
-  const answer = r.answer || watchTemplate(task, a);
+  const wctx = Object.assign(bhContextFor(question, null, false), {community_watch:watchContext(a)}); delete wctx.areas; delete wctx.shops_flagged;
+  const r = await bhCall(task, question, task === 'ask' ? wctx : watchContext(a), []);
+  const answer = r.answer || (task === 'ask' ? bhLocal(question, Object.assign(bhContextFor(question, null, true), {community_watch:watchContext(a)})) : watchTemplate(task, a));
   WA.last = {question, answer, mode:r.mode, model:r.model, filters:fLabel(a.f), at:Date.now()};
-  const meta = (r.mode === 'ai' ? `AI answer · ${esc(r.model)} · check before acting` : 'Template answer, built from the data') + (r.note ? ` · ${esc(r.note)}` : '');
+  const meta = (r.mode === 'ai' ? `AI answer · ${esc(r.model)} · check before acting` : 'Built-in answer from the data') + (r.note ? ` · ${esc(r.note)}` : '');
   $('#waOut').innerHTML = `<div class="bh-msg me"><div class="bh-bubble">${esc(question)}</div></div><div class="bh-msg ai"><img class="bh-av" src="${BH_LOGO}" alt=""><div class="bh-bubble">${bhFormat(answer)}<div class="bh-meta">${meta} · <button type="button" class="bh-copy" data-wa="copy">Copy</button><button type="button" class="bh-copy" data-wa="pdf">Download PDF</button></div></div></div>`;
   log('info', 'Bohlale AI analysed community watch: ' + question.slice(0, 50));
   WA.busy = false;
@@ -1020,7 +1022,7 @@ function watchPDF() { return withBusy(async () => {
   await makePdf(`rasiti-community-watch-${stamp()}.pdf`, 'Community watch report', [
     {t:'meta', v:`Filters: ${fLabel(a.f)}${WF.sig !== 'all' ? ' · shop signal: ' + SIGTXT[WF.sig] : ''}. Customer phone numbers are not shown. Spam ratings are left out.`},
     {t:'kpis', v:[[k.ratings, 'Shop ratings'], [k.people, 'People taking part'], [k.shops, 'Shops seen'], [k.off, 'Shops not on Rasiti'], [(k.rate ?? '-') + '%', 'Purchases with a receipt'], [tr == null ? '-' : (tr > 0 ? '+' : '') + tr + ' pts', 'Change, 2nd vs 1st half']]},
-    {t:'h', v:'Findings from Bohlale AI'}, {t:'meta', v:`Question: ${finding.question} · ${finding.mode === 'ai' ? 'AI answer (' + finding.model + '), checked by an officer before acting' : 'Template answer built from the data'}`}, {t:'md', v:finding.answer},
+    {t:'h', v:'Findings from Bohlale AI'}, {t:'meta', v:`Question: ${finding.question} · ${finding.mode === 'ai' ? 'AI answer (' + finding.model + '), checked by an officer before acting' : 'Built-in answer from the data'}`}, {t:'md', v:finding.answer},
     {t:'h', v:'Ratings per day'}, {t:'img', v:imgs[0]},
     {t:'h', v:'What customers reported'}, {t:'img', v:imgs[1]},
     {t:'h', v:'Purchases without a receipt, by time of day'}, {t:'img', v:imgs[2]},
@@ -1032,10 +1034,87 @@ function watchPDF() { return withBusy(async () => {
   ]);
 }, 'PDF report downloaded'); }
 function answerPDF(question, answer, mode, model, title) { return withBusy(() => makePdf(`rasiti-bohlale-${stamp()}.pdf`, title || 'Bohlale AI answer', [
-  {t:'meta', v:`${mode === 'ai' ? 'AI answer (' + model + '). Check the figures before acting.' : 'Template answer built from Rasiti data.'} Bohlale suggests; officers decide.`},
+  {t:'meta', v:`${mode === 'ai' ? 'AI answer (' + model + '). Check the figures before acting.' : 'Built-in answer from Rasiti data.'} Bohlale suggests; officers decide.`},
   {t:'h', v:'Question'}, {t:'p', v:question}, {t:'h', v:'Answer'}, {t:'md', v:answer}]), 'PDF downloaded'); }
 function worklistCSV() { const wl = worklist(); const P = {3:'High', 2:'Medium', 1:'Low', 0:'Watching', [-1]:'No action'};
   downloadCSV(`rasiti-worklist-${stamp()}.csv`, [['Priority', i => P[i.pri]], ['Seller', i => i.subj.name], ['Seller code', i => i.subj.no || ''], ['Trade', i => i.subj.trade || ''], ['Market', i => i.subj.market || ''], ['Recommended action', i => i.act], ['Why', i => i.why.join(' | ')]], wl); }
+
+/* ================= report filters and downloads on every RSL page ================= */
+const SF = {days:'30', seller:'all', rule:'all'};
+const OF = {pri:'all', area:'all', status:'all'};
+const PRITXT = {3:'High', 2:'Medium', 1:'Low', 0:'Watching', [-1]:'No action'};
+const optHtml = (list, cur) => list.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${esc(l)}</option>`).join('');
+function fillSel(id, list, cur) { const el = $(id); if (!el) return; const h = optHtml(list, cur); if (el.dataset.h !== h) { el.innerHTML = h; el.dataset.h = h; } }
+/* Fraud Shield */
+function shieldRows() { const from = SF.days === 'all' ? 0 : clock - (+SF.days) * DAY;
+  return S.receipts.filter(r => r.t >= from && (SF.seller === 'all' || r.no === SF.seller) && (SF.rule === 'all' || (S.eval[r.code] && S.eval[r.code].flags.some(f => f.id === SF.rule)))); }
+const shieldLabel = () => `${SF.days === 'all' ? 'All dates' : 'Last ' + SF.days + ' days'} · ${SF.seller === 'all' ? 'all sellers' : (tByNo(SF.seller) || {}).name} · ${SF.rule === 'all' ? 'all rules' : RULE[SF.rule].name}`;
+function shieldStreamRows(all) { const st = r => shieldState(r);
+  if (S.filter === 'live') return all.slice(-25).reverse();
+  if (S.filter === 'every') return all.slice().reverse();
+  return all.filter(r => { const s = st(r); return S.filter === 'all' ? s !== 'clear' : S.filter === 'held' ? s === 'held' : (s === 'blocked' || s === 'rejected'); }).reverse(); }
+function shieldCSV() { const rows = shieldStreamRows(shieldRows());
+  downloadCSV(`rasiti-fraud-shield-${stamp()}.csv`, [['Date and time', r => isoT(r.t)], ['Receipt code', r => r.code], ['Seller', r => (tByNo(r.no) || {}).name || r.no], ['Seller code', r => r.no], ['Amount (M)', r => r.amt], ['Paid by', r => r.ch === 'momo' ? 'Mobile money' : 'Cash'], ['Customer (masked)', r => maskCsv(r.ph)], ['Status', r => shieldState(r)], ['Score', r => S.eval[r.code].score], ['Reasons', r => S.eval[r.code].flags.map(f => RULE[f.id].name).join(' | ')]], rows); }
+function fakesCSV() { downloadCSV(`rasiti-fake-codes-${stamp()}.csv`, [['Date and time', f => isoT(f.t)], ['Code', f => f.code], ['What happened', f => FAKEPILL[f.kind] || f.kind], ['Detail', f => f.detail], ['Reported by (masked)', f => maskCsv(f.by)]], S.fakes.slice().sort((a, b) => b.t - a.t)); }
+function shieldPDF() { return withBusy(async () => { const all = shieldRows(); const n = s => all.filter(r => shieldState(r) === s).length; const rows = shieldStreamRows(all);
+  const hits = {}; all.forEach(r => S.eval[r.code].flags.forEach(f => hits[f.id] = (hits[f.id] || 0) + 1));
+  await makePdf(`rasiti-fraud-shield-${stamp()}.pdf`, 'Fraud Shield report', [
+    {t:'meta', v:`Filters: ${shieldLabel()} · list: ${({all:'flagged', held:'held', blocked:'blocked', live:'latest', every:'all receipts'})[S.filter]}. Customer phone numbers are masked.`},
+    {t:'kpis', v:[[all.length.toLocaleString('en-US'), 'Receipts scored'], [n('clear') + n('approved'), 'Clear'], [n('held'), 'Held for an officer'], [n('blocked') + n('rejected'), 'Blocked from the draw'], [S.fakes.length, 'Fake codes stopped'], [M(all.reduce((a, r) => a + r.amt, 0)), 'Value of receipts']]},
+    {t:'p', v:'A score of 30 or more holds the draw entries for an officer; 60 or more blocks them. The sale always stays in the seller\'s sales book.'},
+    {t:'h', v:'Rules'}, {t:'table', cols:[['Rule', 40], ['What it looks for', 70], ['Points', 12, 1], ['Hits', 12, 1]], rows:RULES.map(r => [r.name, r.what, r.pts, hits[r.id] || 0])},
+    {t:'h', v:`Receipts (${rows.length}${rows.length > 150 ? ', first 150 shown' : ''})`}, {t:'table', cols:[['When', 22], ['Code', 28], ['Seller', 26], ['Amount', 14, 1], ['Status', 16], ['Score', 10, 1], ['Why', 44]],
+      rows:rows.slice(0, 150).map(r => [isoT(r.t), r.code, (tByNo(r.no) || {}).name || r.no, M(r.amt), shieldState(r), S.eval[r.code].score, S.eval[r.code].flags.map(f => RULE[f.id].name).join(', ') || '-'])},
+    {t:'h', v:'Fake and misused codes'}, {t:'table', cols:[['When', 24], ['Code', 30], ['What happened', 26], ['Detail', 60]], rows:S.fakes.slice().sort((a, b) => b.t - a.t).map(f => [isoT(f.t), f.code, FAKEPILL[f.kind] || f.kind, f.detail || ''])}
+  ]); }, 'PDF report downloaded'); }
+/* Officer console */
+const itemArea = i => i.subj.market || '';
+const itemStatus = i => i.subj.no ? i.subj.status : i.id === 'held' || i.id === 'spam' ? 'system' : 'off';
+function officerItems() { return worklist().filter(i => (OF.pri === 'all' || String(i.pri) === OF.pri) && (OF.area === 'all' || itemArea(i) === OF.area) && (OF.status === 'all' || itemStatus(i) === OF.status)); }
+const officerLabel = () => `${OF.pri === 'all' ? 'all priorities' : PRITXT[OF.pri] + ' priority'} · ${OF.area === 'all' ? 'all areas' : OF.area} · ${({all:'all sellers', registered:'registered sellers', enrolled:'on Rasiti, not registered', off:'shops not on Rasiti', system:'system alerts'})[OF.status]}`;
+function heldGroups() { const hr = S.receipts.filter(r => shieldState(r) === 'held').reverse(); const grp = {};
+  for (const r of hr) { const tr = tByNo(r.no); if (OF.area !== 'all' && (!tr || tr.market !== OF.area)) continue; if (OF.status !== 'all' && OF.status !== 'system' && (!tr || tr.status !== OF.status)) continue;
+    const ids = S.eval[r.code].flags.map(f => f.id).sort(); const k = r.no + '|' + ids.join(',') + '|' + (ids.includes('ring') ? '' : r.ph + '|' + (ids.includes('outlier') ? r.code : '')); (grp[k] = grp[k] || []).push(r); }
+  return Object.values(grp); }
+function complaintGroups() { return reportGroups().filter(g => (g.indep > 0 || g.discounted > 0)).filter(g => { const tr = g.target.no && tByNo(g.target.no); const area = tr ? tr.market : g.target.area;
+  return (OF.area === 'all' || area === OF.area) && (OF.status === 'all' || (tr ? tr.status === OF.status : OF.status === 'off')); }).sort((a, b) => b.indep - a.indep); }
+const cgName = g => g.target.no ? (tByNo(g.target.no) || {}).name : g.target.label;
+function officerCSV(kind) {
+  if (kind === 'work') downloadCSV(`rasiti-worklist-${stamp()}.csv`, [['Priority', i => PRITXT[i.pri]], ['Seller or shop', i => i.subj.name], ['Seller code', i => i.subj.no || ''], ['Trade', i => i.subj.trade || ''], ['Area', i => itemArea(i)], ['Recommended action', i => i.act], ['Why', i => i.why.join(' | ')]], officerItems());
+  if (kind === 'review') downloadCSV(`rasiti-review-queue-${stamp()}.csv`, [['Seller', g => (tByNo(g[0].no) || {}).name], ['Seller code', g => g[0].no], ['Receipts', g => g.length], ['Amount (M)', g => g.reduce((a, r) => a + r.amt, 0)], ['Phones', g => new Set(g.map(r => r.ph)).size], ['Latest', g => isoT(g[0].t)], ['Why held', g => S.eval[g[0].code].flags.map(f => f.why).join(' | ')], ['Codes', g => g.map(r => r.code).join(' ')]], heldGroups());
+  if (kind === 'complaints') downloadCSV(`rasiti-complaints-${stamp()}.csv`, [['Seller or shop', g => cgName(g)], ['On Rasiti', g => g.target.no ? 'Yes' : 'No'], ['Area', g => g.target.no ? (tByNo(g.target.no) || {}).market : g.target.area], ['Different customers', g => g.indep], ['Discounted reports', g => g.discounted], ['Gave a receipt reports', g => g.pos], ['Problems reported', g => [...new Set(g.list.filter(x => x.type !== 'got').map(x => REPTYPE[x.type]))].join(' | ')], ['Status', g => g.indep >= 3 ? 'Action' : 'Watching']], complaintGroups());
+}
+function officerPDF() { return withBusy(async () => { const wl = officerItems(); const hg = heldGroups(); const cg = complaintGroups();
+  const on = S.traders.length, reg = S.traders.filter(t => t.status === 'registered').length, via = S.traders.filter(t => t.via).length; const r30 = S.receipts.filter(r => r.t > clock - 30 * DAY);
+  await makePdf(`rasiti-officer-report-${stamp()}.pdf`, 'Officer console report', [
+    {t:'meta', v:`Filters: ${officerLabel()}. Prepared for RSL General Clients. A nil return is never treated as non-compliance on its own; every action needs an officer's decision.`},
+    {t:'kpis', v:[[on, 'Sellers on Rasiti'], [reg, 'Registered for tax'], [via, 'Registered through Rasiti'], [M(r30.reduce((a, r) => a + r.amt, 0)), 'Receipted sales, 30 days'], [r30.length.toLocaleString('en-US'), 'Receipts, 30 days'], [hg.reduce((a, g) => a + g.length, 0), 'Receipts held for review']]},
+    {t:'h', v:`Worklist (${wl.length} items)`}, {t:'table', cols:[['Priority', 18], ['Seller or shop', 34], ['Area', 26], ['Recommended action', 44], ['Why', 60]], rows:wl.map(i => [PRITXT[i.pri], i.subj.name + (i.subj.no ? ' (' + i.subj.no + ')' : ''), itemArea(i), i.act, i.why.join('; ')])},
+    {t:'h', v:`Review queue: held draw entries (${hg.length} cases)`}, {t:'table', cols:[['Seller', 30], ['Receipts', 12, 1], ['Amount', 16, 1], ['Why it was held', 80]], rows:hg.map(g => [(tByNo(g[0].no) || {}).name, g.length, M(g.reduce((a, r) => a + r.amt, 0)), S.eval[g[0].code].flags.map(f => f.why).join('; ')])},
+    {t:'h', v:`Complaints from customers (${cg.length})`}, {t:'table', cols:[['Seller or shop', 40], ['Customers', 14, 1], ['Discounted', 14, 1], ['Problems', 50], ['Status', 16]], rows:cg.map(g => [cgName(g), g.indep, g.discounted, [...new Set(g.list.filter(x => x.type !== 'got').map(x => REPTYPE[x.type]))].join(', '), g.indep >= 3 ? 'Action' : 'Watching'])}
+  ]); }, 'PDF report downloaded'); }
+/* Monthly draw */
+function drawEntries() { const per = drawPeriod(); const {by} = pool(per); return Object.entries(by).map(([ph, x]) => ({ph, e:x.e, n:x.rs.length, sellers:[...new Set(x.rs.map(r => (tByNo(r.no) || {}).name))].join(' | ')})).sort((a, b) => b.e - a.e); }
+function lastDrawData() { if (S.lastDraw) return {when:'Just now', seed:S.lastDraw.seed, live:S.lastDraw.live, winners:S.lastDraw.winners};
+  const d = S.draws[0]; return d ? {when:fT(Date.parse(d.run_at)), seed:d.seed, live:d.live_entries, winners:d.winners || []} : null; }
+function drawCSV(kind) {
+  if (kind === 'entries') downloadCSV(`rasiti-draw-entries-${stamp()}.csv`, [['Customer (masked)', x => maskCsv(x.ph)], ['Entries', x => x.e], ['Receipts', x => x.n], ['Sellers', x => x.sellers]], drawEntries());
+  if (kind === 'winners') { const d = lastDrawData(); if (!d) { toast('Run the draw first'); return; }
+    downloadCSV(`rasiti-draw-winners-${stamp()}.csv`, [['Place', w => w.place], ['Prize', w => w.prize], ['Customer (masked)', w => String(w.phone).replace(/^\+/, '')], ['Entries', w => w.entries], ['Winning receipt', w => w.code], ['Seller', w => w.seller], ['Seller bonus', w => w.bonus || ''], ['Draw seed', () => d.seed]], d.winners); }
+}
+function drawPDF() { const d = lastDrawData(); const per = drawPeriod(); const {o, by} = pool(per);
+  return withBusy(async () => { await makePdf(`rasiti-draw-report-${stamp()}.pdf`, 'Monthly draw report', [
+    {t:'meta', v:`${per.title}. Customer phone numbers are masked. Each phone can win only once per draw.`},
+    {t:'kpis', v:[[o.active.toLocaleString('en-US'), 'Live entries'], [Object.keys(by).length, 'Customers in the draw'], [o.reg.toLocaleString('en-US'), 'From registered sellers'], [o.held, 'Held for review'], [o.excluded, 'Excluded by Fraud Shield'], ['M10,800', 'Prize pool']]},
+    {t:'p', v:'Rules: 1 entry per M10 spent, at least 1 and at most 5 per receipt. Entries double at sellers registered for tax. Prizes: 1st M5,000 (seller bonus M500), 2nd M2,000 (M200), 3rd M1,000 (M100), plus 20 x M100 airtime.'},
+    ...(d ? [{t:'h', v:`Winners (draw run ${d.when})`}, {t:'meta', v:`Seed ${d.seed} from ${Number(d.live).toLocaleString('en-US')} live entries. Publishing the seed and the entry list lets anyone re-run the draw and get the same winners.`},
+      {t:'table', cols:[['Place', 12], ['Prize', 22], ['Customer', 24], ['Entries', 12, 1], ['Winning receipt', 30], ['Seller', 30]], rows:d.winners.map(w => [w.place, w.prize, w.phone, w.entries, w.code, w.seller])}]
+      : [{t:'h', v:'Winners'}, {t:'p', v:'The draw has not been run yet for this period.'}]),
+    {t:'h', v:'Top customers by entries'}, {t:'table', cols:[['Customer', 30], ['Entries', 14, 1], ['Receipts', 14, 1], ['Sellers', 70]], rows:drawEntries().slice(0, 40).map(x => [mask(x.ph), x.e, x.n, x.sellers.replace(/ \| /g, ', ')])}
+  ]); }, 'PDF report downloaded'); }
+/* Users and activity */
+let ACT = [];
+function activityCSV() { downloadCSV(`rasiti-activity-log-${stamp()}.csv`, [['When', a => isoT(Date.parse(a.at))], ['Who', a => a.user_email || 'system'], ['Action', a => a.action.replace(/_/g, ' ')], ['Detail', a => a.detail ? JSON.stringify(a.detail) : '']], ACT.filter(a => !$('#actWho') || $('#actWho').value === 'all' || (a.user_email || 'system') === $('#actWho').value)); }
 
 /* ================= Officer console ================= */
 const canWork = () => !API.online || (API.user && ['owner', 'admin', 'officer'].includes(API.user.role));
@@ -1078,34 +1157,83 @@ function renderOfficer() {
   const enrolled = S.traders.filter(t => t.status === 'enrolled').length; const filed = S.traders.filter(t => t.status === 'registered' && t.declared != null).length;
   const steps = [['Reported by customers', unlisted], ['Enrolled, sales book only', enrolled], ['Registered for tax', reg], ['Filed last month', filed]]; const mx = Math.max(...steps.map(s => s[1]), 1);
   $('#funnel').innerHTML = steps.map(s => `<div class="fn"><span>${s[0]}</span><span class="bar"><i style="width:${s[1] / mx * 100}%"></i></span><b>${s[1]}</b></div>`).join('');
-  $('#reportsTbl').innerHTML = '<tr><th>Shop</th><th class="num">Customers</th><th class="num">Discounted</th><th>Status</th></tr>' + groups.filter(g => g.indep > 0 || g.discounted > 0).sort((a, b) => b.indep - a.indep).slice(0, 8).map(g => { const nm = g.target.no ? (tByNo(g.target.no) || {name:g.target.no}).name : g.target.label;
+  $('#reportsTbl').innerHTML = '<tr><th>Shop</th><th class="num">Customers</th><th class="num">Discounted</th><th>Status</th></tr>' + complaintGroups().slice(0, 12).map(g => { const nm = g.target.no ? (tByNo(g.target.no) || {name:g.target.no}).name : g.target.label;
     return `<tr><td>${esc(nm)}<div class="note">${[...new Set(g.list.filter(x => x.type !== 'got').map(x => REPTYPE[x.type]))].join(', ')}</div></td><td class="num">${g.indep}</td><td class="num">${g.discounted}</td><td>${g.indep >= 3 ? '<span class="pill p-bad">Act</span>' : g.indep > 0 ? '<span class="pill p-mute">Watching</span>' : '<span class="pill p-mute">Discounted</span>'}</td></tr>`; }).join('');
-  const wl = worklist(); const dis = canWork() ? '' : ' disabled title="Viewers cannot take actions"';
+  fillSel('#ofArea', [['all', 'All areas'], ...[...new Set([...S.traders.map(t => t.market), ...S.reports.map(r => r.target.area).filter(Boolean)])].sort().map(a => [a, a])], OF.area);
+  $('#ofNote').textContent = 'Showing: ' + officerLabel() + '. The worklist, map, review queue and complaints follow these filters.';
+  const wl = officerItems(); const dis = canWork() ? '' : ' disabled title="Viewers cannot take actions"';
   $('#workTbl').innerHTML = '<tr><th>Priority</th><th>Seller</th><th>Recommended action and why</th><th></th></tr>' + wl.map(i => `<tr><td>${PRI[i.pri]}</td><td><b>${esc(i.subj.name)}</b><div class="note">${esc([i.subj.trade, i.subj.market].filter(Boolean).join(' · '))}${i.subj.no ? ' · code ' + i.subj.no : ''}</div></td><td>${esc(i.act)}<ul class="why">${i.why.map(w => `<li>${esc(w)}</li>`).join('')}</ul></td><td style="white-space:nowrap">${i.btn ? `<button class="btn small" data-w="${esc(i.id)}"${dis}>${i.btn}</button> ` : ''}${i.subj.no ? `<button class="btn small bh-ask" data-ask="${i.subj.no}" title="Ask Bohlale AI to explain this case">Ask Bohlale</button>` : ''}</td></tr>`).join('');
-  const hr = S.receipts.filter(r => shieldState(r) === 'held').reverse(); const grp = {};
-  for (const r of hr) { const ids = S.eval[r.code].flags.map(f => f.id).sort(); const k = r.no + '|' + ids.join(',') + '|' + (ids.includes('ring') ? '' : r.ph + '|' + (ids.includes('outlier') ? r.code : '')); (grp[k] = grp[k] || []).push(r); }
-  $('#reviewTbl').innerHTML = '<tr><th>Case</th><th>Seller</th><th class="num">Amount</th><th>Why it was held</th><th>Decision</th></tr>' + Object.values(grp).map(rs => { const r = rs[0]; const e = S.eval[r.code]; const tr = tByNo(r.no) || {name:r.no}; const phs = new Set(rs.map(x => x.ph)); const codes = rs.map(x => x.code).join(',');
-    return `<tr><td><b>${rs.length} receipt${rs.length > 1 ? 's' : ''}</b><div class="note">${phs.size} phone${phs.size > 1 ? 's' : ''} · latest ${fT(r.t)}</div><details><summary>Codes</summary><div class="mono">${rs.map(x => x.code + ' ' + mask(x.ph)).join('<br>')}</div></details></td><td>${esc(tr.name)}</td><td class="num">${M(rs.reduce((a, x) => a + x.amt, 0))}</td><td><ul class="why" style="margin:0">${e.flags.map(f => `<li>${esc(f.why)}</li>`).join('')}</ul>${r.note ? `<div class="note">Hint: ${esc(r.note)}</div>` : ''}</td><td style="white-space:nowrap"><button class="btn small" data-rv="approved" data-c="${codes}"${dis}>Approve entries</button> <button class="btn small" data-rv="rejected" data-c="${codes}"${dis}>Reject</button></td></tr>`; }).join('') + (hr.length ? '<tr><td colspan="5" class="note">Either way, the sale stays in the seller\'s sales book. Only draw entries are decided here.</td></tr>' : '<tr><td colspan="5" class="note">Queue empty.</td></tr>');
+  $('#reviewTbl').innerHTML = '<tr><th>Case</th><th>Seller</th><th class="num">Amount</th><th>Why it was held</th><th>Decision</th></tr>' + heldGroups().map(rs => { const r = rs[0]; const e = S.eval[r.code]; const tr = tByNo(r.no) || {name:r.no}; const phs = new Set(rs.map(x => x.ph)); const codes = rs.map(x => x.code).join(',');
+    return `<tr><td><b>${rs.length} receipt${rs.length > 1 ? 's' : ''}</b><div class="note">${phs.size} phone${phs.size > 1 ? 's' : ''} · latest ${fT(r.t)}</div><details><summary>Codes</summary><div class="mono">${rs.map(x => x.code + ' ' + mask(x.ph)).join('<br>')}</div></details></td><td>${esc(tr.name)}</td><td class="num">${M(rs.reduce((a, x) => a + x.amt, 0))}</td><td><ul class="why" style="margin:0">${e.flags.map(f => `<li>${esc(f.why)}</li>`).join('')}</ul>${r.note ? `<div class="note">Hint: ${esc(r.note)}</div>` : ''}</td><td style="white-space:nowrap"><button class="btn small" data-rv="approved" data-c="${codes}"${dis}>Approve entries</button> <button class="btn small" data-rv="rejected" data-c="${codes}"${dis}>Reject</button></td></tr>`; }).join('') + (heldGroups().length ? '<tr><td colspan="5" class="note">Either way, the sale stays in the seller\'s sales book. Only draw entries are decided here.</td></tr>' : '<tr><td colspan="5" class="note">Queue empty.</td></tr>');
   if (currentView() === 'officer') renderLeadMap(wl);
 }
 
 /* ================= Draw ================= */
-function pool() { const wk = S.receipts.filter(r => r.t >= monthStart()); const o = {active:0, reg:0, held:0, excluded:0}; const by = {};
+function pool(per) { const from = per ? per.from : monthStart(), to = per ? per.to : Infinity; const wk = S.receipts.filter(r => r.t >= from && r.t < to); const o = {active:0, reg:0, held:0, excluded:0}; const by = {};
   for (const r of wk) { const s = drawStatus(r); if (s === 'none') continue; const e = entriesFor(r); o[s] += e; if (s === 'active') { const tr = tByNo(r.no); if (tr && tr.status === 'registered') o.reg += e; (by[r.ph] = by[r.ph] || {e:0, rs:[]}).e += e; by[r.ph].rs.push(r); } } return {o, by}; }
-function renderDraw() { const {o, by} = pool();
-  $('#drawTitle').textContent = `This month's draw (${fD(monthStart())} to ${fD(drawDay())})`;
+/* Early in a month the new month has few entries, so the draw shown is the one for the month that just ended. */
+function drawPeriod() { const ms = monthStart(); const cur = {from:ms, to:Infinity, title:`This month's draw (${fD(ms)} to ${fD(drawDay())})`, name:'this month'};
+  if (new Date(clock).getDate() > 7 || Object.keys(pool(cur).by).length >= 23) return cur;
+  const d = new Date(ms); const pm = new Date(d.getFullYear(), d.getMonth() - 1, 1).getTime(); const nm = MONTHS_FULL[new Date(pm).getMonth()];
+  return {from:pm, to:ms, title:`${nm} draw (${fD(pm)} to ${fD(ms - DAY)}), held in the first days of ${MONTHS_FULL[d.getMonth()]}`, name:nm}; }
+const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function renderDraw() { const per = drawPeriod(); const {o, by} = pool(per);
+  $('#drawTitle').textContent = per.title;
   $('#drawKpis').innerHTML = [[o.active.toLocaleString('en-US'), 'Live entries'], [Object.keys(by).length, 'Customers in the draw'], [o.reg.toLocaleString('en-US'), 'From registered sellers (double)'], [o.held, 'Held for review'], [o.excluded, 'Excluded by Fraud Shield']].map(kpi).join('');
   $('#runDraw').disabled = !canWork();
   const pd = $('#pastDrawsPanel'); pd.hidden = !S.draws.length;
-  $('#pastDraws').innerHTML = '<tr><th>When</th><th class="num">Live entries</th><th>Seed</th><th>Winners</th></tr>' + S.draws.map(d => `<tr><td>${fT(Date.parse(d.run_at))}</td><td class="num">${d.live_entries}</td><td class="mono">${d.seed}</td><td>${(d.winners || []).map(w => esc(w.phone) + ' (' + esc(w.prize) + ')').join('<br>')}</td></tr>`).join(''); }
-function runDraw() { const {o, by} = pool(); const seedv = (Date.now() % 1e9) >>> 0; const r = mulberry32(seedv); const phones = Object.keys(by);
-  const prizes = [['1st', 'M5,000 cash', 'M500'], ['2nd', 'M2,000 cash', 'M200'], ['3rd', 'M1,000 cash', 'M100']]; const pick = [];
-  for (let i = 0; i < 3 && phones.length; i++) { const tot = phones.reduce((a, p) => a + by[p].e, 0); let x = r() * tot; let ch = phones[0]; for (const p of phones) { x -= by[p].e; if (x <= 0) { ch = p; break; } } pick.push(ch); phones.splice(phones.indexOf(ch), 1); }
-  const winners = pick.map((p, i) => { const rr = by[p].rs[Math.floor(r() * by[p].rs.length)]; const tr = tByNo(rr.no); return {place:prizes[i][0], prize:prizes[i][1], bonus:prizes[i][2], phone:mask(p), entries:by[p].e, code:rr.code, seller:tr.name, market:tr.market}; });
-  $('#winners').innerHTML = winners.map(w => `<div class="win"><div class="place">${w.place} prize</div><div class="prize">${w.prize}</div><div>${w.phone} · ${w.entries} entries</div><div class="note">Winning receipt ${w.code}<br>Seller bonus ${w.bonus} to ${esc(w.seller)}, ${esc(w.market)}</div></div>`).join('');
-  $('#drawAudit').textContent = `Audit record: seed ${seedv}, ${o.active} live entries, ${o.held + o.excluded} entries left out by the Fraud Shield. 20 runner-up prizes of M100 airtime are drawn the same way. Publishing the seed and entry list lets anyone re-run the draw and get the same winners.`;
-  log('ok', `Draw run: 3 winners from ${o.active} live entries`);
-  if (API.online && !API.dbEmpty) api('admin', {op:'draw', seed:seedv, live:o.active, winners}).then(() => refresh(true)).catch(e => toast('Draw not saved: ' + e.message)); }
+  $('#pastDraws').innerHTML = '<tr><th>When</th><th class="num">Live entries</th><th>Seed</th><th>Winners</th></tr>' + S.draws.map(d => `<tr><td>${fT(Date.parse(d.run_at))}</td><td class="num">${d.live_entries}</td><td class="mono">${d.seed}</td><td>${(d.winners || []).slice(0, 3).map(w => esc(w.phone) + ' (' + esc(w.prize) + ')').join('<br>')}${(d.winners || []).length > 3 ? `<div class="note">+ ${d.winners.length - 3} airtime winners (M100 each)</div>` : ''}</td></tr>`).join(''); }
+const saved = () => API.online && !API.dbEmpty;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function showLoader(text) { const ld = $('#loader'); ld.querySelector('.ld-txt span').textContent = text; ld.hidden = false; ld.classList.remove('out'); }
+function hideLoader() { const ld = $('#loader'); ld.classList.add('out'); setTimeout(() => { ld.hidden = true; ld.querySelector('.ld-txt span').textContent = 'Turning receipts into rewards…'; }, 450); }
+function pickWinners(by, seedv) { const r = mulberry32(seedv); const phones = Object.keys(by).sort(); const pick = [];
+  for (let i = 0; i < 23 && phones.length; i++) { const tot = phones.reduce((a, p) => a + by[p].e, 0); let x = r() * tot; let ch = phones[phones.length - 1]; for (const p of phones) { x -= by[p].e; if (x <= 0) { ch = p; break; } } pick.push(ch); phones.splice(phones.indexOf(ch), 1); }
+  const prizes = [['1st', 'M5,000 cash', 'M500'], ['2nd', 'M2,000 cash', 'M200'], ['3rd', 'M1,000 cash', 'M100']];
+  return pick.map((p, i) => { const rr = by[p].rs[Math.floor(r() * by[p].rs.length)]; const tr = tByNo(rr.no);
+    return i < 3 ? {place:prizes[i][0], prize:prizes[i][1], bonus:prizes[i][2], phone:mask(p), entries:by[p].e, code:rr.code, seller:tr.name, market:tr.market}
+      : {place:'#' + (i + 1), prize:'M100 airtime', phone:mask(p), entries:by[p].e, code:rr.code, seller:tr.name, market:tr.market}; }); }
+function showWinners(d) {
+  if (!d) { $('#winners').innerHTML = ''; $('#airtime').innerHTML = ''; $('#airtimePanel').hidden = true; $('#drawAudit').textContent = ''; return; }
+  const top = d.winners.slice(0, 3), air = d.winners.slice(3);
+  $('#winners').innerHTML = top.map(w => `<div class="win"><div class="place">${w.place} prize</div><div class="prize">${w.prize}</div><div>${w.phone} · ${w.entries} entries</div><div class="note">Winning receipt ${w.code}<br>Seller bonus ${w.bonus} to ${esc(w.seller)}, ${esc(w.market)}</div></div>`).join('');
+  $('#airtimePanel').hidden = !air.length;
+  $('#airtimeTitle').textContent = `${air.length} airtime winners · M100 each (M${(air.length * 100).toLocaleString('en-US')} in total)`;
+  $('#airtime').innerHTML = air.map((w, i) => `<div class="air"><span class="air-n">${i + 4}</span><div><b>${w.phone}</b><div class="note">${w.entries} entries · ${esc(w.seller)}</div></div></div>`).join('');
+  $('#drawAudit').textContent = `Audit record: seed ${d.seed}, ${d.live} live entries, ${d.out} entries left out by the Fraud Shield. Each phone can win only once per draw. Publishing the seed and entry list lets anyone re-run the draw and get the same winners.`; }
+async function saveDraw(d) { if (!saved()) return null; const r = await api('admin', {op:'draw', seed:d.seed, live:d.live, winners:d.winners}); await refresh(true); return r.id; }
+async function runDraw() {
+  const btn = $('#runDraw'); if (btn.disabled) return; btn.disabled = true;
+  const per = drawPeriod(); const {o, by} = pool(per); if (!Object.keys(by).length) { toast('No live entries in this draw period yet'); btn.disabled = false; return; }
+  const seedv = (Date.now() % 1e9) >>> 0; const d = {seed:seedv, live:o.active, out:o.held + o.excluded, winners:pickWinners(by, seedv)};
+  showLoader(per.name === 'this month' ? 'Drawing this month\'s winners…' : `Drawing the ${per.name} winners…`); const t0 = Date.now();
+  let id = null; try { id = await saveDraw(d); } catch (e) { toast('Draw not saved: ' + e.message); }
+  await sleep(Math.max(0, 3600 - (Date.now() - t0))); hideLoader();
+  S.lastDraw = d; showWinners(d); btn.disabled = false;
+  log('ok', `Draw run (${per.name}): 3 cash winners and ${Math.max(0, d.winners.length - 3)} airtime winners from ${o.active} live entries`);
+  const ref = {id};
+  pushHist({label:'monthly draw', undo:async () => { if (ref.id) { await api('admin', {op:'undraw', id:ref.id}); await refresh(true); } S.lastDraw = null; showWinners(null); },
+    redo:async () => { ref.id = await saveDraw(d); S.lastDraw = d; showWinners(d); }});
+}
+/* ================= undo / redo ================= */
+const HIST = {u:[], r:[]};
+function pushHist(e) { HIST.u.push(e); if (HIST.u.length > 50) HIST.u.shift(); HIST.r = []; renderHist(); }
+async function histStep(from, to, fn, word) { const e = from.pop(); if (!e) return; renderHist(true);
+  try { await e[fn](); to.push(e); toast(`${word}: ${e.label}`); log('info', `${word}: ${e.label}`); }
+  catch (er) { from.push(e); toast(`Could not ${word.toLowerCase()}: ${er.message}`); }
+  renderAll(); renderHist(); }
+const undo = () => histStep(HIST.u, HIST.r, 'undo', 'Undone');
+const redo = () => histStep(HIST.r, HIST.u, 'redo', 'Redone');
+function renderHist(busyNow) { const u = $('#undoBtn'), r = $('#redoBtn'); if (!u) return;
+  const show = RSL_VIEWS.includes(currentView()) && canWork(); u.hidden = r.hidden = !show;
+  const lu = HIST.u[HIST.u.length - 1], lr = HIST.r[HIST.r.length - 1];
+  u.disabled = busyNow || !lu; r.disabled = busyNow || !lr;
+  u.title = lu ? 'Undo ' + lu.label + ' (Ctrl+Z)' : 'Nothing to undo'; r.title = lr ? 'Redo ' + lr.label + ' (Ctrl+Y)' : 'Nothing to redo'; }
+async function setReview(cs, d) { if (saved()) await api('admin', d ? {op:'review', codes:cs, decision:d} : {op:'unreview', codes:cs}); cs.forEach(c => { if (d) S.reviews[c] = d; else delete S.reviews[c]; }); }
+const ITEMSETS = it => it.kind === 'invite' ? [S.invited, it.target] : it.kind === 'visit' ? [S.visits, it.target] : [S.done, it.id];
+async function setAction(it, on) {
+  if (saved()) await api('admin', on ? {op:'action', item_id:it.id, kind:it.kind || 'done', target:it.target || '', label:it.act} : {op:'unaction', item_id:it.id});
+  const [set, key] = ITEMSETS(it); if (on) set.add(key); else set.delete(key); }
 
 /* ================= guided cases ================= */
 const CASES = [
@@ -1147,7 +1275,8 @@ async function renderUsers() {
       const locked = u.id === me.uid || (me.role !== 'owner' && ['owner', 'admin'].includes(u.role));
       return `<tr><td><b>${esc(u.name)}</b>${u.id === me.uid ? ' <span class="pill p-info">You</span>' : ''}<div class="note">${esc(u.email)}</div></td><td>${roleSel(u)}</td><td>${u.active ? '<span class="pill p-ok">Active</span>' : '<span class="pill p-mute">Switched off</span>'}</td><td class="note">${u.last_login ? fT(Date.parse(u.last_login)) : 'Never'}</td>
         <td style="white-space:nowrap">${locked ? '' : `<button class="btn small" data-act="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? 'Switch off' : 'Switch on'}</button> <button class="btn small" data-reset="${u.id}">Reset password</button>`}</td></tr>`; }).join('');
-    $('#activityTbl').innerHTML = '<tr><th>When</th><th>Who</th><th>What</th></tr>' + activity.map(a => `<tr><td class="mono">${fT(Date.parse(a.at))}</td><td>${esc(a.user_email || 'system')}</td><td>${esc(a.action.replace(/_/g, ' '))}<div class="note">${esc(Object.entries(a.detail || {}).filter(([, v]) => v != null).map(([k, v]) => k + ': ' + v).join(' · '))}</div></td></tr>`).join('');
+    ACT = activity; fillSel('#actWho', [['all', 'Everyone'], ...[...new Set(activity.map(a => a.user_email || 'system'))].map(w => [w, w])], $('#actWho').value || 'all');
+    $('#activityTbl').innerHTML = '<tr><th>When</th><th>Who</th><th>What</th></tr>' + activity.filter(a => $('#actWho').value === 'all' || (a.user_email || 'system') === $('#actWho').value).map(a => `<tr><td class="mono">${fT(Date.parse(a.at))}</td><td>${esc(a.user_email || 'system')}</td><td>${esc(a.action.replace(/_/g, ' '))}<div class="note">${esc(Object.entries(a.detail || {}).filter(([, v]) => v != null).map(([k, v]) => k + ': ' + v).join(' · '))}</div></td></tr>`).join('');
     $('#dataPanel').hidden = me.role !== 'owner';
   } catch (e) { $('#usersTbl').innerHTML = `<tr><td class="err">${esc(e.message)}</td></tr>`; }
 }
@@ -1198,6 +1327,123 @@ function bhContext(focusNo) {
     note: 'All phone numbers are masked. This is mock data for the RSL Taxathon demo.'
   };
 }
+/* ---- Bohlale: the rest of the data, so it can answer any question ---- */
+function bhExtra() {
+  const sum = a => a.reduce((x, r) => x + r.amt, 0); const since = d => S.receipts.filter(r => r.t > clock - d * DAY);
+  const d0 = new Date(clock); d0.setHours(0, 0, 0, 0); const today = S.receipts.filter(r => r.t >= d0.getTime());
+  const r30 = since(30), r7 = since(7);
+  const daily = Array.from({length:14}, (_, i) => { const a = d0.getTime() - (13 - i) * DAY; const rs = S.receipts.filter(r => r.t >= a && r.t < a + DAY); return {date:fD(a), receipts:rs.length, value:Math.round(sum(rs))}; });
+  const states = {}; S.receipts.forEach(r => { const k = shieldState(r); states[k] = (states[k] || 0) + 1; });
+  const hits = {}; for (const c in S.eval) S.eval[c].flags.forEach(f => hits[f.id] = (hits[f.id] || 0) + 1);
+  const per = drawPeriod(); const {o, by} = pool(per); const last = S.draws[0];
+  const rev = Object.values(S.reviews);
+  const sellerX = S.traders.map(t => { const rs = S.receipts.filter(r => r.no === t.no); const a30 = rs.filter(r => r.t > clock - 30 * DAY);
+    return {code:t.no, name:t.name, receipts_today:rs.filter(r => r.t >= d0.getTime()).length, receipts_7d:rs.filter(r => r.t > clock - 7 * DAY).length,
+      average_sale:a30.length ? Math.round(sum(a30) / a30.length) : 0, mobile_money_pct:pct(a30.filter(r => r.ch === 'momo').length, a30.length),
+      receipts_without_phone:a30.filter(r => !r.ph).length, pending_requests:S.claims.filter(c => c.no === t.no && c.state === 'pending').length,
+      tin:t.tin || null, registered_through_rasiti:!!t.via, invited:S.invited.has(t.no), visit_planned:S.visits.has(t.no)}; });
+  return {
+    receipts:{today:{count:today.length, value:Math.round(sum(today))}, last_7_days:{count:r7.length, value:Math.round(sum(r7))}, last_30_days:{count:r30.length, value:Math.round(sum(r30)), average_sale:r30.length ? Math.round(sum(r30) / r30.length) : 0},
+      by_payment_30d:{mobile_money:r30.filter(r => r.ch === 'momo').length, cash:r30.filter(r => r.ch === 'cash').length}, daily_last_14_days:daily},
+    seller_details:sellerX,
+    fraud_shield:{how_it_works:'Each receipt gets points from the rules. 30 or more: draw entries held for an officer. 60 or more: blocked. The sale always stays in the seller\'s book.',
+      receipts_by_state:states, rules:RULES.map(r => ({rule:r.name, points:r.pts, what:r.what, receipts_hit:hits[r.id] || 0})),
+      fake_or_misused_codes:S.fakes.slice(-15).map(f => ({date:fD(f.t), code:f.code, kind:f.kind, detail:f.detail || ''})),
+      officer_reviews:{approved:rev.filter(x => x === 'approved').length, rejected:rev.filter(x => x === 'rejected').length}},
+    draw:{period:per.title, live_entries:o.active, customers_in_draw:Object.keys(by).length, entries_from_registered_sellers:o.reg, held_for_review:o.held, excluded_by_fraud_shield:o.excluded,
+      rules:'1 entry per M10 spent, minimum 1 and maximum 5 per receipt; double at registered sellers; monthly draw; each phone can win once per draw.',
+      prizes:'1st M5,000 (seller bonus M500), 2nd M2,000 (seller M200), 3rd M1,000 (seller M100), plus 20 x M100 airtime. M10,800 a month.',
+      last_draw:last ? {when:fT(Date.parse(last.run_at)), live_entries:last.live_entries, seed:last.seed, cash_winners:(last.winners || []).slice(0, 3).map(w => ({place:w.place, prize:w.prize, phone:w.phone, entries:w.entries, seller:w.seller})), airtime_winners:(last.winners || []).slice(3).map(w => ({phone:w.phone, entries:w.entries, seller:w.seller}))}
+        : S.lastDraw ? {when:'this session', cash_winners:S.lastDraw.winners.slice(0, 3), airtime_winners:S.lastDraw.winners.slice(3).map(w => ({phone:w.phone, entries:w.entries, seller:w.seller}))} : null},
+    customer_requests:{pending:S.claims.filter(c => c.state === 'pending').length, queued_offline:S.claims.filter(c => c.state === 'queued').length},
+    officer_actions:{invitations_sent:S.invited.size, visits_planned:S.visits.size, items_marked_done:S.done.size},
+    community_watch:watchContext(watchData({days:30, area:'all', who:'all', sig:'all', ctype:'all'})),
+    recent_activity:S.feed.slice(0, 10).map(f => fT(f.t) + ' ' + f.text)
+  };
+}
+const BH_TOPICS = {
+  receipts:/receipt|sale|sold|sell|cash|mobile|momo|m-?pesa|ecocash|today|yesterday|week|trend|value|amount|average|busiest|day/i,
+  seller_details:/seller|shop|stall|trader|tin|phone|request|pending|invite|visit|average|cash|mobile/i,
+  fraud_shield:/fraud|fake|forg|tamper|held|hold|shield|flag|review|block|suspic|ring|velocity|split|outlier|self|reject|approv/i,
+  draw:/draw|winner|win|prize|airtime|entr|lottery|jackpot|seed|budget/i,
+  customer_requests:/request|claim|pending|queue|confirm/i,
+  officer_actions:/invit|visit|contact|done|action|officer|follow/i,
+  community_watch:/area|rating|rate|communit|watch|complain|report|market|hotspot|time of day|hour|lead|badge|unlisted|extra|where/i,
+  recent_activity:/recent|just|latest|happen|activity|log/i
+};
+function bhContextFor(question, focusNo, full) {
+  const base = bhContext(focusNo); const ex = bhExtra();
+  const keys = Object.keys(BH_TOPICS).filter(k => full || BH_TOPICS[k].test(question));
+  const qn = String(question).toLowerCase().replace(/['’]/g, '');
+  const namesSeller = S.traders.some(t => new RegExp('\\b(' + t.no + '|' + t.name.toLowerCase().replace(/^(ntate|mme)\s+/, '').replace(/['’]/g, '').split(/\s+/)[0] + ')\\b').test(qn));
+  if (!keys.length && namesSeller) keys.push('seller_details', 'receipts', 'customer_requests');
+  for (const k of (keys.length ? keys : Object.keys(BH_TOPICS))) base[k] = ex[k];
+  return base;
+}
+
+/* ---- Built-in answers for typed questions (works with no AI key) ---- */
+function bhLocal(q, c) {
+  const t = q.toLowerCase(); const L = []; const sel = c.sellers; const sx = c.seller_details || [];
+  const has = re => re.test(t); const used = []; const sec = (h, lines, src) => { if (L.length) L.push(''); L.push(`**${h}**`, ...lines); used.push(src || h.replace(/\s*\(.*$/, '').toLowerCase()); };
+  const nameKey = n => n.toLowerCase().replace(/^(ntate|mme|ms|mr)\s+/, '').replace(/['’]/g, '').split(/\s+/)[0];
+  const tn = t.replace(/['’]/g, ''); const sNamed = sel.filter(s => new RegExp('\\b(' + s.code + '|' + nameKey(s.name) + ')\\b').test(tn));
+  const AREA_STOP = new Set(['maseru', 'main', 'market', 'parking', 'taxi', 'rank', 'ground']);
+  const areas = c.community_watch ? c.community_watch.areas : []; const aNamed = areas.filter(a => { const n = a.area.toLowerCase(); return t.includes(n) || (n === 'maseru main market' && t.includes('main market')) || n.split(' ').some(w => w.length > 3 && !AREA_STOP.has(w) && t.includes(w)); });
+  const shops = c.community_watch ? c.community_watch.shops : []; const SHOP_STOP = new Set(['seller', 'sellers', 'shop', 'shops', 'stall', 'store', 'outlet', 'stand', 'gate', 'near', 'rank', 'platform', 'parking', 'taxi', 'market', 'main']);
+  const shNamed = shops.filter(s => !s.on_rasiti && s.shop.toLowerCase().split(',')[0].split(/\s+/).some(w => w.length > 3 && !SHOP_STOP.has(w) && new RegExp('\\b' + w + '\\b').test(t)));
+  const low = has(/lowest|least|worst|smallest|bottom|fewest|poor/), top = has(/top|best|most|highest|biggest|largest|leading/) && !low;
+  const metric = has(/complain/) ? 'customer_complaints' : has(/receipts?\b/) && !has(/sales|value|money|income|revenue/) ? 'receipts_30d' : 'sales_30d';
+  const mName = {sales_30d:'sales in the last 30 days', receipts_30d:'receipts in the last 30 days', customer_complaints:'customer complaints'}[metric];
+  const fmtv = (s, m) => m === 'sales_30d' ? M(s[m]) : s[m];
+  for (const s of sNamed.slice(0, 2)) { const x = sx.find(y => y.code === s.code) || {};
+    sec(`${s.name} (code ${s.code}), ${s.trade}, ${s.market}`, [
+      `- ${s.status === 'registered' ? 'Registered for tax' + (x.tin ? ' (TIN ' + x.tin + ')' : '') + (x.registered_through_rasiti ? ', registered through Rasiti' : '') : 'On Rasiti, not yet registered for tax'}; on Rasiti for ${s.days_on_rasiti} days.`,
+      `- Receipts: ${x.receipts_today ?? '-'} today, ${x.receipts_7d ?? '-'} in 7 days, ${s.receipts_30d} in 30 days worth ${M(s.sales_30d)} (average sale ${M(x.average_sale || 0)}; ${x.mobile_money_pct ?? 0}% by mobile money).`,
+      `- Yearly estimate from receipts: ${M(s.yearly_estimate)} (SBT limit M2,000,000).`,
+      s.declared_last_month != null ? `- ${c.last_month} return: declared ${M(s.declared_last_month)}; receipts showed ${M(s.receipts_last_month)}.` : '- No return on record for last month.',
+      `- Customer complaints: ${s.customer_complaints}${s.complaint_types.length ? ' (' + s.complaint_types.join(', ').toLowerCase() + ')' : ''}. Held receipts: ${s.held_receipts}. Pending customer requests: ${x.pending_requests ?? 0}.`], `seller ${s.code} records`); }
+  for (const a of aNamed.slice(0, 2)) sec(`${a.area} (last 30 days)`, [`- ${a.ratings} ratings, ${a.receipt_rate_pct}% got a receipt (first half ${a.first_half_pct ?? '-'}%, second half ${a.second_half_pct ?? '-'}%).`, `- ${a.shops} shops rated, ${a.not_on_rasiti} not on Rasiti, ${a.new_leads} new lead${a.new_leads === 1 ? '' : 's'}, ${a.low_receipt_shops} with low receipts.`], 'community watch ratings');
+  for (const s of shNamed.slice(0, 2)) sec(s.shop, [`- Not on Rasiti. ${s.ratings} ratings from ${s.people} people; receipt rate ${s.receipt_rate_pct ?? '-'}%. Signal: ${s.signal}.`], 'community watch ratings');
+  if (!sNamed.length && (top || low) && has(/seller|trader|stall|vendor|who/) && !has(/area|place|location/)) { const rk = sel.slice().sort((a, b) => low ? a[metric] - b[metric] : b[metric] - a[metric]);
+    sec(`Sellers ranked by ${mName} (${low ? 'lowest' : 'highest'} first)`, rk.slice(0, 5).map((s, i) => `${i + 1}. ${s.name} (${s.code}), ${s.market}: ${fmtv(s, metric)}`)); }
+  if (!aNamed.length && has(/area|market|where|place/) && has(/worse|better|improv|drop|declin|fell|rose|change|trend/) && areas.length) {
+    const ch = areas.filter(a => a.first_half_pct != null && a.second_half_pct != null).map(a => ({...a, d:a.second_half_pct - a.first_half_pct})).sort((a, b) => has(/better|improv|rose/) ? b.d - a.d : a.d - b.d);
+    sec(`Change in receipt rate, first half vs second half of the last 30 days (${has(/better|improv|rose/) ? 'most improved' : 'biggest drop'} first)`, ch.map(a => `- ${a.area}: ${a.first_half_pct}% → ${a.second_half_pct}% (${a.d >= 0 ? '+' : ''}${a.d} points, ${a.ratings} ratings).`).concat(['- Areas with few ratings can swing a lot; treat small changes with care.']), 'community watch ratings'); }
+  else if (!aNamed.length && has(/area|market|where|place|location/) && areas.length) {
+ const ar = areas.slice().sort((a, b) => low || !top ? a.receipt_rate_pct - b.receipt_rate_pct : b.receipt_rate_pct - a.receipt_rate_pct);
+    sec(`Areas by receipt rate (${low || !top ? 'lowest' : 'highest'} first)`, ar.slice(0, 7).map(a => `- ${a.area}: ${a.receipt_rate_pct}% of ${a.ratings} ratings got a receipt; ${a.new_leads} new lead${a.new_leads === 1 ? '' : 's'}.`), 'community watch ratings'); }
+  if (has(/how many|number of|count/) && has(/seller|trader/)) { const k = c.kpis;
+    sec('Sellers', [`- ${k.sellers_on_rasiti} sellers on Rasiti; ${k.registered} registered for tax (${k.registered_through_rasiti} registered through Rasiti); ${k.sellers_on_rasiti - k.registered} not yet registered.`, ...sel.map(s => `- ${s.name} (${s.code}): ${s.status}`)]); }
+  const specific = has(/fraud|fake|forg|tamper|held|shield|draw|winner|prize|area|complain|nil|declar|regist|request|pending/) || aNamed.length || shNamed.length;
+  if (c.receipts && !sNamed.length && (has(/sale|sold|cash|mobile|momo|payment|today|week|trend|average|busiest|value|revenue/) || (has(/receipt/) && !specific))) { const r = c.receipts; const busy = r.daily_last_14_days.slice().sort((a, b) => b.receipts - a.receipts)[0];
+    sec('Receipts', [`- Today: ${r.today.count} receipts worth ${M(r.today.value)}.`, `- Last 7 days: ${r.last_7_days.count} worth ${M(r.last_7_days.value)}. Last 30 days: ${r.last_30_days.count} worth ${M(r.last_30_days.value)}, average sale ${M(r.last_30_days.average_sale)}.`,
+      `- Payment (30 days): ${r.by_payment_30d.mobile_money} by mobile money, ${r.by_payment_30d.cash} cash.`, `- Busiest day in the last 2 weeks: ${busy.date} (${busy.receipts} receipts).`]); }
+  if (c.fraud_shield && has(/fraud|fake|forg|tamper|held|hold|shield|flag|review|block|suspic|ring|reject|approv/)) { const f = c.fraud_shield; const st = f.receipts_by_state;
+    sec('Fraud Shield', [`- Receipts: ${st.clear || 0} clear, ${st.held || 0} held for review, ${st.blocked || 0} blocked, ${st.approved || 0} approved and ${st.rejected || 0} rejected by officers.`,
+      ...f.rules.filter(r => r.receipts_hit).map(r => `- ${r.rule}: ${r.receipts_hit} receipts (${r.points} points).`),
+      `- Fake or misused codes stopped: ${c.kpis.fake_codes_stopped}.${f.fake_or_misused_codes.length ? ' Latest: ' + f.fake_or_misused_codes.slice(-3).map(x => `${x.code} (${x.kind}, ${x.date})`).join('; ') + '.' : ''}`,
+      ...c.held_receipt_groups.slice(0, 4).map(g => `- Held: ${g.seller}, ${g.receipts} receipt${g.receipts === 1 ? '' : 's'} (${M(g.amount)}). ${g.reasons[0]}`)]); }
+  if (c.draw && has(/draw|winner|win|prize|airtime|entr|lottery|jackpot/)) { const d = c.draw; const lines = [`- ${d.period}: ${d.live_entries.toLocaleString('en-US')} live entries from ${d.customers_in_draw} customers (${d.entries_from_registered_sellers.toLocaleString('en-US')} from registered sellers, doubled). ${d.held_for_review} held, ${d.excluded_by_fraud_shield} excluded.`, `- Prizes: ${d.prizes}`];
+    if (d.last_draw) lines.push(`- Last draw (${d.last_draw.when}): ${d.last_draw.cash_winners.map(w => `${w.place} ${w.phone}`).join(', ')}; plus ${d.last_draw.airtime_winners.length} airtime winners.`); else lines.push('- No draw has been run yet for this period.');
+    sec('Monthly draw', lines); }
+  if (has(/nil|declar|return|under|evad|evasion|hiding/)) { const n = sel.filter(s => s.declared_last_month === 0), u = sel.filter(s => s.declared_last_month > 0 && s.declared_last_month < s.receipts_last_month * 0.8);
+    sec(`Returns for ${c.last_month}`, [...n.map(s => `- ${s.name} (${s.code}) declared nil; receipts showed ${M(s.receipts_last_month)}.`), ...u.map(s => `- ${s.name} (${s.code}) declared ${M(s.declared_last_month)}; receipts showed ${M(s.receipts_last_month)}.`), ...(n.length + u.length ? ['- A nil or low return is a reason to ask, not proof of wrongdoing.'] : ['- No nil or low returns stand out.'])]); }
+  if (has(/regist|enrol|tin|sbt|simplified|tax net|not yet/) && !sNamed.length) { const e = sel.filter(s => s.status !== 'registered');
+    sec('Widening the tax net', [`- Not yet registered: ${e.map(s => `${s.name} (${s.code}, yearly estimate ${M(s.yearly_estimate)})`).join('; ') || 'none'}.`, `- Registered through Rasiti: ${c.kpis.registered_through_rasiti}.`]); }
+  if (c.customer_requests && has(/request|claim|pending|queue/)) sec('Customer receipt requests', [`- ${c.customer_requests.pending} waiting for the seller to confirm; ${c.customer_requests.queued_offline} saved offline.`]);
+  if (has(/complain|rating|communit|watch|lead|unlisted|badge|extra/) && c.community_watch && !aNamed.length) { const w = c.community_watch.kpis;
+    sec('Community watch (30 days)', [`- ${w.ratings} ratings from ${w.people} people about ${w.shops} shops; ${w.rate}% got a receipt.`, `- ${w.leads} new leads (shops not on Rasiti that several customers reported).`,
+      ...c.shops_flagged.slice(0, 4).map(s => `- ${s.shop} (${s.area}): ${s.signal}, ${s.people} people.`)]); }
+  if (has(/brief|attention|priorit|worklist|first|urgent|todo|to do/)) sec('Worklist', c.worklist.slice(0, 6).map(w => `- ${w.priority}, ${w.seller}: ${w.action}.`));
+  if (has(/recent|just|latest|happen|activity/) && !L.length && c.recent_activity) { const ra = c.recent_activity.filter(x => !/Bohlale/.test(x)).slice(0, 6); sec('Recent activity', ra.length ? ra.map(x => '- ' + x) : ['- Nothing new in this session yet.']); }
+  if (!L.length) { const k = c.kpis;
+    L.push('**Overview**', `- ${k.sellers_on_rasiti} sellers on Rasiti, ${k.registered} registered for tax.`, `- ${k.receipts_30d.toLocaleString('en-US')} receipts in 30 days worth ${M(k.receipted_sales_30d)}.`, `- ${k.receipts_held} receipts held for review; ${k.fake_codes_stopped} fake codes stopped.`,
+      '', 'I could not match your question to a specific part of the data. Try naming a seller (e.g. "Thabo" or "3307"), an area (e.g. "Sefika"), or a topic: receipts, draw, fraud, returns, registration, complaints, worklist.');
+  }
+  L.push('', `Based on: ${[...new Set(used)].join(', ') || 'dashboard figures'}.`);
+  return L.join('\n');
+}
+
 /* Template answers, used when no AI key is set or the AI service is unavailable */
 function bhTemplate(task, ctx, s) {
   const L = [];
@@ -1280,12 +1526,12 @@ async function bhAsk(task, question, seller) {
   if (BH.busy) return; BH.busy = true; $('#bhSend').disabled = true;
   bhAdd('me', esc(question));
   const wait = bhAdd('ai', tillMini() + ' Bohlale is reading the data…');
-  const ctx = bhContext(seller && seller.no);
+  const ctx = bhContextFor(question, seller && seller.no, false);
   let answer = null, mode = 'template', model = '', note = '';
   ({answer, mode, model, note} = await bhCall(task, question, ctx, BH.history.slice(-6)));
-  if (!answer) { answer = bhTemplate(task, ctx, seller); mode = 'template'; }
+  if (!answer) { answer = task === 'ask' ? bhLocal(question, bhContextFor(question, seller && seller.no, true)) : bhTemplate(task, ctx, seller); mode = 'template'; }
   wait.remove();
-  const meta = (mode === 'ai' ? `AI answer · ${esc(model)} · check before acting` : 'Template answer, built from the data') + (note ? ` · ${esc(note)}` : '');
+  const meta = (mode === 'ai' ? `AI answer · ${esc(model)} · check before acting` : 'Built-in answer from the data') + (note ? ` · ${esc(note)}` : '');
   const el = bhAdd('ai', bhFormat(answer), meta + ' · <button type="button" class="bh-copy">Copy</button><button type="button" class="bh-copy bh-pdf">Download PDF</button>');
   el.querySelector('.bh-pdf').addEventListener('click', () => answerPDF(question, answer, mode, model));
   el.querySelector('.bh-copy').addEventListener('click', () => { const t = answer; (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast('Copied'), () => toast('Select the text to copy it')); });
@@ -1306,12 +1552,12 @@ async function renderBohlale() {
   sel.innerHTML = S.traders.map(t => `<option value="${t.no}">${esc(t.name)} · ${t.no} (${t.status})</option>`).join('');
   if (cur && tByNo(cur)) sel.value = cur;
   const chip = $('#bhModel');
-  if (!API.online) { chip.textContent = 'Offline demo · template answers'; chip.className = 'chip'; }
+  if (!API.online) { chip.textContent = 'Offline demo · built-in answers'; chip.className = 'chip'; }
   else if (API.user) {
-    try { BH.status = await api('bohlale'); chip.textContent = BH.status.configured ? `AI on · ${BH.status.model} via ${BH.status.provider}` : 'Template mode · no AI key set'; chip.className = 'chip' + (BH.status.configured ? ' ok' : ''); }
+    try { BH.status = await api('bohlale'); chip.textContent = BH.status.configured ? `AI on · ${BH.status.model} via ${BH.status.provider}` : 'Built-in answers · add an AI key for full answers'; chip.className = 'chip' + (BH.status.configured ? ' ok' : ''); }
     catch { chip.textContent = 'Template mode'; chip.className = 'chip'; }
   }
-  if (!$('#bhLog').children.length) bhAdd('ai', bhFormat(`Lumela! I am **Bohlale**, your assistant for Rasiti.\nI read the worklist, receipts, ratings and Fraud Shield results, and I help you understand cases, draft messages and write reports.\nI only suggest. **You decide.** Phone numbers stay masked, and every question is logged.\nPick a task on the right, or type a question.`));
+  if (!$('#bhLog').children.length) bhAdd('ai', bhFormat(`Lumela! I am **Bohlale**, your assistant for Rasiti.\nI read the worklist, receipts, ratings and Fraud Shield results, and I help you understand cases, draft messages and write reports.\nI only suggest. **You decide.** Phone numbers stay masked, and every question is logged.\nAsk me anything about the data: a seller, an area, receipts, the draw, fraud, returns or registration. Or pick a task on the right.`));
 }
 
 /* ================= shell: nav, auth, routing ================= */
@@ -1355,6 +1601,7 @@ function route() {
   if (show === 'watch') setTimeout(renderWatch, 0);
   if (show === 'officer') renderOfficer();
   if (show === 'users') renderUsers();
+  renderHist();
   if (show === 'bohlale') renderBohlale();
   window.scrollTo(0, 0);
 }
@@ -1381,26 +1628,50 @@ function wire() {
   $('#waOut').addEventListener('click', e => { const b = e.target.closest('[data-wa]'); if (!b || !WA.last) return; const l = WA.last;
     if (b.dataset.wa === 'pdf') answerPDF(l.question + ' (' + l.filters + ')', l.answer, l.mode, l.model, 'Bohlale AI: community watch analysis');
     else (navigator.clipboard ? navigator.clipboard.writeText(l.answer) : Promise.reject()).then(() => toast('Copied'), () => toast('Select the text to copy it')); });
-  $('#wlCsv').addEventListener('click', worklistCSV);
+  const onSel = (id, fn) => $(id).addEventListener('change', e => { fn(e.target.value); });
+  onSel('#sfDays', v => { SF.days = v; renderShield(); }); onSel('#sfSeller', v => { SF.seller = v; renderShield(); }); onSel('#sfRule', v => { SF.rule = v; renderShield(); });
+  $('#sfReset').addEventListener('click', () => { Object.assign(SF, {days:'30', seller:'all', rule:'all'}); S.filter = 'all'; $('#sfDays').value = '30'; renderShield(); });
+  onSel('#ofPri', v => { OF.pri = v; renderOfficer(); }); onSel('#ofArea', v => { OF.area = v; renderOfficer(); }); onSel('#ofStatus', v => { OF.status = v; renderOfficer(); });
+  $('#ofReset').addEventListener('click', () => { Object.assign(OF, {pri:'all', area:'all', status:'all'}); $('#ofPri').value = 'all'; $('#ofStatus').value = 'all'; renderOfficer(); });
+  onSel('#actWho', () => renderUsers());
+  document.addEventListener('click', e => { const b = e.target.closest('[data-dl]'); if (!b) return; const k = b.dataset.dl;
+    ({'shield-csv':shieldCSV, 'fakes-csv':fakesCSV, 'shield-pdf':shieldPDF, 'work-csv':() => officerCSV('work'), 'review-csv':() => officerCSV('review'), 'complaints-csv':() => officerCSV('complaints'), 'officer-pdf':officerPDF,
+      'entries-csv':() => drawCSV('entries'), 'winners-csv':() => drawCSV('winners'), 'draw-pdf':drawPDF, 'activity-csv':activityCSV})[k](); });
   const tip = $('#vizTip');
   document.addEventListener('mousemove', e => { const t = e.target.closest && e.target.closest('.chart [data-tip]'); if (!t) { tip.hidden = true; return; }
     tip.textContent = t.getAttribute('data-tip'); tip.hidden = false; const w = tip.offsetWidth; tip.style.left = Math.min(window.innerWidth - w - 8, e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 16) + 'px'; });
   $('#reviewTbl').addEventListener('click', async e => { const b = e.target.closest('[data-rv]'); if (!b) return; const cs = b.dataset.c.split(','); const d = b.dataset.rv;
-    try { if (API.online && !API.dbEmpty) await api('admin', {op:'review', codes:cs, decision:d}); } catch (er) { toast(er.message); return; }
-    cs.forEach(c => S.reviews[c] = d); log(d === 'approved' ? 'ok' : 'bad', `Officer ${d} entries for ${cs.length} receipt${cs.length > 1 ? 's' : ''}`); toast(API.online ? 'Decision saved and logged' : 'Decision recorded (offline)'); renderAll(); });
+    const prev = Object.fromEntries(cs.map(c => [c, S.reviews[c] || '']));
+    try { await setReview(cs, d); } catch (er) { toast(er.message); return; }
+    pushHist({label:`${d === 'approved' ? 'approval' : 'rejection'} of ${cs.length} receipt${cs.length > 1 ? 's' : ''}`,
+      undo:async () => { const g = {}; cs.forEach(c => (g[prev[c]] = g[prev[c]] || []).push(c)); for (const k in g) await setReview(g[k], k || null); },
+      redo:() => setReview(cs, d)});
+    log(d === 'approved' ? 'ok' : 'bad', `Officer ${d} entries for ${cs.length} receipt${cs.length > 1 ? 's' : ''}`); toast(API.online ? 'Decision saved and logged' : 'Decision recorded (offline)'); renderAll(); });
   $('#bhTasks').innerHTML = BH_TASKS.map(t => `<button type="button" class="bh-task" data-task="${t.id}">${t.label}${t.pick ? ' <small>uses the seller below</small>' : ''}</button>`).join('');
   $('#bhTasks').addEventListener('click', e => { const b = e.target.closest('[data-task]'); if (b) bhRunTask(b.dataset.task); });
   $('#bhForm').addEventListener('submit', e => { e.preventDefault(); const i = $('#bhIn'); const v = i.value.trim(); if (!v) return; i.value = ''; bhAsk('ask', v, tByNo($('#bhSeller').value)); });
   $('#workTbl').addEventListener('click', e => { const a = e.target.closest('[data-ask]'); if (!a) return; location.hash = '#bohlale'; setTimeout(() => { $('#bhSeller').value = a.dataset.ask; bhRunTask('explain', a.dataset.ask); }, 150); });
   $('#workTbl').addEventListener('click', async e => { const b = e.target.closest('[data-w]'); if (!b) return; const it = worklist().find(i => i.id === b.dataset.w); if (!it) return;
-    try { if (API.online && !API.dbEmpty) await api('admin', {op:'action', item_id:it.id, kind:it.kind || 'done', target:it.target || '', label:it.act}); } catch (er) { toast(er.message); return; }
-    if (it.kind === 'invite') { S.invited.add(it.target); toast('Invitation SMS sent (simulated)'); }
-    else if (it.kind === 'visit') { S.visits.add(it.target); toast(it.btn === 'Refer' ? 'Referred to the compliance team' : "Visit added to the market tax helper's route"); }
-    else { S.done.add(it.id); toast('Marked done'); }
+    try { await setAction(it, true); } catch (er) { toast(er.message); return; }
+    pushHist({label:`"${it.btn}" for ${it.subj.name}`, undo:() => setAction(it, false), redo:() => setAction(it, true)});
+    if (it.kind === 'invite') toast('Invitation SMS sent (simulated)');
+    else if (it.kind === 'visit') toast(it.btn === 'Refer' ? 'Referred to the compliance team' : "Visit added to the market tax helper's route");
+    else toast('Marked done');
     log('info', `${it.act}: ${it.btn}`); renderAll(); });
   $('#runTest').addEventListener('click', () => runTest(2026));
   $('#runTest2').addEventListener('click', () => runTest((Date.now() % 1e6) >>> 0));
   $('#runDraw').addEventListener('click', runDraw);
+  $('#undoBtn').addEventListener('click', undo); $('#redoBtn').addEventListener('click', redo);
+  document.addEventListener('keydown', e => { if (!(e.ctrlKey || e.metaKey) || e.altKey) return; const tg = e.target; if (tg.closest && tg.closest('input,textarea,select,[contenteditable]')) return;
+    if (!RSL_VIEWS.includes(currentView()) || !canWork()) return; const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); } else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redo(); } });
+  $('#clearForm').addEventListener('submit', async e => { e.preventDefault(); $('#clearErr').textContent = '';
+    if ($('#clearIn').value.trim() !== 'CLEAR') { $('#clearErr').textContent = 'Type CLEAR in capital letters to confirm.'; return; }
+    showLoader('Clearing all data…'); const t0 = Date.now();
+    try { const r = await api('admin', {op:'clear', confirm:'CLEAR'}); $('#clearIn').value = ''; HIST.u = []; HIST.r = []; S.lastDraw = null; showWinners(null);
+      API.dbEmpty = true; seed(); reEval(); renderAll(); fillSelects(); updateBanner(); renderUsers(); renderHist();
+      await sleep(Math.max(0, 2400 - (Date.now() - t0))); toast(`All data cleared${r.users_removed ? ', ' + r.users_removed + ' other users removed' : ''}`); }
+    catch (er) { $('#clearErr').textContent = er.message; } finally { hideLoader(); } });
   $('#refreshBtn').addEventListener('click', () => refresh(false));
   $('#seedBtn').addEventListener('click', async () => { const b = $('#seedBtn'); b.disabled = true; b.textContent = 'Loading…';
     try { seed(); const res = await api('admin', {op:'seed', data:exportSeed()}); toast(`Loaded ${res.counts.receipts} receipts and ${res.counts.sellers} sellers`); await refresh(true); }
@@ -1453,7 +1724,7 @@ async function boot() {
   const r = S.receipts.find(x => x.no === '3307' && !x.ph && x.t > clock - 10 * DAY) || S.receipts.find(x => x.no === '3307');
   if (r) $('#sampleCode').textContent = r.code;
   const g = chk('3307ZZ8Q'); $('#sampleFake').textContent = 'RS-3307-ZZ8Q-' + AL[(AL.indexOf(g) + 7) % 31];
-  const ld = $('#loader'); setTimeout(() => { ld.classList.add('out'); setTimeout(() => { ld.hidden = true; }, 450); }, Math.max(0, 2400 - performance.now()));
+  const ld = $('#loader'); setTimeout(() => { ld.classList.add('out'); setTimeout(() => { ld.hidden = true; }, 450); }, Math.max(0, 4800 - performance.now()));
   log('info', API.online ? (API.dbEmpty ? 'Connected. Database is empty, using local demo data.' : `Connected to the database: ${S.traders.length} sellers, ${S.receipts.length.toLocaleString('en-US')} receipts`) : 'Offline demo: mock data in your browser only');
 }
 boot();

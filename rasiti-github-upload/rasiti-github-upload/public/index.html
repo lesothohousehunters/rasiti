@@ -75,6 +75,7 @@ main{padding-block:24px 48px;padding-left:max(24px,env(safe-area-inset-left,0px)
   .side-foot{display:none}
   .topbar{position:static;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
   .topbar .chip{display:none}
+  .topbar{flex-wrap:wrap;row-gap:10px}.topbar h1{flex:1 1 100%;font-size:1.2rem}
   main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 }
 
@@ -357,6 +358,15 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 .leaflet-popup-content b{display:block;font-size:.9rem}
 
 /* draw */
+.btn.hist{display:inline-flex;align-items:center;gap:5px}
+.btn.hist svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.air-panel{margin-top:18px}.air-panel h4{margin:0 0 10px;font-size:.95rem}
+.airs{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.air{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--surface);font-size:.86rem}
+.air-n{width:26px;height:26px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;font-weight:700;font-size:.75rem;flex:none}
+.air .note{margin:0;font-size:.75rem}
+.clear-box{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}.clear-box h4{margin:0 0 4px;color:var(--bad)}
+.clear-form{display:flex;gap:8px;flex-wrap:wrap}.clear-form input{flex:1;min-width:140px}
 .winners{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
 .win{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:12px 14px;background:var(--surface)}
 .win .place{font-size:.8rem;font-weight:600;color:var(--blue)}
@@ -410,6 +420,7 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 .wa-out:not(:empty){margin-top:14px;display:flex;flex-direction:column;gap:10px}
 .leaflet-tooltip.area-tip{background:rgba(26,27,46,.85);color:#fff;border:0;font-weight:700;font-size:12px;box-shadow:none;padding:3px 8px;border-radius:6px}
 .leaflet-tooltip.area-tip::before{display:none}
+.act-tools{display:flex;gap:6px;align-items:center;font-weight:400}.act-tools select{font-size:.8rem;padding:4px 10px;max-width:170px}
 .h-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .nav-img{width:20px;height:20px;border-radius:6px;background:#fff;object-fit:contain;flex:none;padding:1px}
 
@@ -509,7 +520,7 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
   <div class="side-foot" id="sideFoot"></div>
 </aside>
 <div style="min-width:0">
-<header class="topbar"><h1 id="pageTitle">Start here</h1><span class="chip" id="modeChip">Mock data</span><button class="btn small" id="refreshBtn" hidden>Refresh</button><span class="avatar" id="avatar" aria-hidden="true">RSL</span></header>
+<header class="topbar"><h1 id="pageTitle">Start here</h1><span class="chip" id="modeChip">Mock data</span><button class="btn small hist" id="undoBtn" type="button" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>Undo</button><button class="btn small hist" id="redoBtn" type="button" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>Redo</button><button class="btn small" id="refreshBtn" hidden>Refresh</button><span class="avatar" id="avatar" aria-hidden="true">RSL</span></header>
 <main>
 
 <div class="banner" id="dbBanner" hidden><p id="dbBannerText"></p><button class="btn primary small" id="seedBtn" hidden>Load demo dataset</button></div>
@@ -579,6 +590,16 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 
 <section data-view="shield" hidden>
   <p class="lede">Every receipt is scored against plain-language rules. A score of 30 or more holds its draw entries for an officer; 60 or more blocks them. The sale always stays in the seller's sales book. The Shield only decides who can win.</p>
+  <div class="panel wf-bar">
+    <div class="wf">
+      <label>Period<select id="sfDays"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="60">Last 60 days</option><option value="all">All dates</option></select></label>
+      <label>Seller<select id="sfSeller"></select></label>
+      <label>Rule<select id="sfRule"></select></label>
+      <button class="btn small" id="sfReset" type="button">Reset filters</button>
+    </div>
+    <div class="dl"><span>Download</span><button class="btn small" type="button" data-dl="shield-csv">Receipts CSV</button><button class="btn small" type="button" data-dl="fakes-csv">Fake codes CSV</button><button class="btn small primary" type="button" data-dl="shield-pdf">PDF report</button></div>
+    <p class="note" id="sfNote" style="margin:10px 0 0"></p>
+  </div>
   <div class="kpis" id="shieldKpis"></div>
   <div class="two">
     <div class="stack">
@@ -640,6 +661,16 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 
 <section data-view="officer" hidden>
   <p class="lede">Rasiti turns customer receipts and ratings into a short, ranked worklist. Each item says why it is there. A nil return is never treated as non-compliance on its own, and no item triggers a penalty without an officer's decision.</p>
+  <div class="panel wf-bar">
+    <div class="wf">
+      <label>Priority<select id="ofPri"><option value="all">All priorities</option><option value="3">High</option><option value="2">Medium</option><option value="1">Low</option><option value="0">Watching</option><option value="-1">No action</option></select></label>
+      <label>Area<select id="ofArea"></select></label>
+      <label>Seller type<select id="ofStatus"><option value="all">All</option><option value="registered">Registered for tax</option><option value="enrolled">On Rasiti, not registered</option><option value="off">Not on Rasiti</option><option value="system">System alerts</option></select></label>
+      <button class="btn small" id="ofReset" type="button">Reset filters</button>
+    </div>
+    <div class="dl"><span>Download</span><button class="btn small" type="button" data-dl="work-csv">Worklist CSV</button><button class="btn small" type="button" data-dl="review-csv">Review queue CSV</button><button class="btn small" type="button" data-dl="complaints-csv">Complaints CSV</button><button class="btn small primary" type="button" data-dl="officer-pdf">PDF report</button></div>
+    <p class="note" id="ofNote" style="margin:10px 0 0"></p>
+  </div>
   <div class="kpis" id="offKpis"></div>
   <div class="two">
     <div class="panel"><h3>Leads on the map</h3><div class="map small" id="leadMap"></div>
@@ -649,17 +680,19 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
       <div class="panel"><h3>Complaints from customers</h3><div class="tbl-wrap"><table id="reportsTbl"></table></div><p class="note">Action starts at 3 independent customers. Reporters are never shown to sellers.</p></div>
     </div>
   </div>
-  <div class="panel mt"><h3 class="h-row">Worklist <button class="btn small" id="wlCsv" type="button">Download CSV</button></h3><div class="tbl-wrap"><table id="workTbl"></table></div></div>
+  <div class="panel mt"><h3>Worklist</h3><div class="tbl-wrap"><table id="workTbl"></table></div></div>
   <div class="panel mt"><h3>Review queue: held draw entries</h3><div class="tbl-wrap"><table id="reviewTbl"></table></div></div>
 </section>
 
 <section data-view="draw" hidden>
   <p class="lede">Customers earn 1 entry per M10 spent, up to 5 per receipt, at any Rasiti seller. Entries double at sellers who have registered for tax. Nobody is shut out: registering simply earns more. The draw runs once a month. Prizes come from sponsors first, then from a capped share of the extra tax the draw brings in.</p>
+  <div class="panel wf-bar"><div class="dl" style="margin:0;padding:0;border:0"><span>Download</span><button class="btn small" type="button" data-dl="entries-csv">Entries CSV</button><button class="btn small" type="button" data-dl="winners-csv">Winners CSV</button><button class="btn small primary" type="button" data-dl="draw-pdf">PDF draw report</button></div><p class="note" style="margin:10px 0 0">The entries list shows every customer in the draw with masked numbers, so the result can be checked.</p></div>
   <div class="kpis" id="drawKpis"></div>
   <div class="panel">
     <h3 id="drawTitle">This month's draw</h3>
     <p><button class="btn primary" id="runDraw">Draw 3 winners</button></p>
     <div class="winners" id="winners"></div>
+    <div id="airtimePanel" class="air-panel" hidden><h4 id="airtimeTitle">Airtime winners</h4><div class="airs" id="airtime"></div></div>
     <p class="note" id="drawAudit"></p>
   </div>
   <div class="panel mt" id="pastDrawsPanel" hidden><h3>Recent draws</h3><div class="tbl-wrap"><table id="pastDraws"></table></div></div>
@@ -699,7 +732,7 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
   </div>
   <div class="panel mt"><h3>Users</h3><div class="tbl-wrap"><table id="usersTbl"></table></div></div>
   <div class="two mt">
-    <div class="panel"><h3>Activity log</h3><div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="activityTbl"></table></div></div>
+    <div class="panel"><h3 class="h-row">Activity log <span class="act-tools"><select id="actWho" aria-label="Filter by person"><option value="all">Everyone</option></select><button class="btn small" type="button" data-dl="activity-csv">CSV</button></span></h3><div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="activityTbl"></table></div></div>
     <div class="stack">
       <div class="panel"><h3>My password</h3>
         <form id="pwForm" class="form-grid">
@@ -709,7 +742,11 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
         </form><p class="err" id="pwErr"></p></div>
       <div class="panel" id="dataPanel"><h3>Demo data</h3>
         <p class="note" style="margin-top:0">Deletes all sellers, receipts, ratings, reviews and draws, so you can load a fresh dataset. Users and the activity log are kept.</p>
-        <button class="btn danger" id="resetBtn">Reset demo data</button></div>
+        <button class="btn danger" id="resetBtn">Reset demo data</button>
+        <div class="clear-box"><h4>Clear entire data</h4>
+          <p class="note">Deletes everything: sellers, receipts, ratings, reviews, draws, the activity log and every user except you. This cannot be undone.</p>
+          <form id="clearForm" class="clear-form"><input id="clearIn" type="text" autocomplete="off" placeholder="Type CLEAR" aria-label="Type CLEAR to confirm"><button class="btn danger" type="submit">Clear entire data</button></form>
+          <p class="err" id="clearErr"></p></div></div>
     </div>
   </div>
 </section>
