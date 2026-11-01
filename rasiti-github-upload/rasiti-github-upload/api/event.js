@@ -1,6 +1,6 @@
 // POST /api/event — actions from the public seller and customer phones.
 // Every kind is validated; anything else is refused.
-import { db } from './_lib/db.js';
+import { db, audit } from './_lib/db.js';
 import { route, body, bad } from './_lib/http.js';
 import { validCode, PHONE, inLesotho } from './_lib/codes.js';
 
@@ -82,7 +82,46 @@ export default route(async (req, res) => {
       await q('UPDATE sellers SET helper=TRUE WHERE no=$1', [b.no]);
       break;
     }
+    case 'return_filed': {
+      if (!ID.test(b.id || '')) throw bad('Bad id.');
+      const s = await seller(b.no); if (s.status !== 'registered') throw bad('Only registered sellers file returns.');
+      if (!/^\d{4}-\d{2}$/.test(b.period || '')) throw bad('Bad period.');
+      const declared = Math.round(Number(b.declared)); if (!(declared >= 0 && declared < 2000000)) throw bad('Bad amount.');
+      const tax = Math.round(Number(b.tax_due)); if (!(tax >= 0 && tax <= declared)) throw bad('Bad tax.');
+      await q(`INSERT INTO returns(id,seller_no,period,sales,declared,nil_reason,tax_due,channel) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+               ON CONFLICT (seller_no, period) DO UPDATE SET declared=EXCLUDED.declared, nil_reason=EXCLUDED.nil_reason, tax_due=EXCLUDED.tax_due, filed_at=now()`,
+        [b.id, b.no, b.period, Math.round(Number(b.sales) || 0), declared, txt(b.nil_reason, 40) || null, tax, b.channel === 'wa' ? 'WhatsApp' : 'USSD']);
+      if (b.last) await q('UPDATE sellers SET declared_last=$1 WHERE no=$2', [declared, b.no]);
+      break;
+    }
+    case 'tax_paid': {
+      if (!ID.test(b.id || '')) throw bad('Bad id.');
+      await seller(b.no); if (!/^\d{4}-\d{2}$/.test(b.period || '')) throw bad('Bad period.');
+      await q('INSERT INTO payments(id,seller_no,period,amount,ref,channel) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING', [b.id, b.no, b.period, amount(b.amount), txt(b.ref, 20), b.channel === 'wa' ? 'WhatsApp' : 'USSD']);
+      break;
+    }
+    case 'reminders': {
+      await seller(b.no); await q('UPDATE sellers SET reminders=$1 WHERE no=$2', [!!b.on, b.no]);
+      break;
+    }
+    case 'lang': {
+      const ph = phoneOrNull(b.phone); if (!ph) throw bad('Phone required.'); if (!['en', 'st'].includes(b.lang)) throw bad('Language must be en or st.');
+      await q('INSERT INTO phone_prefs(phone, lang) VALUES ($1,$2) ON CONFLICT (phone) DO UPDATE SET lang=EXCLUDED.lang, updated_at=now()', [ph, b.lang]);
+      break;
+    }
     default: throw bad('Unknown event.');
   }
+  // Every public action is written to the system log with a masked phone, so admins can see who did what and when.
+  const mk = p => { const d = String(p || '').replace(/\D/g, ''); return d.length === 11 ? `+266 ${d[3]}*** *${d.slice(-3)}` : null; };
+  const who = b.phone ? `Customer ${mk(b.phone)}` : b.seller_no || b.no ? `Seller ${b.seller_no || b.no}` : 'Phone user';
+  const amt = Math.round(Number(b.amount)) || null; // already validated above for the kinds that carry an amount
+  const LOG = { receipt:['receipt_issued', {code:b.code, seller:b.seller_no, amount:amt, paid_by:b.channel}], receipt_phone:['receipt_claimed', {code:b.code}],
+    claim:['receipt_requested', {seller:b.seller_no, amount:amt, state:b.state}], claim_state:['receipt_request_' + b.state, {id:txt(b.id, 40)}],
+    report:['shop_rated', {rating:b.type, seller:b.seller_no || null, shop:b.seller_no ? null : txt(b.place_label, 60), area:txt(b.area, 60) || null}],
+    fake:['fake_code_caught', {code:txt(b.code, 20), kind:b.fkind}], seller_join:['seller_joined', {no:b.no, name:txt(b.name, 60), market:txt(b.market, 60)}],
+    seller_register:['seller_registered_for_tax', {no:b.no, tin:b.tin}], seller_helper:['seller_asked_for_help', {no:b.no}],
+    return_filed:[Number(b.declared) ? 'return_filed' : 'nil_return_filed', {period:b.period, declared:Math.round(Number(b.declared)), sales_book:Math.round(Number(b.sales) || 0), reason:txt(b.nil_reason, 40) || null}],
+    tax_paid:['tax_paid', {period:b.period, amount:amt, ref:txt(b.ref, 20)}], lang:['language_changed', {lang:b.lang === 'st' ? 'Sesotho' : 'English'}], reminders:[b.on ? 'reminders_on' : 'reminders_off', {}] }[b.kind];
+  if (LOG) await audit(q, null, LOG[0], { actor:['seller_join', 'seller_register', 'seller_helper', 'claim_state', 'return_filed', 'tax_paid', 'reminders'].includes(b.kind) ? `Seller ${b.no || b.seller_no || ''}`.trim() : who, channel:'phone', ...LOG[1] }).catch(() => {});
   res.status(200).json({ ok: true });
 });
