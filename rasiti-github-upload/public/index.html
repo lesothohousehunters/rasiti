@@ -63,6 +63,7 @@ nav.tabs a[aria-current="page"]{background:var(--accent);color:#fff;font-weight:
 .topbar h1{margin:0;font-size:1.35rem;font-weight:700;flex:1;min-width:0}
 .chip{display:inline-block;font-size:.76rem;font-weight:600;color:var(--blue);background:var(--blue-soft);padding:5px 12px;border-radius:99px;white-space:nowrap}
 .chip.ok{color:var(--green);background:var(--green-soft)}
+.chip.bad{color:var(--bad);background:var(--bad-soft)}
 .avatar{width:38px;height:38px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;font-weight:700;font-size:.78rem;flex:none}
 main{padding-block:24px 48px;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px));max-width:1360px}
 @media (max-width:900px){
@@ -75,6 +76,7 @@ main{padding-block:24px 48px;padding-left:max(24px,env(safe-area-inset-left,0px)
   .side-foot{display:none}
   .topbar{position:static;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
   .topbar .chip{display:none}
+  .topbar{flex-wrap:wrap;row-gap:10px}.topbar h1{flex:1 1 100%;font-size:1.2rem}
   main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 }
 
@@ -357,6 +359,15 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 .leaflet-popup-content b{display:block;font-size:.9rem}
 
 /* draw */
+.btn.hist{display:inline-flex;align-items:center;gap:5px}
+.btn.hist svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.air-panel{margin-top:18px}.air-panel h4{margin:0 0 10px;font-size:.95rem}
+.airs{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.air{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--surface);font-size:.86rem}
+.air-n{width:26px;height:26px;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;font-weight:700;font-size:.75rem;flex:none}
+.air .note{margin:0;font-size:.75rem}
+.clear-box{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}.clear-box h4{margin:0 0 4px;color:var(--bad)}
+.clear-form{display:flex;gap:8px;flex-wrap:wrap}.clear-form input{flex:1;min-width:140px}
 .winners{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
 .win{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:12px 14px;background:var(--surface)}
 .win .place{font-size:.8rem;font-weight:600;color:var(--blue)}
@@ -367,6 +378,98 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 .form-grid label{display:flex;flex-direction:column;gap:4px;font-size:.82rem;color:var(--muted);font-weight:600;min-width:0}
 .err{color:var(--bad);font-size:.85rem;margin:8px 0 0}
 .err:empty{display:none}
+
+
+
+/* loading: a receipt goes into the till and comes out as a bank note */
+.loader{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;background:var(--bg);transition:opacity .4s ease}
+.loader.out{opacity:0;pointer-events:none}
+.ld-box{text-align:center;padding:24px}
+.ld-box .till{width:170px;height:auto;display:block;margin:0 auto 14px;overflow:visible}
+.ld-txt b{display:block;font-weight:800;letter-spacing:.35em;color:var(--accent);font-size:1.05rem;padding-left:.35em}
+.ld-txt span{display:block;color:var(--muted);font-size:.9rem;margin-top:4px}
+.till .ld-rc{transform:translateY(-58px)}
+.till .ld-note{transform:translateY(0)}
+@media (prefers-reduced-motion: no-preference){
+  .till .ld-rc{animation:ldRc 2.4s ease-in-out infinite}
+  .till .ld-note{animation:ldNote 2.4s ease-in-out infinite}
+  .till .ld-scr{animation:ldScr 2.4s linear infinite}
+  .till .ld-led{animation:ldLed 2.4s linear infinite}
+}
+@media (prefers-reduced-motion: reduce){.till .ld-rc{transform:translateY(-30px)}.till .ld-note{transform:translateY(52px)}}
+@keyframes ldRc{0%{transform:translateY(-58px)}40%,100%{transform:translateY(66px)}}
+@keyframes ldNote{0%,46%{transform:translateY(0);opacity:1}80%,92%{transform:translateY(52px);opacity:1}100%{transform:translateY(52px);opacity:0}}
+@keyframes ldScr{0%,36%{opacity:.25}44%,88%{opacity:1}100%{opacity:.25}}
+@keyframes ldLed{0%,38%{fill:#3a3d57}42%,60%{fill:#e8793a}64%,100%{fill:#3a3d57}}
+.busy{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:9000;display:flex;align-items:center;gap:8px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:99px;padding:5px 16px 5px 8px;box-shadow:0 6px 20px rgba(0,0,0,.15);font-size:.85rem;font-weight:600}
+.busy .till{width:34px;height:auto}
+.till-mini{display:inline-block;vertical-align:middle;margin-right:4px}.till-mini .till{width:30px;height:auto;display:block}
+/* community watch analytics */
+.wf-bar{margin-bottom:18px}
+.wf{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.wf label,.wf-inline{display:flex;flex-direction:column;gap:4px;font-size:.78rem;font-weight:600;color:var(--muted)}
+.wf-inline{flex-direction:row;align-items:center;gap:8px;margin-bottom:10px}
+.wf select{min-width:150px}
+.dl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.dl span{font-size:.78rem;font-weight:600;color:var(--muted);margin-right:4px}
+.chart svg{width:100%;height:auto;display:block}
+.chart [data-tip]{cursor:default}
+.viz-tip{position:fixed;z-index:9500;pointer-events:none;background:var(--navy);color:var(--on-navy);font-size:.78rem;font-weight:500;padding:6px 10px;border-radius:8px;max-width:280px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.bh-analyst{margin-bottom:0}
+.bh-ahead{display:flex;gap:12px;align-items:center;margin-bottom:12px}.bh-ahead b{display:block}.bh-ahead small{color:var(--muted)}
+.bh-analyst .bh-form{border-top:0;padding-top:0}
+.wa-out:not(:empty){margin-top:14px;display:flex;flex-direction:column;gap:10px}
+.leaflet-tooltip.area-tip{background:rgba(26,27,46,.85);color:#fff;border:0;font-weight:700;font-size:12px;box-shadow:none;padding:3px 8px;border-radius:6px}
+.leaflet-tooltip.area-tip::before{display:none}
+.act-tools{display:flex;gap:6px;align-items:center;font-weight:400}.act-tools select{font-size:.8rem;padding:4px 10px;max-width:170px}
+#phBtn.on{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
+.dash-top{display:flex;gap:16px;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;margin-bottom:18px}
+.dash-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.dash-kpis{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+a.kpi.dk{text-decoration:none;color:inherit;display:block;transition:box-shadow .15s,transform .15s}
+a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
+.kpi .v small{font-size:1rem;color:var(--muted);font-weight:600}
+.kpi .d{display:block;font-size:.76rem;margin-top:8px;color:var(--muted);font-weight:600}
+.kpi .d.up{color:var(--green)}.kpi .d.down{color:var(--bad)}
+.dash-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px;align-items:start}
+.dash-grid .dash-wide{grid-column:1/-1}
+@media (max-width:980px){.dash-grid{grid-template-columns:minmax(0,1fr)}}
+.attn{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.attn li{display:flex;gap:10px;align-items:flex-start}.attn .pill{flex:none;margin-top:2px}
+.dash-act{max-height:none}
+.h-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.nav-img{width:20px;height:20px;border-radius:6px;background:#fff;object-fit:contain;flex:none;padding:1px}
+
+/* Bohlale AI */
+.bh-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}
+@media (max-width:980px){.bh-grid{grid-template-columns:minmax(0,1fr)}}
+.bh-chat{display:flex;flex-direction:column;min-height:560px}
+.bh-head{display:flex;align-items:center;gap:12px;padding-bottom:14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.bh-head>div:not(.bh-logo){flex:1;min-width:140px}.bh-head b{display:block;font-size:1.05rem}.bh-head small{color:var(--muted)}
+.bh-logo,.bh-av{width:44px;height:44px;border-radius:12px;background:#fff;object-fit:contain;padding:2px;flex:none;border:1px solid var(--line)}
+.bh-av{width:32px;height:32px;border-radius:9px}
+.bh-log{flex:1;overflow:auto;display:flex;flex-direction:column;gap:12px;padding:16px 2px;max-height:560px;min-height:340px}
+.bh-msg{display:flex;gap:10px;align-items:flex-start;min-width:0}
+.bh-msg.me{justify-content:flex-end}
+.bh-bubble{max-width:88%;min-width:0;padding:10px 14px;border-radius:14px;font-size:.9rem;line-height:1.5;overflow-wrap:anywhere}
+.bh-msg.ai .bh-bubble{background:var(--sunk);border-top-left-radius:4px}
+.bh-msg.me .bh-bubble{background:var(--navy);color:var(--on-navy);border-top-right-radius:4px}
+.bh-bubble p{margin:0 0 6px}.bh-bubble p:last-child{margin-bottom:0}
+.bh-bubble ul,.bh-bubble ol{margin:2px 0 8px;padding-left:20px}.bh-bubble li{margin:2px 0}
+.bh-src{font-size:.78rem;color:var(--muted);border-top:1px dashed var(--line);padding-top:6px;margin-top:8px!important}
+.bh-meta{font-size:.72rem;color:var(--muted);margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.bh-copy{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:1px 9px;font-size:.72rem}
+.bh-form{display:flex;gap:8px;border-top:1px solid var(--line);padding-top:12px}
+.bh-form input{flex:1}
+.bh-pick{display:flex;flex-direction:column;gap:4px;font-size:.8rem;color:var(--muted);font-weight:600;margin-bottom:12px}
+.bh-tasks{display:flex;flex-direction:column;gap:6px}
+.bh-task{text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:8px 12px;font-weight:600;font-size:.86rem}
+.bh-task:hover{border-color:var(--accent);color:var(--blue)}
+.bh-task small{display:block;font-weight:400;color:var(--muted);font-size:.72rem}
+.bh-rules{margin:0;padding-left:18px;font-size:.85rem;color:var(--muted)}.bh-rules li{margin:3px 0}
+.bh-dots{display:inline-flex;gap:3px;margin-right:6px;vertical-align:middle}.bh-dots i{width:6px;height:6px;border-radius:50%;background:var(--accent);display:block}
+@media (prefers-reduced-motion: no-preference){.bh-dots i{animation:bh 1s infinite ease-in-out}.bh-dots i:nth-child(2){animation-delay:.15s}.bh-dots i:nth-child(3){animation-delay:.3s}@keyframes bh{0%,80%,100%{opacity:.3}40%{opacity:1}}}
+.btn.bh-ask{color:var(--blue);border-color:var(--blue-soft)}
 
 /* login: clear photo, form on its own card */
 .login{position:fixed;inset:0;z-index:3000;overflow:auto;display:grid;grid-template-columns:minmax(0,1fr);place-items:center;padding:24px max(16px,env(safe-area-inset-left,0px));background:#1a1b2e url("img/login-bg.jpg") center/cover no-repeat}
@@ -398,6 +501,14 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 </style>
 </head>
 <body>
+<div id="loader" class="loader" role="status" aria-live="polite">
+  <div class="ld-box">
+    <svg class="till" viewBox="0 0 200 222" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g class="ld-rc"><path d="M72 0H128V58l-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4z" fill="#fffdf8" stroke="#c9c3b5" stroke-width="1.2"/><rect x="82" y="8" width="36" height="5" rx="1.5" fill="#e8793a"/><rect x="80" y="19" width="40" height="2.5" rx="1" fill="#b9b4a8"/><rect x="80" y="25" width="28" height="2.5" rx="1" fill="#b9b4a8"/><rect x="80" y="31" width="34" height="2.5" rx="1" fill="#b9b4a8"/><path d="M82 40v10M85 40v10M87 40v10M91 40v10M93 40v10M96 40v10M100 40v10M102 40v10M106 40v10M109 40v10M111 40v10M115 40v10M118 40v10" stroke="#23262d" stroke-width="1.3"/></g><g class="ld-note"><rect x="58" y="108" width="84" height="44" rx="3" fill="#2f8f5b" stroke="#1f6b42"/><rect x="61.5" y="111.5" width="77" height="37" rx="2" fill="none" stroke="#a8dcbc" stroke-width="1"/><path d="M66 140q10-8 20 0t20 0 20 0" fill="none" stroke="#5fbf8a" stroke-width="1.2"/><circle cx="100" cy="128" r="11" fill="#e8793a"/><text x="100" y="132.5" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">M</text><text x="66" y="120" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" fill="#e7f6ec">100</text><text x="134" y="146" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" fill="#e7f6ec" text-anchor="end">100</text></g><rect x="34" y="60" width="132" height="96" rx="14" fill="#1a1b2e" stroke="#3a3d57" stroke-width="1.5"/><rect x="58" y="54" width="84" height="10" rx="5" fill="#2c2e45"/><rect x="64" y="58" width="72" height="2.5" rx="1.2" fill="#0b0c15"/><rect x="48" y="74" width="104" height="30" rx="6" fill="#0e2a1d"/><text class="ld-scr" x="100" y="95" font-family="ui-monospace, Menlo, monospace" font-size="15" font-weight="700" fill="#5cc994" text-anchor="middle">M 100.00</text><circle class="ld-led" cx="148" cy="66.5" r="2.6" fill="#3a3d57"/><g fill="#3a3d57"><rect x="50" y="114" width="20" height="9" rx="3"/><rect x="76" y="114" width="20" height="9" rx="3"/><rect x="102" y="114" width="20" height="9" rx="3"/><rect x="50" y="128" width="20" height="9" rx="3"/><rect x="76" y="128" width="20" height="9" rx="3"/><rect x="102" y="128" width="20" height="9" rx="3"/></g><rect x="128" y="114" width="22" height="23" rx="4" fill="#e8793a"/><rect x="54" y="150" width="92" height="10" rx="5" fill="#2c2e45"/><rect x="60" y="153.5" width="80" height="2.5" rx="1.2" fill="#0b0c15"/></svg>
+    <div class="ld-txt"><b>RASITI</b><span>Turning receipts into rewards…</span></div>
+  </div>
+</div>
+<div id="busy" class="busy" role="status" hidden></div>
+<div id="vizTip" class="viz-tip" hidden></div>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
@@ -425,7 +536,7 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
   <div class="side-foot" id="sideFoot"></div>
 </aside>
 <div style="min-width:0">
-<header class="topbar"><h1 id="pageTitle">Start here</h1><span class="chip" id="modeChip">Mock data</span><button class="btn small" id="refreshBtn" hidden>Refresh</button><span class="avatar" id="avatar" aria-hidden="true">RSL</span></header>
+<header class="topbar"><h1 id="pageTitle">Start here</h1><span class="chip" id="modeChip">Mock data</span><button class="btn small" id="phBtn" type="button" hidden aria-pressed="false">Show contacts</button><button class="btn small hist" id="undoBtn" type="button" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>Undo</button><button class="btn small hist" id="redoBtn" type="button" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>Redo</button><button class="btn small" id="refreshBtn" hidden>Refresh</button><span class="avatar" id="avatar" aria-hidden="true">RSL</span></header>
 <main>
 
 <div class="banner" id="dbBanner" hidden><p id="dbBannerText"></p><button class="btn primary small" id="seedBtn" hidden>Load demo dataset</button></div>
@@ -493,8 +604,35 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
   </div>
 </section>
 
+<section data-view="dash" hidden>
+  <div class="dash-top"><p class="lede" style="margin:0">Everything on one page: receipts, sellers, what customers report, the Fraud Shield, the draw and what needs attention. Click any figure to open its page.</p>
+    <div class="dash-tools"><div class="filters" id="dashFilters" style="margin:0"></div><button class="btn small" type="button" id="dashBrief">Ask Bohlale for today's briefing</button><button class="btn small primary" type="button" id="dashPdf">Download PDF</button></div></div>
+  <div class="kpis dash-kpis" id="dashKpis"></div>
+  <div class="dash-grid">
+    <div class="panel"><h3>Receipts per day</h3><div class="chart" id="dashChart"></div><p class="note" id="dashChartNote"></p></div>
+    <div class="panel"><h3>Needs attention</h3><ul class="attn" id="dashAttn"></ul><p class="note" style="margin-bottom:0"><a href="#officer">Open the officer console</a></p></div>
+    <div class="panel dash-map"><h3>Everything on one map</h3><div class="map small" id="dashMap"></div>
+      <div class="legend"><span><i style="background:#1d9e57"></i>Registered seller</span><span><i style="background:#3b82f6"></i>On Rasiti, not registered</span><span><i style="background:#d93025"></i>New lead</span><span><i style="background:#f0a020"></i>Low receipts</span></div></div>
+    <div class="stack"><div class="panel"><h3>Widening the tax net</h3><div class="funnel" id="dashFunnel"></div></div>
+      <div class="panel"><h3>Monthly draw</h3><div id="dashDraw"></div></div></div>
+    <div class="panel"><h3>Areas by receipt rate</h3><div class="tbl-wrap"><table id="dashAreas"></table></div></div>
+    <div class="panel"><h3>Top sellers</h3><div class="tbl-wrap"><table id="dashTop"></table></div></div>
+    <div class="panel dash-wide"><h3 class="h-row">Latest activity <a class="btn small" href="#logs" id="dashActLink" hidden>Full system log</a></h3><ul class="feed dash-act" id="dashAct"></ul></div>
+  </div>
+</section>
+
 <section data-view="shield" hidden>
   <p class="lede">Every receipt is scored against plain-language rules. A score of 30 or more holds its draw entries for an officer; 60 or more blocks them. The sale always stays in the seller's sales book. The Shield only decides who can win.</p>
+  <div class="panel wf-bar">
+    <div class="wf">
+      <label>Period<select id="sfDays"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="60">Last 60 days</option><option value="all">All dates</option></select></label>
+      <label>Seller<select id="sfSeller"></select></label>
+      <label>Rule<select id="sfRule"></select></label>
+      <button class="btn small" id="sfReset" type="button">Reset filters</button>
+    </div>
+    <div class="dl"><span>Download</span><button class="btn small" type="button" data-dl="shield-csv">Receipts CSV</button><button class="btn small" type="button" data-dl="fakes-csv">Fake codes CSV</button><button class="btn small primary" type="button" data-dl="shield-pdf">PDF report</button></div>
+    <p class="note" id="sfNote" style="margin:10px 0 0"></p>
+  </div>
   <div class="kpis" id="shieldKpis"></div>
   <div class="two">
     <div class="stack">
@@ -513,22 +651,59 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 
 <section data-view="watch" hidden>
   <p class="lede">Every customer who rates a shop adds to a live picture of where trade happens and which retailers give receipts, including formal shops and sellers not on Rasiti. RSL looks at areas and patterns. No single customer's word triggers action, and shops that give receipts earn a public badge.</p>
+  <div class="panel wf-bar">
+    <div class="wf">
+      <label>Period<select id="wfDays"><option value="7">Last 7 days</option><option value="14">Last 14 days</option><option value="30" selected>Last 30 days</option></select></label>
+      <label>Area<select id="wfArea"></select></label>
+      <label>Shops<select id="wfWho"><option value="all">All shops</option><option value="on">Rasiti sellers</option><option value="off">Not on Rasiti</option></select></label>
+      <button class="btn small" id="wfReset" type="button">Reset filters</button>
+    </div>
+    <div class="dl"><span>Download</span><button class="btn small" type="button" data-csv="ratings">Ratings CSV</button><button class="btn small" type="button" data-csv="shops">Shops CSV</button><button class="btn small" type="button" data-csv="areas">Areas CSV</button><button class="btn small primary" type="button" id="wfPdf">PDF report</button></div>
+    <p class="note" id="wfNote" style="margin:10px 0 0"></p>
+  </div>
   <div class="kpis" id="watchKpis"></div>
-  <div class="panel">
-    <h3>Map of shop ratings, last 30 days</h3>
+  <div class="panel bh-analyst">
+    <div class="bh-ahead"><img class="bh-logo" src="img/bohlale-96.png" alt=""><div><b>Ask Bohlale about this view</b><small>Bohlale reads the filtered data on this page and answers like a data analyst. Its latest answer goes into the PDF report.</small></div></div>
+    <div class="filters" id="waTasks"></div>
+    <form class="bh-form" id="waForm"><input id="waIn" type="text" autocomplete="off" placeholder="e.g. Which area got worse in the last two weeks?" aria-label="Question about this data"><button class="btn primary" type="submit">Ask</button></form>
+    <div id="waOut" class="wa-out" aria-live="polite"></div>
+  </div>
+  <div class="panel mt">
+    <h3>Map of shop ratings</h3>
+    <div class="filters" id="shopFilters"></div>
     <div class="map" id="watchMap"></div>
-    <div class="legend"><span><i style="background:#1d9e57"></i>Gives receipts</span><span><i style="background:#3b82f6"></i>Mixed</span><span><i style="background:#f0a020"></i>Low receipts</span><span><i style="background:#d93025"></i>New lead, not on Rasiti</span><span><i style="background:#9aa0ad"></i>Too few to judge</span><span>Circles: areas, sized by number of ratings</span></div>
-    <p class="note">Positions in the mock data are approximate places in Maseru. Live ratings shared from a phone use the customer's own location.</p>
+    <div class="legend"><span><i style="background:#1d9e57"></i>Gives receipts</span><span><i style="background:#3b82f6"></i>Mixed</span><span><i style="background:#f0a020"></i>Low receipts</span><span><i style="background:#d93025"></i>New lead, not on Rasiti</span><span><i style="background:#9aa0ad"></i>Too few to judge</span></div>
+    <p class="note">Positions in the mock data are approximate places in Maseru. Live ratings shared from a phone use the customer's own location. The signal buttons also filter the shop table and the PDF.</p>
   </div>
   <div class="two mt">
-    <div class="panel"><h3>By area</h3><div class="tbl-wrap"><table id="areaTbl"></table></div></div>
-    <div class="panel"><h3>By shop</h3><div class="filters" id="shopFilters"></div><div class="tbl-wrap"><table id="shopTbl"></table></div>
+    <div class="panel"><h3>Hotspots: purchases without a receipt</h3><label class="wf-inline">Show <select id="wfType"></select></label><div class="map small" id="hotMap"></div><p class="note">Each dot is one customer rating. Darker clusters mean more problems reported in one place.</p></div>
+    <div class="panel"><h3>Receipt rate by area</h3><div class="map small" id="areaMap"></div><div class="legend"><span><i style="background:#1d9e57"></i>80% or more</span><span><i style="background:#3b82f6"></i>50 to 79%</span><span><i style="background:#f0a020"></i>Under 50%</span><span>Bigger circle: more ratings</span></div></div>
+  </div>
+  <div class="panel mt"><h3>Ratings per day</h3><div class="chart" id="chDaily"></div></div>
+  <div class="two mt">
+    <div class="panel"><h3>What customers reported</h3><div class="chart" id="chTypes"></div></div>
+    <div class="panel"><h3>Purchases without a receipt, by time of day</h3><div class="chart" id="chHours"></div><p class="note">Share of ratings in each time slot where the customer got no receipt or reported a problem.</p></div>
+  </div>
+  <div class="two mt">
+    <div class="panel"><h3>By area</h3><div class="tbl-wrap"><table id="areaTbl"></table></div><p class="note">Change compares the second half of the period with the first half, in percentage points.</p></div>
+    <div class="panel"><h3>By shop</h3><div class="tbl-wrap"><table id="shopTbl"></table></div>
       <p class="note">Receipt rates show once 3 or more different people have rated a shop. Shops at 80% or more get the public "Gives receipts" badge.</p></div>
   </div>
+  <div class="panel mt"><h3>Latest ratings</h3><p class="note" id="rateCount"></p><div class="tbl-wrap"><table id="rateTbl"></table></div></div>
 </section>
 
 <section data-view="officer" hidden>
   <p class="lede">Rasiti turns customer receipts and ratings into a short, ranked worklist. Each item says why it is there. A nil return is never treated as non-compliance on its own, and no item triggers a penalty without an officer's decision.</p>
+  <div class="panel wf-bar">
+    <div class="wf">
+      <label>Priority<select id="ofPri"><option value="all">All priorities</option><option value="3">High</option><option value="2">Medium</option><option value="1">Low</option><option value="0">Watching</option><option value="-1">No action</option></select></label>
+      <label>Area<select id="ofArea"></select></label>
+      <label>Seller type<select id="ofStatus"><option value="all">All</option><option value="registered">Registered for tax</option><option value="enrolled">On Rasiti, not registered</option><option value="off">Not on Rasiti</option><option value="system">System alerts</option></select></label>
+      <button class="btn small" id="ofReset" type="button">Reset filters</button>
+    </div>
+    <div class="dl"><span>Download</span><button class="btn small" type="button" data-dl="work-csv">Worklist CSV</button><button class="btn small" type="button" data-dl="review-csv">Review queue CSV</button><button class="btn small" type="button" data-dl="complaints-csv">Complaints CSV</button><button class="btn small" type="button" data-dl="tax-csv">Filing &amp; payments CSV</button><button class="btn small primary" type="button" data-dl="officer-pdf">PDF report</button></div>
+    <p class="note" id="ofNote" style="margin:10px 0 0"></p>
+  </div>
   <div class="kpis" id="offKpis"></div>
   <div class="two">
     <div class="panel"><h3>Leads on the map</h3><div class="map small" id="leadMap"></div>
@@ -539,19 +714,58 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
     </div>
   </div>
   <div class="panel mt"><h3>Worklist</h3><div class="tbl-wrap"><table id="workTbl"></table></div></div>
+  <div class="panel mt"><h3 class="h-row">Filing and payments <button class="btn small primary" type="button" id="remBtn">Send reminders</button></h3>
+    <p class="note" style="margin-top:0">Registered sellers file from their sales book and pay by mobile money on USSD or WhatsApp, in full or in small parts before the due date. Tax uses a demo rate of 3% of declared sales; RSL sets the real SBT rate and schedule.</p>
+    <div class="tbl-wrap"><table id="taxTbl"></table></div></div>
   <div class="panel mt"><h3>Review queue: held draw entries</h3><div class="tbl-wrap"><table id="reviewTbl"></table></div></div>
 </section>
 
 <section data-view="draw" hidden>
   <p class="lede">Customers earn 1 entry per M10 spent, up to 5 per receipt, at any Rasiti seller. Entries double at sellers who have registered for tax. Nobody is shut out: registering simply earns more. The draw runs once a month. Prizes come from sponsors first, then from a capped share of the extra tax the draw brings in.</p>
+  <div class="panel wf-bar"><div class="dl" style="margin:0;padding:0;border:0"><span>Download</span><button class="btn small" type="button" data-dl="entries-csv">Entries CSV</button><button class="btn small" type="button" data-dl="winners-csv">Winners CSV</button><button class="btn small primary" type="button" data-dl="draw-pdf">PDF draw report</button></div><p class="note" style="margin:10px 0 0">The entries list shows every customer in the draw with masked numbers, so the result can be checked.</p></div>
   <div class="kpis" id="drawKpis"></div>
   <div class="panel">
     <h3 id="drawTitle">This month's draw</h3>
     <p><button class="btn primary" id="runDraw">Draw 3 winners</button></p>
     <div class="winners" id="winners"></div>
+    <div id="airtimePanel" class="air-panel" hidden><h4 id="airtimeTitle">Airtime winners</h4><div class="airs" id="airtime"></div></div>
     <p class="note" id="drawAudit"></p>
   </div>
   <div class="panel mt" id="pastDrawsPanel" hidden><h3>Recent draws</h3><div class="tbl-wrap"><table id="pastDraws"></table></div></div>
+</section>
+
+<section data-view="bohlale" hidden>
+  <p class="lede">Bohlale ("wisdom" in Sesotho) helps officers understand cases, draft messages and write reports from Rasiti's data. It only suggests; officers decide. Phone numbers stay masked and every question is written to the activity log.</p>
+  <div class="bh-grid">
+    <div class="panel bh-chat">
+      <div class="bh-head"><img class="bh-logo" src="img/bohlale-96.png" alt=""><div><b>Bohlale AI</b><small>RSL officer assistant</small></div><span class="chip" id="bhModel">Checking…</span></div>
+      <div class="bh-log" id="bhLog" aria-live="polite"></div>
+      <form class="bh-form" id="bhForm"><input id="bhIn" type="text" autocomplete="off" placeholder="Ask about a seller, an area, the review queue…" aria-label="Question for Bohlale"><button class="btn primary" id="bhSend" type="submit">Ask</button></form>
+      <p class="note" style="margin:8px 0 0">Bohlale can make mistakes. Check the figures before you act.</p>
+    </div>
+    <div class="stack">
+      <div class="panel"><h3>Tasks</h3>
+        <label class="bh-pick" for="bhSeller">Seller<select id="bhSeller"></select></label>
+        <div class="bh-tasks" id="bhTasks"></div></div>
+      <div class="panel"><h3>Rules Bohlale follows</h3>
+        <ul class="bh-rules"><li>Uses only Rasiti's data and says which records it used.</li><li>Never approves, rejects or penalises. Officers decide.</li><li>Treats a nil return as a reason to ask, not as wrongdoing.</li><li>Never sees full phone numbers.</li><li>Every question is logged with the officer's name.</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<section data-view="logs" hidden>
+  <p class="lede">Every action in Rasiti is recorded here: who did it, what they did and when. RSL staff appear by email. Customers and sellers using the phones appear with a masked number or their seller code. Entries cannot be changed from the platform.</p>
+  <div class="panel wf-bar">
+    <div class="wf">
+      <label>Who<select id="lgWho"><option value="">Everyone</option></select></label>
+      <label>What<select id="lgAct"><option value="">All actions</option></select></label>
+      <label>When<select id="lgDays"><option value="1">Last 24 hours</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="" selected>All time</option></select></label>
+      <label>Search<input id="lgQ" type="text" placeholder="e.g. 3307, draw, lineo@" autocomplete="off"></label>
+    </div>
+    <div class="dl"><span>Download</span><button class="btn small" type="button" id="lgCsv">Log CSV</button><button class="btn small primary" type="button" id="lgPdf">Log PDF</button></div>
+  </div>
+  <div class="panel"><p class="note" id="lgCount" style="margin-top:0"></p><div class="tbl-wrap"><table id="lgTbl"></table></div>
+    <p style="margin:14px 0 0"><button class="btn" type="button" id="lgMore" hidden>Show more</button></p></div>
 </section>
 
 <section data-view="users" hidden>
@@ -569,7 +783,7 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
   </div>
   <div class="panel mt"><h3>Users</h3><div class="tbl-wrap"><table id="usersTbl"></table></div></div>
   <div class="two mt">
-    <div class="panel"><h3>Activity log</h3><div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="activityTbl"></table></div></div>
+    <div class="panel"><h3 class="h-row">Activity log <span class="act-tools"><select id="actWho" aria-label="Filter by person"><option value="all">Everyone</option></select><button class="btn small" type="button" data-dl="activity-csv">CSV</button><a class="btn small" href="#logs">Full log</a></span></h3><div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="activityTbl"></table></div></div>
     <div class="stack">
       <div class="panel"><h3>My password</h3>
         <form id="pwForm" class="form-grid">
@@ -579,7 +793,11 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
         </form><p class="err" id="pwErr"></p></div>
       <div class="panel" id="dataPanel"><h3>Demo data</h3>
         <p class="note" style="margin-top:0">Deletes all sellers, receipts, ratings, reviews and draws, so you can load a fresh dataset. Users and the activity log are kept.</p>
-        <button class="btn danger" id="resetBtn">Reset demo data</button></div>
+        <button class="btn danger" id="resetBtn">Reset demo data</button>
+        <div class="clear-box"><h4>Clear entire data</h4>
+          <p class="note">Deletes everything: sellers, receipts, ratings, reviews, draws, the activity log and every user except you. This cannot be undone.</p>
+          <form id="clearForm" class="clear-form"><input id="clearIn" type="text" autocomplete="off" placeholder="Type CLEAR" aria-label="Type CLEAR to confirm"><button class="btn danger" type="submit">Clear entire data</button></form>
+          <p class="err" id="clearErr"></p></div></div>
     </div>
   </div>
 </section>
@@ -603,6 +821,8 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 
 <div class="toast" id="toast" hidden></div>
 <script src="vendor/leaflet.js"></script>
+<script src="i18n.js"></script>
+<script src="faq.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -35,6 +35,14 @@ export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS draws(
      id SERIAL PRIMARY KEY, seed BIGINT, live_entries INT, winners JSONB, run_by INT,
      run_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+  `CREATE TABLE IF NOT EXISTS returns(
+     id TEXT PRIMARY KEY, seller_no TEXT NOT NULL, period TEXT NOT NULL, sales NUMERIC, declared NUMERIC NOT NULL,
+     nil_reason TEXT, tax_due NUMERIC NOT NULL DEFAULT 0, channel TEXT, filed_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE(seller_no, period))`,
+  `CREATE TABLE IF NOT EXISTS payments(
+     id TEXT PRIMARY KEY, seller_no TEXT NOT NULL, period TEXT NOT NULL, amount NUMERIC NOT NULL, ref TEXT,
+     channel TEXT, paid_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS reminders BOOLEAN NOT NULL DEFAULT TRUE`,
+  `CREATE TABLE IF NOT EXISTS phone_prefs(phone TEXT PRIMARY KEY, lang TEXT NOT NULL DEFAULT 'en', updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
   `CREATE TABLE IF NOT EXISTS audit_log(
      id SERIAL PRIMARY KEY, user_id INT, user_email TEXT, action TEXT NOT NULL,
      detail JSONB, at TIMESTAMPTZ NOT NULL DEFAULT now())`

@@ -70,6 +70,58 @@ Everything done through USSD is saved to the database and shows on the RSL scree
 
 Note: the sandbox simulator runs on the provider's website. Dialling from a real handset needs a short code from Vodacom Lesotho and Econet Telecom Lesotho, approved by the Lesotho Communications Authority, through a USSD gateway.
 
+## Bohlale AI (officer assistant)
+
+Bohlale is on the RSL side of the menu. It reads the worklist, receipts, ratings and Fraud Shield results, then explains cases, drafts SMS and call scripts, and writes reports. It only suggests; officers decide. Full phone numbers are never sent to it, and every question is written to the activity log.
+
+**Without a key** it still works: the task buttons give template answers built from the data. Free-text questions need a key.
+
+**Free demo key (Groq):**
+
+1. Sign up at console.groq.com and create an API key.
+2. In Render: your service → **Environment** → add `AI_API_KEY` = the key. Save; Render restarts the app.
+3. Open Bohlale AI. The chip at the top should say **AI on · (model name) via api.groq.com**. If something is wrong, Bohlale shows the exact problem when an owner or admin opens the page.
+
+Optional settings (any OpenAI-compatible service works):
+
+| Variable | Default | Example |
+|---|---|---|
+| `AI_BASE_URL` | `https://api.groq.com/openai/v1` | `https://openrouter.ai/api/v1` |
+| `AI_MODEL` | picked automatically (gpt-oss-120b, then Llama 3.3 70B, then others the provider offers) | `llama-3.1-8b-instant` |
+| `AI_API_KEY` | (empty = template mode) | |
+
+**Production:** run an open model (for example gpt-oss, Qwen or Gemma) on RSL's own server with vLLM or Ollama, and point `AI_BASE_URL` to it (for example `http://10.0.0.5:8000/v1`). Taxpayer data then never leaves RSL. Free cloud services must only receive mock data.
+
+## Downloads and analytics
+
+- **Community watch** has filters (period, area, shop type, signal), three maps (shop ratings, hotspots without receipts, receipt rate by area), charts, and an "Ask Bohlale about this view" box that works as the data analyst.
+- **Download:** ratings, shops and areas as CSV (opens in Excel), and a full **PDF report** with Bohlale's findings, charts, a schematic map and tables. Bohlale answers and the officer worklist can also be downloaded.
+- Customer phone numbers are masked in every download.
+
+## Filing and paying (sustained compliance)
+
+- Registered sellers choose **4. My tax** on USSD or WhatsApp to **file** last month's return (prefilled from the sales book, a different amount, or nil with a reason), **pay** by mobile money in full or in small parts, see their **tax record** and on-time streak, and turn **reminders** on or off.
+- Officers see a **Filing and payments** panel (on-time filing and payment, overdue tax, streaks), worklist items that suggest a **payment plan** rather than a penalty, and a **Send reminders** button. All of it is in the officer CSV/PDF downloads, the dashboard and Bohlale.
+- Demo schedule: a monthly return for last month, due on the 20th. Tax uses a **demo rate of 3% of declared sales** (`SBT_DEMO_RATE` on the server); RSL sets the real SBT rate and schedule.
+- After deploying, use **Reset demo data** then **Load demo dataset** so the 6-month filing history is created.
+
+## Languages: English and Sesotho
+
+- **USSD:** on the main menu choose **4. Sesotho** (or **5. English**). The choice is saved for that phone number, so the next time the person dials, Rasiti answers in their language.
+- **WhatsApp and the on-screen phones:** choose **9. Sesotho / 9. English** on the menu, or simply type "Sesotho" or "English".
+- Every menu, message and help answer has a Sesotho version: `public/i18n.js` (screens) and `public/faq.js` (questions and answers). The same files serve the real USSD server, the on-screen phones and WhatsApp, so a correction in one place changes all three. Sesotho screens stay within the 182-character USSD limit.
+- **The Sesotho wording is a careful draft. Ask a fluent Sesotho speaker at RSL to check it before the pilot.**
+
+## Dashboard and help questions
+
+- **Dashboard** (first item on the RSL side): a bird's-eye view of receipts, sales, sellers, customer ratings, the Fraud Shield, the draw, what needs attention and the latest activity, for 7, 14 or 30 days. Every figure links to its page, and the PDF version explains each figure.
+- **Questions & answers** on USSD and WhatsApp: tax help for sellers (registering, Simplified Business Tax, filing, paying, records, nil returns, penalties, VAT, privacy) and help for customers (receipts, entries, the draw, prizes and scams, checking receipts, reporting shops, privacy). USSD: main menu option 3, customer option 6 or seller option 5. On WhatsApp customers and sellers can also type a question in their own words. All answers are in `public/faq.js`; edit that one file to change them everywhere. Tax answers are general guidance and send people to RSL for anything specific.
+
+## Privacy controls and the system log
+
+- Phone numbers are masked everywhere by default. Owners and admins can click **Show contacts** at the top of any RSL page to see full numbers; every switch is written to the system log. Bohlale AI and saved draw winners always stay masked.
+- **System log** (menu, owners and admins): every action with who, what and when. Staff appear by email; customers and sellers using the phones appear with a masked number or seller code. Filter by person, action, date or search, and download as CSV or PDF.
+
 ## 4. First sign-in and test data
 
 1. Open `https://your-subdomain/#officer` and sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`. This creates the owner account.
@@ -97,8 +149,11 @@ npm run dev               # http://localhost:3000
 
 ```
 public/index.html   Page, styles and layout
-public/app.js       Phones, Fraud Shield, maps, officer console, draw, users
-public/vendor/      Leaflet map library (served locally)
+public/faq.js       Questions and answers for USSD and WhatsApp, English and Sesotho
+public/i18n.js      Sesotho for every phone screen (USSD, WhatsApp, on-screen phones)
+public/app.js       Phones, Fraud Shield, maps, officer console, draw, Bohlale AI, users
+public/vendor/      Leaflet maps and jsPDF (served locally)
+public/img/         Login photo and Bohlale AI logo
 api/state.js        GET all demo data
 api/event.js        POST actions from the public phones (validated)
 api/auth.js         Sign in, sign out, change password
@@ -106,6 +161,9 @@ api/users.js        Add and manage users, activity log
 api/admin.js        Reviews, worklist actions, draws, load/reset demo data
 api/health.js       Health check for uptime monitors (no database)
 api/ussd.js         Real USSD menus for a gateway (Africa's Talking format)
+api/bohlale.js      Bohlale AI: sends masked data to an OpenAI-compatible model
+api/logs.js         Full system log (who, what, when) for owners and admins
+api/tile.js         Map tiles for PDF reports (satellite, street map as backup; Lesotho only)
 api/_lib/           Database, sessions, schema, receipt code checks
 schema.sql          Same tables as the app creates automatically
 dev-server.mjs      Server used by Render (npm start) and for local testing

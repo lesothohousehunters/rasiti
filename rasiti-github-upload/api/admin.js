@@ -3,7 +3,9 @@
 //   {op:'action', item_id, kind, target}                     officer+
 //   {op:'draw', seed, live, winners[]}                       officer+
 //   {op:'seed', data:{sellers,receipts,reports,fakes}}       owner/admin, empty database only
+//   {op:'unreview', codes[]} · {op:'unaction', item_id} · {op:'undraw', id}   officer+: undo
 //   {op:'reset'}                                              owner: deletes all demo data, keeps users and audit log
+//   {op:'clear', confirm:'CLEAR'}                             owner: deletes ALL data, the activity log and every other user
 import { db, audit } from './_lib/db.js';
 import { route, body, requireRole, bad } from './_lib/http.js';
 
@@ -47,9 +49,47 @@ export default route(async (req, res) => {
 
   if (b.op === 'draw') {
     const me = await requireRole(req, res, WORKERS); if (!me) return;
-    await q('INSERT INTO draws(seed, live_entries, winners, run_by) VALUES ($1,$2,$3::jsonb,$4)',
-      [Number(b.seed) || 0, Number(b.live) || 0, JSON.stringify(b.winners || []).slice(0, 5000), me.uid]);
-    await audit(q, me, 'draw_run', { seed: b.seed, live: b.live });
+    const winners = (Array.isArray(b.winners) ? b.winners : []).slice(0, 40).map(w => Object.fromEntries(Object.entries(w || {}).slice(0, 12).map(([k, v]) => [String(k).slice(0, 20), typeof v === 'number' ? v : String(v ?? '').slice(0, 80)])));
+    const [row] = await q('INSERT INTO draws(seed, live_entries, winners, run_by) VALUES ($1,$2,$3::jsonb,$4) RETURNING id',
+      [Number(b.seed) || 0, Number(b.live) || 0, JSON.stringify(winners), me.uid]);
+    await audit(q, me, 'draw_run', { id: row.id, seed: b.seed, live: b.live, winners: winners.length });
+    return res.status(200).json({ ok: true, id: row.id });
+  }
+
+  if (b.op === 'unreview') {
+    const me = await requireRole(req, res, WORKERS); if (!me) return;
+    const codes = (Array.isArray(b.codes) ? b.codes : []).slice(0, 500).map(String);
+    if (!codes.length) throw bad('No receipts given.');
+    await q('DELETE FROM reviews WHERE code = ANY($1::text[])', [codes]);
+    await audit(q, me, 'undo_review', { count: codes.length, first: codes[0] });
+    return res.status(200).json({ ok: true });
+  }
+
+  if (b.op === 'unaction') {
+    const me = await requireRole(req, res, WORKERS); if (!me) return;
+    await q('DELETE FROM actions WHERE item_id=$1', [String(b.item_id || '').slice(0, 80)]);
+    await audit(q, me, 'undo_worklist', { item: b.item_id });
+    return res.status(200).json({ ok: true });
+  }
+
+  if (b.op === 'undraw') {
+    const me = await requireRole(req, res, WORKERS); if (!me) return;
+    const id = Number(b.id); if (!Number.isInteger(id)) throw bad('Unknown draw.');
+    await q('DELETE FROM draws WHERE id=$1', [id]);
+    await audit(q, me, 'undo_draw', { id });
+    return res.status(200).json({ ok: true });
+  }
+
+  if (b.op === 'reminders') {
+    const me = await requireRole(req, res, WORKERS); if (!me) return;
+    const n = Math.max(0, Math.min(5000, Number(b.count) || 0));
+    await audit(q, me, 'reminders_sent', { count: n, period: String(b.period || '').slice(0, 7), due: String(b.due || '').slice(0, 20) });
+    return res.status(200).json({ ok: true });
+  }
+
+  if (b.op === 'contacts') {
+    const me = await requireRole(req, res, ['owner', 'admin']); if (!me) return;
+    await audit(q, me, b.show ? 'contacts_shown' : 'contacts_hidden', { page: String(b.page || '').slice(0, 30) });
     return res.status(200).json({ ok: true });
   }
 
@@ -62,7 +102,9 @@ export default route(async (req, res) => {
       sellers: await bulk(q, 'sellers', [['no', 'text'], ['name', 'text'], ['trade', 'text'], ['market', 'text'], ['status', 'text'], ['tin', 'text'], ['joined_at', 'timestamptz'], ['via_rasiti', 'boolean'], ['phone', 'text'], ['declared_last', 'numeric'], ['lat', 'double precision'], ['lng', 'double precision']], d.sellers),
       receipts: await bulk(q, 'receipts', [['code', 'text'], ['seller_no', 'text'], ['amount', 'numeric'], ['channel', 'text'], ['phone', 'text'], ['issued_at', 'timestamptz'], ['note', 'text']], d.receipts),
       reports: await bulk(q, 'reports', [['id', 'text'], ['phone', 'text'], ['type', 'text'], ['seller_no', 'text'], ['place_key', 'text'], ['place_label', 'text'], ['area', 'text'], ['kind', 'text'], ['lat', 'double precision'], ['lng', 'double precision'], ['created_at', 'timestamptz']], d.reports),
-      fakes: await bulk(q, 'fakes', [['id', 'text'], ['code', 'text'], ['kind', 'text'], ['phone', 'text'], ['detail', 'text'], ['created_at', 'timestamptz']], d.fakes)
+      fakes: await bulk(q, 'fakes', [['id', 'text'], ['code', 'text'], ['kind', 'text'], ['phone', 'text'], ['detail', 'text'], ['created_at', 'timestamptz']], d.fakes),
+      returns: await bulk(q, 'returns', [['id', 'text'], ['seller_no', 'text'], ['period', 'text'], ['sales', 'numeric'], ['declared', 'numeric'], ['nil_reason', 'text'], ['tax_due', 'numeric'], ['channel', 'text'], ['filed_at', 'timestamptz']], d.returns),
+      payments: await bulk(q, 'payments', [['id', 'text'], ['seller_no', 'text'], ['period', 'text'], ['amount', 'numeric'], ['ref', 'text'], ['channel', 'text'], ['paid_at', 'timestamptz']], d.payments)
     };
     await audit(q, me, 'demo_data_loaded', counts);
     return res.status(200).json({ ok: true, counts });
@@ -70,9 +112,18 @@ export default route(async (req, res) => {
 
   if (b.op === 'reset') {
     const me = await requireRole(req, res, ['owner']); if (!me) return;
-    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'sellers']) await q(`DELETE FROM ${t}`);
+    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'returns', 'payments', 'sellers']) await q(`DELETE FROM ${t}`);
     await audit(q, me, 'demo_data_reset');
     return res.status(200).json({ ok: true });
+  }
+
+  if (b.op === 'clear') {
+    const me = await requireRole(req, res, ['owner']); if (!me) return;
+    if (b.confirm !== 'CLEAR') throw bad('Type CLEAR to confirm.');
+    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'returns', 'payments', 'sellers', 'audit_log']) await q(`DELETE FROM ${t}`);
+    const gone = await q('DELETE FROM admin_users WHERE id <> $1 RETURNING id', [me.uid]);
+    await audit(q, me, 'all_data_cleared', { users_removed: gone.length });
+    return res.status(200).json({ ok: true, users_removed: gone.length });
   }
 
   throw bad('Unknown operation.');

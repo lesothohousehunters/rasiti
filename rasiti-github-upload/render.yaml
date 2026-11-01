@@ -18,3 +18,5 @@ services:
         sync: false
       - key: USSD_KEY
         sync: false
+      - key: AI_API_KEY
+        sync: false
