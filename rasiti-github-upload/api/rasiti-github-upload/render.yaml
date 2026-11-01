@@ -1,0 +1,22 @@
+# Render blueprint (optional). Render can also be set up by hand: see README.
+services:
+  - type: web
+    name: rasiti
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: USSD_KEY
+        sync: false
+      - key: AI_API_KEY
+        sync: false

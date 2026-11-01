@@ -1,0 +1,24 @@
+{
+  "name": "rasiti",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rasiti: receipts that reward. RSL Taxathon 2026, Challenge 1 prototype.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node dev-server.mjs",
+    "dev": "node dev-server.mjs",
+    "build:preview": "node build-preview.mjs"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "0.10.4",
+    "bcryptjs": "2.4.3",
+    "jose": "5.9.6",
+    "pg": "8.13.1"
+  },
+  "devDependencies": {
+    "leaflet": "1.9.4"
+  }
+}
