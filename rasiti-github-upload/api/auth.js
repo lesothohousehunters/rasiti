@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import { db, audit } from './_lib/db.js';
 import { route, body, currentUser, startSession, endSession, requireRole, bad } from './_lib/http.js';
 
+const OWNER_NAME = () => String(process.env.ADMIN_NAME || 'Katleho Tlale').trim().slice(0, 80) || 'Katleho Tlale';
 export default route(async (req, res) => {
   if (req.method === 'GET') {
     const user = await currentUser(req);
@@ -30,7 +31,7 @@ export default route(async (req, res) => {
       if (!envEmail || !envPass) throw bad('No users yet. Set ADMIN_EMAIL and ADMIN_PASSWORD in the environment, then sign in with them.');
       if (email === envEmail && password === envPass) {
         const hash = await bcrypt.hash(password, 10);
-        await q("INSERT INTO admin_users(email,name,role,password_hash) VALUES ($1,$2,'owner',$3) ON CONFLICT (email) DO NOTHING", [email, 'Account owner', hash]);
+        await q("INSERT INTO admin_users(email,name,role,password_hash) VALUES ($1,$2,'owner',$3) ON CONFLICT (email) DO NOTHING", [email, OWNER_NAME(), hash]);
       }
     }
 
@@ -40,6 +41,8 @@ export default route(async (req, res) => {
       await audit(q, null, 'login_failed', { email });
       return res.status(401).json({ error: 'Email or password is incorrect, or the account is switched off.' });
     }
+    // The owner created from the environment gets a real name (ADMIN_NAME, default Katleho Tlale) instead of "Account owner".
+    if (u.role === 'owner' && u.name === 'Account owner') { u.name = OWNER_NAME(); await q('UPDATE admin_users SET name=$1 WHERE id=$2', [u.name, u.id]); }
     await q('UPDATE admin_users SET last_login=now() WHERE id=$1', [u.id]);
     await startSession(res, u);
     const user = { uid: u.id, email: u.email, name: u.name, role: u.role };

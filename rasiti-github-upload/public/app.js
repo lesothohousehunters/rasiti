@@ -165,6 +165,7 @@ function loadState(st) {
   st.actions.forEach(a => { if (a.kind === 'invite') S.invited.add(a.target); else if (a.kind === 'visit') S.visits.add(a.target); else S.done.add(a.item_id); });
   S.draws = st.draws || [];
   S.returns = (st.returns || []).map(r => ({id:r.id, no:r.seller_no, period:r.period, sales:Number(r.sales) || 0, declared:Number(r.declared), nil:r.nil_reason, tax:Number(r.tax_due), ch:r.channel, t:Date.parse(r.filed_at)}));
+  S.tipSubs = Number(st.tip_subscribers) || 0;
   S.payments = (st.payments || []).map(x => ({id:x.id, no:x.seller_no, period:x.period, amt:Number(x.amount), ref:x.ref, ch:x.channel, t:Date.parse(x.paid_at)}));
   S.traders.forEach(t => { const s0 = st.sellers.find(x => x.no === t.no); t.reminders = s0 ? s0.reminders !== false : true; });
 }
@@ -235,12 +236,12 @@ function taxOf(no) {
   return {rets, pays, paid, owedOf, owed, overdue, overdueAmt, streak, onTimeFile, onTimePay, last:rets.find(r => r.period === lp), missing, oldest:rets.find(r => owedOf(r) > 0.5)};
 }
 function fileReturn(no, declared, nil, ch) { const tr = tByNo(no); const per = lastPer(); const tax = Math.round(declared * TAXRATE); const sales = Math.round(perSales(no, per));
-  S.returns = S.returns.filter(r => !(r.no === no && r.period === per)); const r = {id:rid(), no, period:per, sales, declared, nil, tax, ch, t:tick()}; S.returns.push(r); tr.declared = declared;
-  persist({kind:'return_filed', id:r.id, no, period:per, sales, declared, nil_reason:nil, tax_due:tax, channel:ch, last:true}).catch(() => {});
+  S.returns = S.returns.filter(r => !(r.no === no && r.period === per)); const r = {id:rid(), no, period:per, sales, declared, nil, tax, ch, t:tick()}; r.ack = RSLM.ack(r.id); S.returns.push(r); tr.declared = declared;
+  persist({kind:'return_filed', id:r.id, no, period:per, sales, declared, nil_reason:nil, tax_due:tax, channel:ch, last:true, ack:r.ack}).catch(() => {});
   log(declared ? 'ok' : 'info', `${tr.name} filed the ${perName(per)} return: ${declared ? M(declared) : 'nil (' + nil + ')'}${tax ? ', tax ' + M(tax) : ''}`); renderAll(); return r; }
 function payTax(no, amt, ch) { const t = taxOf(no); const per = (t.oldest || t.last || {period:lastPer()}).period; const ref = 'PY' + rid().slice(0, 6).toUpperCase();
-  const x = {id:rid(), no, period:per, amt:Math.round(amt), ref, ch, t:tick()}; S.payments.push(x);
-  persist({kind:'tax_paid', id:x.id, no, period:per, amount:x.amt, ref, channel:ch}).catch(() => {});
+  const x = {id:rid(), no, period:per, amt:Math.round(amt), ref, ch, t:tick()}; x.rcpt = RSLM.receipt(x.id); S.payments.push(x);
+  persist({kind:'tax_paid', id:x.id, no, period:per, amount:x.amt, ref, channel:ch, rcpt:x.rcpt}).catch(() => {});
   log('ok', `${tByNo(no).name} paid ${M(amt)} tax by mobile money (ref ${ref})`); renderAll(); return x; }
 function taxMenu(tr) { const t = taxOf(tr.no); const lp = lastPer();
   return `My tax · TIN ${tr.tin || '-'}\nBadge: ${t.streak >= 3 ? 'Reliable taxpayer (' + t.streak + ' months on time)' : tr.via ? 'Rasiti Gold' : 'Registered seller'}\n\n1. File ${perName(lp)} return${t.last ? ' (done)' : ''}\n2. Pay tax (${M(t.owed)} due)\n3. My tax record\n4. Reminders: ${tr.reminders === false ? 'OFF' : 'ON'}\n0. Menu`; }
@@ -518,7 +519,7 @@ function startUssd(k) {
 async function liveStep(k, v) {
   const p = PH[k]; if (!p.live) return; if (v !== null) p.live.parts.push(v);
   try {
-    const r = await fetch('/api/ussd', {method:'POST', headers:{'content-type':'application/x-www-form-urlencoded'},
+    const r = await fetch('/api/ussd', {method:'POST', headers:{'content-type':'application/x-www-form-urlencoded', 'x-rasiti-demo':'1'},
       body:new URLSearchParams({sessionId:p.live.sid, serviceCode:RASITI_CODE, phoneNumber:'+' + phoneOf(k), text:p.live.parts.join('*')})});
     const t = await r.text(); const body = t.replace(/^(CON|END) /, '');
     if (!t.startsWith('CON ')) { p.live = null; p.u = 'ended'; uRender(k); $('#' + k + 'Screen').textContent = body; refresh(true); return; }
@@ -569,6 +570,9 @@ function waSend(k, v, label) {
   if (/^(sesotho|se-sotho|puo ea sesotho)$/i.test(String(v).trim())) { setLang(k, 'st'); home(k); return; }
   if (/^(english|senyesemane)$/i.test(String(v).trim())) { setLang(k, 'en'); home(k); return; }
   if (/^(hi|hello|menu|lumela|dumela|start|lethathamo)$/i.test(String(v).trim())) { home(k); return; }
+  if (/^(tip|tips|keletso)$/i.test(String(v).trim())) { tipMsg(k); return; }
+  if (/^(subscribe|ingolise)$/i.test(String(v).trim())) { tipSub(k, true); return; }
+  if (/^(stop|emisa)$/i.test(String(v).trim())) { tipSub(k, false); return; }
   setTimeout(() => (k === 't' ? tStep : cStep)(v), 250);
 }
 function openSheet(k, opts) {
@@ -577,7 +581,16 @@ function openSheet(k, opts) {
   s.hidden = false;
 }
 function closeSheet(k) { $('#' + k + 'Sheet').hidden = true; }
+// Tip of the day on WhatsApp: free to send while the person is chatting, and posted daily on the free Rasiti WhatsApp Channel.
+function tipMsg(k) { const p = PH[k]; const t = TIPS.forDate(new Date(clock), k === 't' ? 'seller' : null); p.tipDay = new Date(clock).toDateString();
+  show(k, '💡 Tip of the day\n' + TIPS.text(t, p.lang) + '\n\n' + (p.lang === 'st' ? 'Mohloli' : 'Source') + ': ' + t.src + '\nType TIP any day for a new tip.\n' + (p.tipSub ? '' : 'Get this tip every day by SMS for M2.00 a day: send SUBSCRIBE.\n') + '0. Menu'); }
+// Optional daily tip by SMS: the subscriber pays M2.00 a day (billed to airtime by the network in a pilot).
+function tipSub(k, on) { const p = PH[k]; const ph = phoneOf(k); if (!!p.tipSub !== on) S.tipSubs = Math.max(0, (S.tipSubs || 0) + (on ? 1 : -1)); p.tipSub = on;
+  if (ph) persist({kind:'tip_sub', phone:ph, on}).catch(() => {});
+  log('info', `${k === 'c' ? 'Customer' : 'Seller'} phone ${on ? 'subscribed to' : 'stopped'} the daily tip by SMS (M2.00 a day)`);
+  show(k, (on ? 'Subscribed to the daily tip by SMS (M2.00 a day). Send STOP to end it.' : 'Daily tip by SMS stopped. You will not be charged.') + '\n0. Menu'); renderAll(); }
 function home(k) { PH[k].st = 'home'; PH[k].d = {};
+  if (PH[k].mode === 'wa' && PH[k].tipDay !== new Date(clock).toDateString() && (k === 't' ? tByNo(PH.t.who) : isCustomer(PH.c.who))) tipMsg(k);
   if (k === 'c' && !isCustomer(PH.c.who)) { PH.c.st = 'c_reg0'; show('c', regPrompt()); return; }
   show(k, k === 't' ? tHome() : cHome()); }
 /* Language: English or Sesotho, chosen on each phone with 9 (or by typing "Sesotho" / "English" on WhatsApp). Saved per phone number, so the real USSD menu uses it too. */
@@ -597,6 +610,8 @@ function tHome() { const tr = tByNo(PH.t.who);
 function cHome() { return 'Rasiti receipts\n\n1. Get receipt for cash\n2. Check a receipt\n3. Rate a shop\n4. My draw entries\n5. Shops that give receipts\n6. Questions & answers\n' + langOpt('c'); }
 /* Questions and answers (public/faq.js): short pages on USSD, whole answers on WhatsApp */
 const FAQ = window.RASITI_FAQ;
+const RSLM = window.RASITI_RSL, TIPS = window.RASITI_TIPS; // simulated RSL e-services link; daily education messages
+const ackOf = r => r.ack || RSLM.ack(r.id), rcptOf = x => x.rcpt || RSLM.receipt(x.id);
 function faqStart(k, set) { const p = PH[k]; p.st = 'faq'; p.d = {fset:set, parts:[]}; show(k, p.mode === 'wa' ? FAQ.chatList(set, p.lang) + (p.lang === 'st' ? '\n\nKapa ngola potso ea hau.' : '\n\nOr just type your question.') + '\n0. Menu' : FAQ.ussd(set, [], p.lang) + '\n0. Menu'); }
 function faqStep(k, v) { const p = PH[k]; const set = p.d.fset;
   if (p.mode === 'wa') { const n = /^\d{1,2}$/.test(v) ? +v : FAQ.match(set, v); const a = n && FAQ.chatAnswer(set, n, p.lang);
@@ -660,14 +675,14 @@ function tStep(inp) { const p = PH.t, tr = tByNo(p.who), v = String(inp).trim();
       show('t', (tr.reminders ? 'Reminders ON. We will SMS you\n3 days before each due date.' : 'Reminders OFF. You can turn\nthem on again here.') + '\n\n' + taxMenu(tr).split('\n\n').slice(1).join('\n\n')); }
     return; }
   case 't_file': { const lp = lastPer();
-    if (v === '1') { const r = fileReturn(tr.no, Math.round(perSales(tr.no, lp)), null, p.mode === 'wa' ? 'wa' : 'ussd'); p.st = 't_filed'; show('t', `Filed! ✅ ${perName(lp)}: ${M(r.declared)}\nRef RT-${r.id.slice(0, 6).toUpperCase()}\nTax due ${M(r.tax)} by ${perDue(lp)}\n(demo rate ${TAXRATE * 100}%).\n\n1. Pay now\n0. Menu`); }
+    if (v === '1') { const r = fileReturn(tr.no, Math.round(perSales(tr.no, lp)), null, p.mode === 'wa' ? 'wa' : 'ussd'); p.st = 't_filed'; show('t', `Filed! ✅ ${perName(lp)}: ${M(r.declared)}\nSent to RSL e-services ✓\nRSL ack ${ackOf(r)}\nTax due ${M(r.tax)} by ${perDue(lp)}\n(demo rate ${TAXRATE * 100}%).\n\n1. Pay now\n0. Menu`); }
     else if (v === '2') { p.st = 't_file_amt'; show('t', `Your total sales for\n${perName(lp)} (M):`); }
     else if (v === '3') { p.st = 't_file_nil'; show('t', 'Why no trading?\n\n1. Stall was closed\n2. I was ill or away\n3. Other reason\n0. Menu'); }
     return; }
   case 't_file_amt': { const a = Math.round(parseFloat(v)); if (!(a >= 0 && a < 2000000)) { show('t', 'Amount (M), numbers only:'); return; }
-    const r = fileReturn(tr.no, a, a ? null : 'other', p.mode === 'wa' ? 'wa' : 'ussd'); p.st = 't_filed'; show('t', `Filed! ✅ ${perName(lastPer())}: ${M(a)}\nTax due ${M(r.tax)} by ${perDue(lastPer())}\n(demo rate ${TAXRATE * 100}%).\n\n1. Pay now\n0. Menu`); return; }
+    const r = fileReturn(tr.no, a, a ? null : 'other', p.mode === 'wa' ? 'wa' : 'ussd'); p.st = 't_filed'; show('t', `Filed! ✅ ${perName(lastPer())}: ${M(a)}\nSent to RSL e-services ✓\nRSL ack ${ackOf(r)}\nTax due ${M(r.tax)} by ${perDue(lastPer())}\n(demo rate ${TAXRATE * 100}%).\n\n1. Pay now\n0. Menu`); return; }
   case 't_file_nil': { const why = {1:'stall closed', 2:'ill or away', 3:'other'}[v]; if (!why) return;
-    fileReturn(tr.no, 0, why, p.mode === 'wa' ? 'wa' : 'ussd'); p.st = 'end'; show('t', `Nil return filed for ${perName(lastPer())}.\nReason: ${why}. Thank you.\nA nil return is fine when you\ndid not trade.\n\n0. Menu`); return; }
+    const rn = fileReturn(tr.no, 0, why, p.mode === 'wa' ? 'wa' : 'ussd'); p.st = 'end'; show('t', `Nil return filed for ${perName(lastPer())}.\nSent to RSL e-services ✓\nRSL ack ${ackOf(rn)}\nReason: ${why}. Thank you.\nA nil return is fine when you\ndid not trade.\n\n0. Menu`); return; }
   case 't_filed': if (v === '1') { p.st = 't_tax'; tStep('2'); } return;
   case 't_pay': { const t = taxOf(tr.no);
     if (v === '1') { p.d.payAmt = t.owed; p.st = 't_pay_ok'; show('t', `Mobile money: approve payment\nof ${M(t.owed)} to RSL on your\nphone (M-Pesa or EcoCash).\n\n1. I approved it\n0. Cancel`); }
@@ -676,17 +691,17 @@ function tStep(inp) { const p = PH.t, tr = tByNo(p.who), v = String(inp).trim();
   case 't_pay_amt': { const t = taxOf(tr.no); const a = Math.round(parseFloat(v)); if (!(a > 0 && a <= t.owed)) { show('t', `Enter M1 to ${M(t.owed)}:`); return; }
     p.d.payAmt = a; p.st = 't_pay_ok'; show('t', `Mobile money: approve payment\nof ${M(a)} to RSL on your\nphone (M-Pesa or EcoCash).\n\n1. I approved it\n0. Cancel`); return; }
   case 't_pay_ok': if (v === '1') { const x = payTax(tr.no, p.d.payAmt, p.mode === 'wa' ? 'wa' : 'ussd'); const t = taxOf(tr.no); p.st = 'end';
-      show('t', `Paid ${M(x.amt)} ✅\nRef ${x.ref}\n${t.owed > 0 ? 'Still due: ' + M(t.owed) + (t.overdueAmt ? '\n(' + M(t.overdueAmt) + ' overdue: pay it\nfirst to restart your streak)' : ' by ' + perDue(lastPer())) : 'All paid. Thank you!'}\nOn-time months in a row: ${t.streak}\n\n0. Menu`); } return;
+      show('t', `Paid ${M(x.amt)} ✅\nRef ${x.ref}\nRSL receipt ${rcptOf(x)}\n${t.owed > 0 ? 'Still due: ' + M(t.owed) + (t.overdueAmt ? '\n(' + M(t.overdueAmt) + ' overdue: pay it\nfirst to restart your streak)' : ' by ' + perDue(lastPer())) : 'All paid. Thank you!'}\nOn-time months in a row: ${t.streak}\n\n0. Menu`); } return;
   case 't_reg':
     if (v === '1') { p.st = 't_id'; show('t', 'Enter your ID number:'); }
     else if (v === '2') { tr.helper = true; persist({kind:'seller_helper', no:tr.no}).catch(() => {}); log('info', `${tr.name} asked a tax helper to call`); p.st = 'end'; show('t', 'A tax helper will call you\nwithin 2 working days.\n\n0. Menu'); renderAll(); }
     return;
   case 't_id': { if (v.replace(/\D/g, '').length < 6) { show('t', 'ID number (at least 6 digits):'); return; }
-    const tin = '200-' + String(100 + Math.floor(Math.random() * 899)) + '-' + String(100 + Math.floor(Math.random() * 899));
-    tr.status = 'registered'; tr.via = true; tr.tin = tin; tr.declared = null; tr.regAt = clock;
+    const look = RSLM.lookup(v); const tin = look.found ? look.tin : RSLM.newTin(v); // simulated RSL e-services TIN check
+    tr.status = 'registered'; tr.via = true; tr.tin = tin; tr.declared = null; tr.regAt = clock; tr.tinFound = look.found;
     persist({kind:'seller_register', no:tr.no, tin}).catch(() => {});
     log('ok', `${tr.name} registered through Rasiti · TIN ${tin} · customers now earn double entries`); fillSelects(); p.st = 'end';
-    show('t', `Done! TIN ${tin}\nYou are a registered seller.\n\nYour customers now earn\ndouble draw entries.\nFirst return due ${dueDate()},\nprefilled from your book.\n\n0. Menu`);
+    show('t', `Checking RSL register...\n${look.found ? 'Found on RSL register.' : 'RSL issued your TIN.'}\nTIN ${tin}\nYou are a registered seller.\n\nYour customers now earn\ndouble draw entries.\nFirst return due ${dueDate()},\nprefilled from your book.\n\n0. Menu`);
     narrate(`<b>Tax net widened.</b> ${esc(tr.name)} registered from her own phone. Her customers keep their entries and now earn double, which gives them a reason to choose her stall.`); renderAll(); return; }
   case 'end': home('t'); return;
   } }
@@ -1098,7 +1113,7 @@ async function makePdf(file, title, blocks) {
   const {jsPDF} = await loadJsPDF(); const doc = new jsPDF({unit:'mm', format:'a4'});
   const W = 210, MX = 14, CW = W - 2 * MX, BOT = 282; let y = 0;
   const header = () => { doc.setFillColor(26, 27, 46); doc.rect(0, 0, W, 15, 'F'); doc.setFillColor(232, 121, 58); doc.rect(0, 15, W, 1.2, 'F');
-    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text('RASITI', MX, 10); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text('Revenue Services Lesotho · RSL Taxathon 2026 · mock data', W - MX, 10, {align:'right'}); y = 25; };
+    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text('RASITI', MX, 10); doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text('RSL Taxathon 2026 · demo: all names and numbers are fictional', W - MX, 10, {align:'right'}); y = 25; };
   const need = h => { if (y + h > BOT) { doc.addPage(); header(); } };
   const ink = () => doc.setTextColor(26, 27, 46), mut = () => doc.setTextColor(95, 100, 117);
   header(); ink(); doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.text(pdfTxt(title), MX, y); y += 8;
@@ -1348,12 +1363,15 @@ function officerPDF() { return withBusy(async () => { const wl = officerItems();
   ]); }, 'PDF report downloaded'); }
 /* Monthly draw */
 function drawEntries() { const per = drawPeriod(); const {by} = pool(per); return Object.entries(by).map(([ph, x]) => ({ph, e:x.e, n:x.rs.length, sellers:[...new Set(x.rs.map(r => (tByNo(r.no) || {}).name))].join(' | ')})).sort((a, b) => b.e - a.e); }
+const winPh = w => w.ph || ((S.receipts.find(r => r.code === w.code) || {}).ph) || null; // older draws only stored a masked number: find it from the winning receipt
+const wph = w => winPh(w) ? mask(winPh(w)) : w.phone; // winners keep the raw number so 'Show contacts' works; shown masked unless an admin shows contacts
+const wphCsv = w => winPh(w) ? maskCsv(winPh(w)) : String(w.phone).replace(/^\+/, '');
 function lastDrawData() { if (S.lastDraw) return {when:'just now', seed:S.lastDraw.seed, live:S.lastDraw.live, winners:S.lastDraw.winners};
   const d = S.draws[0]; return d ? {when:fT(Date.parse(d.run_at)), seed:d.seed, live:d.live_entries, winners:d.winners || []} : null; }
 function drawCSV(kind) {
   if (kind === 'entries') downloadCSV(`rasiti-draw-entries-${stamp()}.csv`, [[SHOWPH ? 'Customer phone' : 'Customer (masked)', x => maskCsv(x.ph)], ['Entries', x => x.e], ['Receipts', x => x.n], ['Sellers', x => x.sellers]], drawEntries());
   if (kind === 'winners') { const d = lastDrawData(); if (!d) { toast('Run the draw first'); return; }
-    downloadCSV(`rasiti-draw-winners-${stamp()}.csv`, [['Place', w => w.place], ['Prize', w => w.prize], [SHOWPH ? 'Customer phone' : 'Customer (masked)', w => String(w.phone).replace(/^\+/, '')], ['Entries', w => w.entries], ['Winning receipt', w => w.code], ['Seller', w => w.seller], ['Seller bonus', w => w.bonus || ''], ['Draw seed', () => d.seed]], d.winners); }
+    downloadCSV(`rasiti-draw-winners-${stamp()}.csv`, [['Place', w => w.place], ['Prize', w => w.prize], [SHOWPH ? 'Customer phone' : 'Customer (masked)', wphCsv], ['Entries', w => w.entries], ['Winning receipt', w => w.code], ['Seller', w => w.seller], ['Seller bonus', w => w.bonus || ''], ['Draw seed', () => d.seed]], d.winners); }
 }
 function drawPDF() { const d = lastDrawData(); const per = drawPeriod(); const {o, by} = pool(per); const ent = drawEntries(); const tot = ent.reduce((a, x) => a + x.e, 0); const top10 = ent.slice(0, 10).reduce((a, x) => a + x.e, 0);
   return withBusy(async () => { await makePdf(`rasiti-draw-report-${stamp()}.pdf`, 'Monthly draw report', [
@@ -1363,7 +1381,7 @@ function drawPDF() { const d = lastDrawData(); const per = drawPeriod(); const {
     {t:'desc', v:`Live entries (${o.active.toLocaleString('en-US')}): entries that take part in this draw. Customers in the draw (${Object.keys(by).length}): different phone numbers holding those entries. From registered sellers (${o.reg.toLocaleString('en-US')}, ${pctS(o.reg, o.active)}): entries earned at sellers registered for tax, which count double, a direct reward for registering. Held for review (${o.held}) and excluded (${o.excluded}): entries the Fraud Shield paused or removed; they do not take part. Prize pool (M10,800): M8,000 in cash prizes, M800 in seller bonuses and M2,000 in airtime each month.`},
     {t:'h', v:'Rules'}, {t:'p', v:'1 entry per M10 spent, at least 1 and at most 5 per receipt. Entries double at sellers registered for tax. Prizes: 1st M5,000 (seller bonus M500), 2nd M2,000 (M200), 3rd M1,000 (M100), plus 20 x M100 airtime.'},
     ...(d ? [{t:'h', v:`Winners (draw run ${d.when})`}, {t:'desc', v:`${d.winners.length} winners were drawn from ${Number(d.live).toLocaleString('en-US')} live entries using seed ${d.seed}. Places 1st to 3rd win cash, and the seller who issued the winning receipt receives a bonus, so sellers also want their customers to ask for receipts. Places 4 to ${d.winners.length} win M100 airtime each. The winning receipt code lets RSL confirm the purchase with the seller before paying out.`},
-      {t:'table', cols:[['Place', 12], ['Prize', 22], ['Customer', 24], ['Entries', 12, 1], ['Winning receipt', 30], ['Seller', 30]], rows:d.winners.map(w => [w.place, w.prize, w.phone, w.entries, w.code, w.seller])}]
+      {t:'table', cols:[['Place', 12], ['Prize', 22], ['Customer', 24], ['Entries', 12, 1], ['Winning receipt', 30], ['Seller', 30]], rows:d.winners.map(w => [w.place, w.prize, wph(w), w.entries, w.code, w.seller])}]
       : [{t:'h', v:'Winners'}, {t:'desc', v:'The draw has not been run yet for this period. Click "Draw 3 winners" on the Monthly draw page, then download this report again to include the winners.'}]),
     {t:'h', v:'Top customers by entries'},
     {t:'desc', v:`The customers holding the most entries, with masked numbers. The top 10 hold ${pctS(top10, tot)} of all live entries, so ${top10 / Math.max(1, tot) > .5 ? 'a few heavy buyers dominate and the Fraud Shield ring and velocity rules matter' : 'chances are spread widely across many customers'}. Entries come from buying at Rasiti sellers; the more receipts a customer asks for, the better their chance.`},
@@ -1455,7 +1473,7 @@ function renderDraw() { const per = drawPeriod(); const {o, by} = pool(per);
   $('#drawKpis').innerHTML = [[o.active.toLocaleString('en-US'), 'Live entries'], [Object.keys(by).length, 'Customers in the draw'], [o.reg.toLocaleString('en-US'), 'From registered sellers (double)'], [o.held, 'Held for review'], [o.excluded, 'Excluded by Fraud Shield']].map(kpi).join('');
   $('#runDraw').disabled = !canWork();
   const pd = $('#pastDrawsPanel'); pd.hidden = !S.draws.length;
-  $('#pastDraws').innerHTML = '<tr><th>When</th><th class="num">Live entries</th><th>Seed</th><th>Winners</th></tr>' + S.draws.map(d => `<tr><td>${fT(Date.parse(d.run_at))}</td><td class="num">${d.live_entries}</td><td class="mono">${d.seed}</td><td>${(d.winners || []).slice(0, 3).map(w => esc(w.phone) + ' (' + esc(w.prize) + ')').join('<br>')}${(d.winners || []).length > 3 ? `<div class="note">+ ${d.winners.length - 3} airtime winners (M100 each)</div>` : ''}</td></tr>`).join(''); }
+  $('#pastDraws').innerHTML = '<tr><th>When</th><th class="num">Live entries</th><th>Seed</th><th>Winners</th></tr>' + S.draws.map(d => `<tr><td>${fT(Date.parse(d.run_at))}</td><td class="num">${d.live_entries}</td><td class="mono">${d.seed}</td><td>${(d.winners || []).slice(0, 3).map(w => esc(wph(w)) + ' (' + esc(w.prize) + ')').join('<br>')}${(d.winners || []).length > 3 ? `<div class="note">+ ${d.winners.length - 3} airtime winners (M100 each)</div>` : ''}</td></tr>`).join(''); }
 const saved = () => API.online && !API.dbEmpty;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function showLoader(text) { const ld = $('#loader'); ld.querySelector('.ld-txt span').textContent = text; ld.hidden = false; ld.classList.remove('out'); }
@@ -1465,15 +1483,15 @@ function pickWinners2(by, seedv) { const r = mulberry32(seedv); const phones = O
   for (let i = 0; i < 23 && phones.length; i++) { const tot = phones.reduce((a, p) => a + by[p].e, 0); let x = r() * tot; let ch = phones[phones.length - 1]; for (const p of phones) { x -= by[p].e; if (x <= 0) { ch = p; break; } } pick.push(ch); phones.splice(phones.indexOf(ch), 1); }
   const prizes = [['1st', 'M5,000 cash', 'M500'], ['2nd', 'M2,000 cash', 'M200'], ['3rd', 'M1,000 cash', 'M100']];
   return pick.map((p, i) => { const rr = by[p].rs[Math.floor(r() * by[p].rs.length)]; const tr = tByNo(rr.no);
-    return i < 3 ? {place:prizes[i][0], prize:prizes[i][1], bonus:prizes[i][2], phone:mask(p), entries:by[p].e, code:rr.code, seller:tr.name, market:tr.market}
-      : {place:'#' + (i + 1), prize:'M100 airtime', phone:mask(p), entries:by[p].e, code:rr.code, seller:tr.name, market:tr.market}; }); }
+    return i < 3 ? {place:prizes[i][0], prize:prizes[i][1], bonus:prizes[i][2], phone:mask(p), ph:p, entries:by[p].e, code:rr.code, seller:tr.name, market:tr.market}
+      : {place:'#' + (i + 1), prize:'M100 airtime', phone:mask(p), ph:p, entries:by[p].e, code:rr.code, seller:tr.name, market:tr.market}; }); }
 function showWinners(d) {
   if (!d) { $('#winners').innerHTML = ''; $('#airtime').innerHTML = ''; $('#airtimePanel').hidden = true; $('#drawAudit').textContent = ''; return; }
   const top = d.winners.slice(0, 3), air = d.winners.slice(3);
-  $('#winners').innerHTML = top.map(w => `<div class="win"><div class="place">${w.place} prize</div><div class="prize">${w.prize}</div><div>${w.phone} · ${w.entries} entries</div><div class="note">Winning receipt ${w.code}<br>Seller bonus ${w.bonus} to ${esc(w.seller)}, ${esc(w.market)}</div></div>`).join('');
+  $('#winners').innerHTML = top.map(w => `<div class="win"><div class="place">${w.place} prize</div><div class="prize">${w.prize}</div><div>${esc(wph(w))} · ${w.entries} entries</div><div class="note">Winning receipt ${w.code}<br>Seller bonus ${w.bonus} to ${esc(w.seller)}, ${esc(w.market)}</div></div>`).join('');
   $('#airtimePanel').hidden = !air.length;
   $('#airtimeTitle').textContent = `${air.length} airtime winners · M100 each (M${(air.length * 100).toLocaleString('en-US')} in total)`;
-  $('#airtime').innerHTML = air.map((w, i) => `<div class="air"><span class="air-n">${i + 4}</span><div><b>${w.phone}</b><div class="note">${w.entries} entries · ${esc(w.seller)}</div></div></div>`).join('');
+  $('#airtime').innerHTML = air.map((w, i) => `<div class="air"><span class="air-n">${i + 4}</span><div><b>${esc(wph(w))}</b><div class="note">${w.entries} entries · ${esc(w.seller)}</div></div></div>`).join('');
   $('#drawAudit').textContent = `Audit record: seed ${d.seed}, ${d.live} live entries, ${d.out} entries left out by the Fraud Shield. Each phone can win only once per draw. Publishing the seed and entry list lets anyone re-run the draw and get the same winners.`; }
 async function saveDraw(d) { if (!saved()) return null; const r = await api('admin', {op:'draw', seed:d.seed, live:d.live, winners:d.winners}); await refresh(true); return r.id; }
 async function runDraw() {
@@ -1633,7 +1651,7 @@ function bhExtra() {
       rules:'1 entry per M10 spent, minimum 1 and maximum 5 per receipt; double at registered sellers; monthly draw; each phone can win once per draw.',
       prizes:'1st M5,000 (seller bonus M500), 2nd M2,000 (seller M200), 3rd M1,000 (seller M100), plus 20 x M100 airtime. M10,800 a month.',
       last_draw:last ? {when:fT(Date.parse(last.run_at)), live_entries:last.live_entries, seed:last.seed, cash_winners:(last.winners || []).slice(0, 3).map(w => ({place:w.place, prize:w.prize, phone:w.phone, entries:w.entries, seller:w.seller})), airtime_winners:(last.winners || []).slice(3).map(w => ({phone:w.phone, entries:w.entries, seller:w.seller}))}
-        : S.lastDraw ? {when:'this session', cash_winners:S.lastDraw.winners.slice(0, 3), airtime_winners:S.lastDraw.winners.slice(3).map(w => ({phone:w.phone, entries:w.entries, seller:w.seller}))} : null},
+        : S.lastDraw ? {when:'this session', cash_winners:S.lastDraw.winners.slice(0, 3).map(w => ({place:w.place, prize:w.prize, phone:w.phone, entries:w.entries, seller:w.seller})), airtime_winners:S.lastDraw.winners.slice(3).map(w => ({phone:w.phone, entries:w.entries, seller:w.seller}))} : null},
     customer_requests:{pending:S.claims.filter(c => c.state === 'pending').length, queued_offline:S.claims.filter(c => c.state === 'queued').length},
     officer_actions:{invitations_sent:S.invited.size, visits_planned:S.visits.size, items_marked_done:S.done.size},
     filing_and_payments:{note:`Demo schedule: monthly return for last month, due on the 20th; demo tax rate ${TAXRATE * 100}% of declared sales (RSL sets the real SBT rate).`, current_period:perName(lastPer()) + ' (due ' + perDue(lastPer()) + ')',
@@ -1969,7 +1987,7 @@ function dashPDF() { return withBusy(async () => { const D = dashData(); const k
 
 /* ================= System log: who did what, and when ================= */
 const LG = {rows:[], total:0, offset:0, busy:false};
-const ACTLABEL = a => ({login:'Signed in', logout:'Signed out', login_failed:'Failed sign-in', password_changed:'Changed own password', password_reset:'Reset a user\'s password', user_created:'Added a user', user_updated:'Changed a user',
+const ACTLABEL = a => ({rsl_tin_check:'RSL TIN check (simulated)', rsl_return_sent:'Return sent to RSL (simulated)', education_sms_sent:'Education SMS sent (simulated)', tip_subscribed:'Subscribed to daily tip SMS', tip_unsubscribed:'Stopped daily tip SMS', login:'Signed in', logout:'Signed out', login_failed:'Failed sign-in', password_changed:'Changed own password', password_reset:'Reset a user\'s password', user_created:'Added a user', user_updated:'Changed a user',
   review:'Decided held receipts', undo_review:'Undid a review decision', worklist_done:'Marked a worklist item done', worklist_invite:'Sent a registration invitation', worklist_visit:'Booked a visit or referral', undo_worklist:'Undid a worklist action',
   draw_run:'Ran the monthly draw', undo_draw:'Undid a draw', demo_data_loaded:'Loaded the demo data', demo_data_reset:'Reset the demo data', all_data_cleared:'Cleared all data',
   bohlale_ask:'Asked Bohlale AI', contacts_shown:'Showed full phone numbers', contacts_hidden:'Hid phone numbers', receipt_issued:'Receipt issued', receipt_claimed:'Receipt claimed by a customer',
@@ -2005,7 +2023,7 @@ async function toggleContacts() {
   const show = !SHOWPH;
   try { if (API.online) await api('admin', {op:'contacts', show, page:currentView()}); } catch (e) { toast(e.message); return; }
   SHOWPH = show; try { sessionStorage.setItem('rasitiShowPh', show ? '1' : ''); } catch {}
-  renderContactsBtn(); renderAll(); route(); toast(show ? 'Full phone numbers shown. This was written to the system log.' : 'Phone numbers hidden');
+  renderContactsBtn(); renderAll(); if (S.lastDraw) showWinners(S.lastDraw); route(); toast(show ? 'Full phone numbers shown. This was written to the system log.' : 'Phone numbers hidden');
 }
 function renderContactsBtn() { const b = $('#phBtn'); if (!b) return; const can = API.online ? !!(API.user && ['owner', 'admin'].includes(API.user.role)) : true;
   if (!can && SHOWPH) { SHOWPH = false; }
@@ -2058,7 +2076,33 @@ function route() {
   if (show === 'bohlale') renderBohlale();
   window.scrollTo(0, 0);
 }
-function renderAll() { reEvalIfNeeded(); renderShield(); renderWatch(); renderOfficer(); renderDraw(); if (currentView() === 'dash') renderDash(); }
+/* Simulated RSL e-services link: every registration, return and payment, with the answer RSL e-services would give. */
+function rslEvents() {
+  const ev = [];
+  for (const t of S.traders) if (t.status === 'registered' && t.tin) ev.push({t:t.regAt || t.joinedAt || clock, no:t.no, what:'TIN check', detail:t.tinFound === true ? 'Already on RSL register: TIN linked' : t.tinFound === false ? 'Not on RSL register: new TIN issued' : 'TIN confirmed on RSL register', ref:t.tin});
+  for (const r of S.returns) ev.push({t:r.t, no:r.no, what:'Return sent to RSL', detail:`${perName(r.period)}: ${r.declared ? M(r.declared) : 'nil'}`, ref:ackOf(r)});
+  for (const x of S.payments) ev.push({t:x.t, no:x.no, what:'Payment receipt from RSL', detail:`${M(x.amt)} for ${perName(x.period)}`, ref:rcptOf(x)});
+  return ev.sort((a, b) => b.t - a.t);
+}
+function renderRsl() { const el = $('#rslTbl'); if (!el) return; const ev = rslEvents(); const n = w => ev.filter(e => e.what === w).length;
+  $('#rslKpis').innerHTML = [[n('TIN check'), 'TIN checks'], [n('Return sent to RSL'), 'Returns acknowledged'], [n('Payment receipt from RSL'), 'Payments with RSL receipt'], ['0', 'Failed or waiting']].map(kpi).join('');
+  el.innerHTML = '<tr><th>When</th><th>Seller</th><th>Exchange</th><th>Details</th><th>RSL reference</th><th>Status</th></tr>' + ev.slice(0, 12).map(e => `<tr><td>${fT(e.t)}</td><td>${esc((tByNo(e.no) || {}).name || e.no)}<div class="note">code ${esc(e.no)}</div></td><td>${e.what}</td><td>${esc(e.detail)}</td><td class="mono">${esc(e.ref)}</td><td><span class="pill p-ok">Accepted</span></td></tr>`).join('') + (ev.length ? '' : '<tr><td colspan="6" class="note">No exchanges yet.</td></tr>'); }
+/* Daily education message: today's tip in English and Sesotho, how it is sent, what it costs, and the next 7 days. */
+function eduAudience() { return { sellers:S.traders.filter(t => t.status === 'registered').length, enrolled:S.traders.length, customers:new Set(S.receipts.filter(r => r.ph).map(r => r.ph)).size }; }
+const M2 = n => 'M' + Number(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+function tipEconomics(n) { const days = 30, gross = n * TIPS.subPrice * days, share = gross * TIPS.networkShare, sms = n * TIPS.smsPrice * days; return {gross, share, sms, net:gross - share - sms}; }
+function renderTips() { const el = $('#tipToday'); if (!el) return; const t = TIPS.forDate(new Date(clock)); const n = S.tipSubs ?? Math.round(eduAudience().customers / 8); const e = tipEconomics(n);
+  el.innerHTML = `<div class="lang">English</div>${esc(t.en)}<div class="lang">Sesotho</div>${esc(t.st)}<div class="lang">Source</div><span class="note">${esc(t.src)}</span>`;
+  const rows = [['WhatsApp Channel post (anyone can follow)', 'Every day', 'Free'], ['Tip of the day in the USSD and WhatsApp menus', 'Every day', 'Free'], [`Daily SMS for subscribers (${n})`, 'Every day, optional', `${M2(TIPS.subPrice)} a day, paid by the subscriber`]];
+  $('#tipCost').innerHTML = '<tr><th>Channel</th><th>How often</th><th class="num">Cost</th></tr>' + rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td class="num">${r[2]}</td></tr>`).join('');
+  $('#tipNote').textContent = `Daily SMS is optional: people subscribe on USSD (*999# > 3 > 4) or by sending SUBSCRIBE on WhatsApp, and pay ${M2(TIPS.subPrice)} a day from airtime. With ${n} subscriber${n === 1 ? '' : 's'}, a month brings in ${M2(e.gross)}; the network keeps about ${Math.round(TIPS.networkShare * 100)}% for billing (${M2(e.share)}) and the SMS cost about ${M2(e.sms)}, leaving ${M2(e.net)}. All three figures are assumptions to agree with Econet and Vodacom.`;
+  $('#tipNext').innerHTML = '<tr><th>Date</th><th>For</th><th>Message (English)</th></tr>' + TIPS.schedule(new Date(clock + 86400000), 7).map(d => `<tr><td>${fD(d.date.getTime())}</td><td>${d.tip.for === 'seller' ? 'Sellers' : 'Everyone'}</td><td>${esc(d.tip.en)}</td></tr>`).join('');
+  const b = $('#tipSmsBtn'); if (b) { b.textContent = `Send today's SMS tip to subscribers (${n})`; b.hidden = API.online && !(API.user && ['owner', 'admin', 'officer'].includes(API.user.role)); } }
+async function sendTipSms() { const n = S.tipSubs ?? Math.round(eduAudience().customers / 8); const t = TIPS.forDate(new Date(clock)); const cost = n * TIPS.smsPrice;
+  if (!n) { toast('No subscribers yet. People subscribe on *999# > 3 > 4 or by sending SUBSCRIBE on WhatsApp.'); return; }
+  try { if (API.online && API.user) await api('admin', {op:'tip_sms', count:n, cost:Math.round(cost * 100) / 100, tip:t.en.slice(0, 160)}); } catch (e) { toast(e.message); return; }
+  log('ok', `Daily SMS tip sent to ${n} subscribers (SMS cost about ${M2(cost)}, income ${M2(n * TIPS.subPrice)}): "${t.en}"`); toast(`SMS tip sent to ${n} subscribers (simulated). Written to the system log.`); }
+function renderAll() { reEvalIfNeeded(); renderShield(); renderWatch(); renderOfficer(); renderRsl(); renderTips(); renderDraw(); if (currentView() === 'dash') renderDash(); }
 function reEvalIfNeeded() { if (!S.eval || Object.keys(S.eval).length !== S.receipts.length) reEval(); }
 
 /* ================= events ================= */
@@ -2115,6 +2159,7 @@ function wire() {
   $('#runTest2').addEventListener('click', () => runTest((Date.now() % 1e6) >>> 0));
   $('#runDraw').addEventListener('click', runDraw);
   $('#phBtn').addEventListener('click', toggleContacts);
+  $('#tipSmsBtn').addEventListener('click', sendTipSms);
   $('#remBtn').addEventListener('click', sendReminders);
   $('#dashFilters').addEventListener('click', e => { const b = e.target.closest('[data-dd]'); if (b) { DASHD = +b.dataset.dd; renderDash(); } });
   $('#dashPdf').addEventListener('click', dashPDF);

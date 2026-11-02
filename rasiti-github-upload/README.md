@@ -1,4 +1,4 @@
-# Rasiti: receipts that reward
+# Rasiti (Receipt) Lottery
 
 RSL Taxathon 2026, Challenge 1 prototype. Customers get receipts and prize-draw entries, sellers get a free sales book, and RSL gets a live, mapped picture of where trade happens.
 
@@ -29,6 +29,7 @@ RSL Taxathon 2026, Challenge 1 prototype. Customers get receipts and prize-draw 
 | `SESSION_SECRET` | A random string of 32+ characters. Generate one with `openssl rand -base64 48` |
 | `ADMIN_EMAIL` | The email for the first owner account |
 | `ADMIN_PASSWORD` | A strong password for that account (10+ characters) |
+| `ADMIN_NAME` | Optional. The owner's display name (default: Katleho Tlale) |
 
 ## 3A. Deploy on Vercel (recommended)
 
@@ -62,7 +63,7 @@ The on-screen phones are a simulation. To show the menus working over a real USS
 1. Create a free account at africastalking.com and open the **Sandbox** app.
 2. Go to **USSD → Create channel**. Pick any channel number the sandbox offers.
 3. **Callback URL:** `https://your-subdomain/api/ussd`
-   - Optional, to stop others calling it: set `USSD_KEY` in your host's environment to a random word, and use `https://your-subdomain/api/ussd?key=THAT-WORD` as the callback.
+   - Optional, to stop others calling it: set `USSD_KEY` in your host's environment to a random word, and use `https://your-subdomain/api/ussd?key=THAT-WORD` as the callback. The demo phones on the website keep working when `USSD_KEY` is set, because requests from the site's own pages are allowed without the key.
 4. Open the sandbox **Simulator** (Launch Simulator), enter a phone number, and dial the service code the sandbox shows (it looks like `*384*1234#`).
 5. Choose **1** for customer or **2** for seller. A seller logs in with their 4-digit code (e.g. `3307`), or `0` to join.
 
@@ -122,6 +123,38 @@ Optional settings (any OpenAI-compatible service works):
 - Phone numbers are masked everywhere by default. Owners and admins can click **Show contacts** at the top of any RSL page to see full numbers; every switch is written to the system log. Bohlale AI and saved draw winners always stay masked.
 - **System log** (menu, owners and admins): every action with who, what and when. Staff appear by email; customers and sellers using the phones appear with a masked number or seller code. Filter by person, action, date or search, and download as CSV or PDF.
 
+## Simulated RSL e-services link
+
+RSL does not give outside teams access to its live systems, so Rasiti shows how the link would work (`public/rsl-mock.js`):
+
+- **TIN check:** when a seller registers, Rasiti checks the (simulated) RSL taxpayer register. ID numbers ending in `00` are treated as already registered and their TIN is linked; any other ID gets a new TIN.
+- **Return sent to RSL:** every filed return gets an RSL acknowledgement number (`RSL-ACK-…`).
+- **Payment receipt:** every tax payment gets an official RSL receipt number (`RSL-RCP-…`).
+
+The Officer console shows every exchange under **RSL e-services link**. In a pilot, these three calls are replaced by RSL's real e-services connection.
+
+## Daily education messages
+
+`public/tips.js` holds 30 short tips in English and Sesotho, each with its source (RSL's public guides).
+
+- **Free to read every day:** a post on a Rasiti WhatsApp Channel, "Tip of the day" in the USSD Q&A menu (`*999#` → 3 → 3), and on WhatsApp (type `TIP`; the first chat of the day shows it).
+- **Optional daily SMS for M2.00 a day:** people subscribe on USSD (`*999#` → 3 → 4 → 1) or by sending `SUBSCRIBE` on WhatsApp, and stop with `STOP` or option 2. The subscriber pays from airtime, so the SMS costs the project nothing. The Dashboard shows subscribers, income, the network's billing share and SMS cost (all assumptions to agree with the networks), and has a button to send today's SMS (simulated).
+
+To use RSL's own education material, replace or add tips in `public/tips.js`; the list repeats every 30 days.
+
+## Running on RSL's own servers (lowest cost)
+
+Rasiti is plain Node.js and Postgres, so it can run on RSL's servers and domain at no hosting cost. Free, open-source tools can replace paid services there:
+
+- **AI:** an open model (for example gpt-oss-20b) served on an RSL machine with vLLM or Ollama; set `AI_BASE_URL` to it. Without AI, Bohlale gives built-in answers.
+- **SMS and USSD:** a self-hosted open-source SMS gateway (for example Jasmin or Kannel) connected directly to Econet and Vodacom removes the middle-man's fee. The networks still charge for each SMS or session.
+- **WhatsApp:** Meta's Cloud API directly, without a paid reseller.
+- **Maps:** an OpenStreetMap tile server for Lesotho on RSL's server (`TILE_STREET_URL`).
+
+## Who built what
+
+The system architecture, user journeys and design were made by Samuel Mefane. AI tools were used as a coding assistant to write and test the code under his direction.
+
 ## 4. First sign-in and test data
 
 1. Open `https://your-subdomain/#officer` and sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`. This creates the owner account.
@@ -150,6 +183,8 @@ npm run dev               # http://localhost:3000
 ```
 public/index.html   Page, styles and layout
 public/faq.js       Questions and answers for USSD and WhatsApp, English and Sesotho
+public/tips.js      Daily education messages (tip of the day), English and Sesotho, with sources
+public/rsl-mock.js  Simulated RSL e-services link: TIN check, return acknowledgement, payment receipt
 public/i18n.js      Sesotho for every phone screen (USSD, WhatsApp, on-screen phones)
 public/app.js       Phones, Fraud Shield, maps, officer console, draw, Bohlale AI, users
 public/vendor/      Leaflet maps and jsPDF (served locally)
@@ -169,7 +204,6 @@ schema.sql          Same tables as the app creates automatically
 dev-server.mjs      Server used by Render (npm start) and for local testing
 vercel.json         Vercel settings
 render.yaml         Render settings (optional blueprint)
-docs/               Rasiti solution brief (PDF)
 ```
 
 ## Changing the brand colours

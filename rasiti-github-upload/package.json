@@ -2,7 +2,7 @@
   "name": "rasiti",
   "version": "1.0.0",
   "private": true,
-  "description": "Rasiti: receipts that reward. RSL Taxathon 2026, Challenge 1 prototype.",
+  "description": "Rasiti (Receipt) Lottery: receipts that reward. RSL Taxathon 2026, Challenge 1 prototype.",
   "type": "module",
   "engines": {
     "node": ">=18"

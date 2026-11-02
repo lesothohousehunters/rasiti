@@ -10,6 +10,10 @@ import { readFile } from 'node:fs/promises';
 let FAQ = null;
 let I18N = null;
 async function i18n() { if (I18N) return I18N; const src = await readFile(new URL('../public/i18n.js', import.meta.url), 'utf8'); const g = {}; new Function('window', src)(g); return (I18N = g.RASITI_I18N); }
+let RSLM, TIPS;
+const shared = async (file, key) => { const src = await readFile(new URL('../public/' + file, import.meta.url), 'utf8'); const g = {}; new Function('window', src)(g); return g[key]; };
+async function rslm() { return RSLM || (RSLM = await shared('rsl-mock.js', 'RASITI_RSL')); }
+async function tips() { return TIPS || (TIPS = await shared('tips.js', 'RASITI_TIPS')); }
 async function faq() { if (FAQ) return FAQ; const src = await readFile(new URL('../public/faq.js', import.meta.url), 'utf8'); const g = {}; new Function('window', src)(g); return (FAQ = g.RASITI_FAQ); }
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -51,12 +55,15 @@ async function taxState(q, no) {
 }
 async function fileReturn(q, seller, st, declared, reason) {
   const tax = Math.round(declared * DEMO_RATE);
-  await q(`INSERT INTO returns(id,seller_no,period,sales,declared,nil_reason,tax_due,channel) VALUES ($1,$2,$3,$4,$5,$6,$7,'USSD')
-           ON CONFLICT (seller_no, period) DO UPDATE SET declared=EXCLUDED.declared, nil_reason=EXCLUDED.nil_reason, tax_due=EXCLUDED.tax_due, filed_at=now()`,
+  const [row] = await q(`INSERT INTO returns(id,seller_no,period,sales,declared,nil_reason,tax_due,channel) VALUES ($1,$2,$3,$4,$5,$6,$7,'USSD')
+           ON CONFLICT (seller_no, period) DO UPDATE SET declared=EXCLUDED.declared, nil_reason=EXCLUDED.nil_reason, tax_due=EXCLUDED.tax_due, filed_at=now() RETURNING id`,
     [rid(), seller.no, st.per, Math.round(st.sales), declared, reason, tax]);
+  // Simulated RSL e-services: the return is "sent to RSL", which answers with an acknowledgement number.
+  const ack = (await rslm()).ack(row.id);
+  await audit(q, null, 'rsl_return_sent', { actor:'Seller ' + seller.no, channel:'RSL e-services (simulated)', period: st.per, ack });
   await q('UPDATE sellers SET declared_last=$1 WHERE no=$2', [declared, seller.no]);
   await audit(q, null, declared ? 'return_filed' : 'nil_return_filed', { actor:'Seller ' + seller.no, channel:'USSD', period: st.per, declared, sales_book: Math.round(st.sales), reason });
-  return tax;
+  return { tax, ack };
 }
 
 async function respond(q, parts, phone, sessionId, ctx) {
@@ -65,9 +72,20 @@ async function respond(q, parts, phone, sessionId, ctx) {
 
   if (who === undefined) return con('Rasiti receipts\n1. I am a customer\n2. I am a seller\n3. Questions & answers\n' + (ctx.lang === 'st' ? '5. English' : '4. Sesotho'));
   if (who === '3') {
-    if (p[0] === undefined) return con('Questions & answers\n1. For customers\n2. For sellers (tax help)' + BACK);
+    if (p[0] === undefined) return con('Questions & answers\n1. For customers\n2. For sellers (tax help)\n3. Tip of the day\n4. Daily tip by SMS (M2/day)' + BACK);
+    if (p[0] === '4') { // optional daily tip by SMS, paid by the subscriber
+      if (!phone) return end('We could not read your phone number. Please try again.');
+      const [pr] = await q('SELECT tips_sub FROM phone_prefs WHERE phone=$1', [phone]); const on = !!(pr && pr.tips_sub);
+      if (p[1] === undefined) return con(`Daily tip by SMS: ${on ? 'ON' : 'OFF'}\nOne tax tip every day for M2.00 a day, charged to your airtime.\n1. Subscribe\n2. Stop` + BACK);
+      if (p[1] !== '1' && p[1] !== '2') return end('Please choose 1 or 2.');
+      const want = p[1] === '1';
+      await q('INSERT INTO phone_prefs(phone, tips_sub) VALUES ($1,$2) ON CONFLICT (phone) DO UPDATE SET tips_sub=EXCLUDED.tips_sub, updated_at=now()', [phone, want]);
+      await audit(q, null, want ? 'tip_subscribed' : 'tip_unsubscribed', { actor:'Customer ' + mk(phone), channel:'USSD', price:'M2.00 a day' });
+      return end(want ? 'Subscribed. You will get one tax tip by SMS every day for M2.00 a day.\nTo stop: *999# > 3 > 4 > 2.' : 'Daily tip stopped. You will not be charged. The free tip stays in the menu: *999# > 3 > 3.');
+    }
+    if (p[0] === '3') { const T = await tips(); const t = T.forDate(new Date()); return end('Tip of the day\n' + T.text(t, ctx.lang)); }
     const set = p[0] === '1' ? 'buyer' : p[0] === '2' ? 'seller' : null;
-    if (!set) return end('Please choose 1 or 2. Dial again to start.');
+    if (!set) return end('Please choose 1, 2 or 3. Dial again to start.');
     return con((await faq()).ussd(set, p.slice(1), ctx.lang) + BACK);
   }
 
@@ -218,8 +236,8 @@ async function respond(q, parts, phone, sessionId, ctx) {
           else if (b === '2') { if (c === undefined) return con(`Your sales for ${pn} (M):`); declared = Math.round(parseFloat(c)); if (!(declared >= 0 && declared < 2000000)) return end('Amount not valid. Please start again.'); }
           else if (b === '3') { if (c === undefined) return con('Why no trading?\n1. Stall was closed\n2. I was ill or away\n3. Other reason'); reason = { 1: 'stall closed', 2: 'ill or away', 3: 'other' }[c]; if (!reason) return end('Please choose 1 to 3. Start again.'); declared = 0; }
           else return end('Please choose 1 to 3.');
-          const tax = await fileReturn(q, seller, st, declared, reason);
-          return end(`Filed! ${pn}: ${M(declared)}${reason ? ' (nil)' : ''}\nTax due ${M(tax)} by ${perDue(st.per)}\n(demo rate ${Math.round(DEMO_RATE * 100)}%). Pay: My tax > 2.`);
+          const { tax, ack } = await fileReturn(q, seller, st, declared, reason);
+          return end(`Filed! ${pn}: ${M(declared)}${reason ? ' (nil)' : ''}\nSent to RSL: ${ack}\nTax due ${M(tax)} by ${perDue(st.per)}\n(demo rate ${Math.round(DEMO_RATE * 100)}%)`);
         }
         if (a === '2') {
           if (st.owed <= 0) return end('Nothing to pay. Thank you for paying on time!');
@@ -227,9 +245,10 @@ async function respond(q, parts, phone, sessionId, ctx) {
           let amt = st.owed; if (b === '2') { if (c === undefined) return con('Amount to pay now (M):'); amt = Math.round(parseFloat(c)); }
           if (!(amt > 0 && amt <= st.owed)) return end(`Amount must be between M1 and ${M(st.owed)}. Start again.`);
           const ref = 'PY' + Date.now().toString(36).toUpperCase().slice(-6); const per = (st.oldest || st.ret || { period: st.per }).period;
-          await q("INSERT INTO payments(id,seller_no,period,amount,ref,channel) VALUES ($1,$2,$3,$4,$5,'USSD')", [rid(), seller.no, per, amt, ref]);
-          await audit(q, null, 'tax_paid', { actor:'Seller ' + seller.no, channel:'USSD', period: per, amount: amt, ref });
-          return end(`Mobile money request for ${M(amt)} sent. Approve it on your phone.\nRef ${ref}. ${st.owed - amt > 0 ? 'Still due: ' + M(st.owed - amt) + '.' : 'All paid. Thank you!'}`);
+          const pid = rid(); await q("INSERT INTO payments(id,seller_no,period,amount,ref,channel) VALUES ($1,$2,$3,$4,$5,'USSD')", [pid, seller.no, per, amt, ref]);
+          const rcpt = (await rslm()).receipt(pid);
+          await audit(q, null, 'tax_paid', { actor:'Seller ' + seller.no, channel:'USSD', period: per, amount: amt, ref, rsl_receipt: rcpt });
+          return end(`Mobile money request for ${M(amt)} sent. Approve it on your phone.\nRSL receipt ${rcpt}\n${st.owed - amt > 0 ? 'Still due: ' + M(st.owed - amt) + '.' : 'All paid. Thank you!'}`);
         }
         if (a === '3') {
           if (!st.rets.length) return end('No returns yet. File your first return under My tax > 1.');
@@ -244,10 +263,12 @@ async function respond(q, parts, phone, sessionId, ctx) {
       if (a !== '1') return end('Please choose 1 or 2.');
       if (b === undefined) return con('Enter your ID number:');
       if (b.replace(/\D/g, '').length < 6) return end('ID number must have at least 6 digits. Please start again.');
-      const tin = '200-' + (100 + Math.floor(Math.random() * 899)) + '-' + (100 + Math.floor(Math.random() * 899));
+      // Simulated RSL e-services TIN check: an ID already on RSL's register is linked to its TIN; otherwise RSL issues a new one.
+      const R = await rslm(); const found = R.lookup(b); const tin = found.found ? found.tin : R.newTin(b);
       await q("UPDATE sellers SET status='registered', tin=$1, via_rasiti=TRUE, registered_at=now(), declared_last=NULL WHERE no=$2", [tin, seller.no]);
-      await audit(q, null, 'seller_registered_for_tax', { actor:'Seller ' + seller.no, channel:'USSD', no: seller.no });
-      return end(`Done! TIN ${tin}\nYou are a registered seller.\nYour customers now earn double draw entries.\nFirst return due ${dueDate()}.`);
+      await audit(q, null, 'rsl_tin_check', { actor:'Seller ' + seller.no, channel:'RSL e-services (simulated)', result: found.found ? 'already registered: TIN linked' : 'not found: new TIN issued', tin });
+      await audit(q, null, 'seller_registered_for_tax', { actor:'Seller ' + seller.no, channel:'USSD', no: seller.no, tin });
+      return end(`${found.found ? 'Found on RSL register.' : 'RSL issued your TIN.'}\nTIN ${tin}\nYou are a registered seller.\nYour customers now earn double draw entries.\nFirst return due ${dueDate()}.`);
     }
     return end('Please choose a number from the menu.');
   }
@@ -256,13 +277,20 @@ async function respond(q, parts, phone, sessionId, ctx) {
 
 const ulog = (q, action, actor, d) => audit(q, null, action, { actor, channel:'USSD', ...d }).catch(() => {});
 const mk = p => p ? `+266 ${String(p)[3]}*** *${String(p).slice(-3)}` : 'unknown phone';
+function sameSite(req) {
+  const hosts = [req.headers['x-forwarded-host'], req.headers.host].filter(Boolean).map(h => String(h).split(',')[0].trim().toLowerCase());
+  const from = req.headers.origin || req.headers.referer || '';
+  try { return !!from && hosts.includes(new URL(from).host.toLowerCase()) && req.headers['x-rasiti-demo'] === '1'; } catch { return false; }
+}
 export default async function handler(req, res) {
   const send = (t) => { if (t.length > 182) t = t.slice(0, 181) + '…'; res.statusCode = 200; res.setHeader('Content-Type', 'text/plain; charset=utf-8'); res.setHeader('Cache-Control', 'no-store'); res.end(t); };
   if (req.method !== 'POST') return send(end('Rasiti USSD endpoint. Gateways must use POST.'));
   try {
+    // A real gateway (Africa's Talking) must add ?key=USSD_KEY to the callback URL.
+    // The demo phones on this website send no key, so requests coming from the site's own pages are allowed.
     if (process.env.USSD_KEY) {
       const key = new URL(req.url, 'http://x').searchParams.get('key');
-      if (key !== process.env.USSD_KEY) { res.statusCode = 403; return res.end('Forbidden'); }
+      if (key !== process.env.USSD_KEY && !sameSite(req)) { res.statusCode = 403; return res.end('END Forbidden: this USSD gateway is not authorised.'); }
     }
     const b = parseBody(req);
     let parts = String(b.text || '').split('*').filter((x, i, arr) => !(x === '' && arr.length === 1));

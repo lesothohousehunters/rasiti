@@ -12,9 +12,11 @@ try { // load .env if present
 } catch {}
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.json': 'application/json', '.ico': 'image/x-icon' };
-const PORT = Number(process.env.PORT || 3000);
+// Render sets PORT (usually 10000). A bad value falls back to 10000 instead of crashing.
+const PORT = Number.isInteger(Number(process.env.PORT)) && Number(process.env.PORT) > 0 ? Number(process.env.PORT) : (process.env.RENDER ? 10000 : 3000);
+console.log(`Starting Rasiti (Node ${process.version}) on port ${PORT}...`);
 
-http.createServer(async (req, res) => {
+const server = http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'geolocation=(self), camera=(), microphone=()');
@@ -36,7 +38,10 @@ http.createServer(async (req, res) => {
   const file = join(root, 'public', p);
   try {
     if (!(await stat(file)).isFile()) throw 0;
-    res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' });
+    // no-cache: browsers check for a new version on every visit, so a deploy shows up straight away
+    const ext = extname(file); res.writeHead(200, { 'Content-Type': TYPES[ext] || 'application/octet-stream', 'Cache-Control': ['.html', '.js', '.css', '.json'].includes(ext) ? 'no-cache' : 'public, max-age=86400' });
     res.end(await readFile(file));
   } catch { res.writeHead(404).end('Not found'); }
-}).listen(PORT, '0.0.0.0', () => console.log(`Rasiti running on port ${PORT}`));
+});
+server.on('error', e => { console.error('Rasiti could not start:', e.code || '', e.message); process.exit(1); });
+server.listen(PORT, '0.0.0.0', () => console.log(`Rasiti running on port ${PORT}`));

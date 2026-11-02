@@ -6,6 +6,17 @@
   // [English pattern, Sesotho]. Option numbers ("1. ") are kept automatically, so menu items are listed without them.
   const LINES = [
     // main menus
+    ['Tip of the day', 'Keletso ea kajeno'], ['Daily tip by SMS (M2/day)', 'Keletso ka SMS (M2 ka letsatsi)'], ['Daily tip by SMS: {}', 'Keletso ka SMS: {}'],
+    ['One tax tip every day for M2.00 a day, charged to your airtime.', 'Keletso e le \'ngoe letsatsi le leng le le leng ka M2.00, e lefelloa ka airtime.'], ['Subscribe', 'Ingolise'], ['Stop', 'Emisa'],
+    ['Subscribed. You will get one tax tip by SMS every day for M2.00 a day.', 'U ngolisitse. U tla fumana keletso ka SMS letsatsi le leng le le leng ka M2.00.'], ['To stop: *999# > 3 > 4 > 2.', 'Ho emisa: *999# > 3 > 4 > 2.'],
+    ['Daily tip stopped. You will not be charged. The free tip stays in the menu: *999# > 3 > 3.', 'Keletso e emisitsoe. U ke ke ua lefisoa. Keletso ea mahala e ntse e le teng: *999# > 3 > 3.'],
+    ['We could not read your phone number. Please try again.', 'Ha rea khona ho bala nomoro ea hau. Leka hape.'], ['ON', 'E BULETSOE'], ['OFF', 'E KOALOE'],
+    ['Get this tip every day by SMS for M2.00 a day: send SUBSCRIBE.', 'Fumana keletso ena ka SMS letsatsi le leng le le leng ka M2.00: romela SUBSCRIBE.'],
+    ['Subscribed to the daily tip by SMS (M2.00 a day). Send STOP to end it.', 'U ngolisitse keletso ea letsatsi ka SMS (M2.00 ka letsatsi). Romela STOP ho e emisa.'],
+    ['Daily tip by SMS stopped. You will not be charged.', 'Keletso ka SMS e emisitsoe. U ke ke ua lefisoa.'], ['Sent to RSL: {}', 'E rometsoe ho RSL: {}'], ['RSL receipt {}', 'Rasiti ea RSL {}'], ['RSL ack {}', 'Netefatso ea RSL {}'],
+    ['Found on RSL register.', 'U se u le rejisetareng ea RSL.'], ['RSL issued your TIN.', 'RSL e u file TIN.'], ['TIN {}', 'TIN {}'], ['Checking RSL register...', 'Re hlahloba rejisetara ea RSL...'],
+    ['Please choose 1, 2 or 3. Dial again to start.', 'Khetha 1, 2 kapa 3. Letsetsa hape ho qala.'], ['Sent to RSL e-services ✓', 'E rometsoe ho RSL e-services ✓'],
+    ['💡 Tip of the day', '💡 Keletso ea kajeno'], ['Type TIP any day for a new tip.', 'Ngola TIP letsatsi le leng le le leng bakeng sa keletso e ncha.'],
     ['Rasiti receipts', 'Lirasiti tsa Rasiti'], ['I am a customer', 'Ke moreki'], ['I am a seller', 'Ke morekisi'],
     ['Questions & answers', 'Lipotso le likarabo'], ['Questions & tax help', 'Lipotso le thuso'], ['For customers', 'Bakeng sa bareki'], ['For sellers (tax help)', 'Bakeng sa barekisi (thuso ea lekhetho)'],
     ['Main menu', 'Qalo'], ['Menu', 'Lethathamo'], ['Back', 'Khutla'], ['Cancel', 'Hlakola'], ['Sesotho', 'Sesotho'], ['English', 'English'],
@@ -118,7 +129,9 @@
     return words(l);
   }
   const WRX = WORDS.map(([en, st]) => [/^\w.*\w$/.test(en) ? new RegExp('\\b' + esc(en) + '\\b', 'g') : new RegExp(esc(en), 'g'), st]);
-  function words(s) { for (const [rx, st] of WRX) s = s.replace(rx, st); for (const [en, st] of MONTHS) s = s.replace(new RegExp('\\b' + en + '\\b', 'g'), st).replace(new RegExp('\\b(\\d{1,2}) ' + en.slice(0, 3) + '\\b', 'g'), '$1 ' + st).replace(new RegExp('^' + en.slice(0, 3) + ':', 'g'), st.slice(0, 3) + ':'); return s; }
+  // Short month names that stay different from each other (Phuptjane/Phupu and Hlakola/Hlakubele share their first letters).
+  const SHORT = {January:'Phe', February:'Hlk', March:'Hlb', April:'Mme', May:'Mot', June:'Phj', July:'Phu', August:'Pha', September:'Loe', October:'Mph', November:'Pul', December:'Tši'};
+  function words(s) { for (const [rx, st] of WRX) s = s.replace(rx, st); for (const [en, st] of MONTHS) s = s.replace(new RegExp('\\b' + en + '\\b', 'g'), st).replace(new RegExp('\\b(\\d{1,2}) ' + en.slice(0, 3) + '\\b', 'g'), '$1 ' + st).replace(new RegExp('^' + en.slice(0, 3) + ':', 'g'), (SHORT[en] || st.slice(0, 3)) + ':'); return s; }
   // Screens wrap long sentences over short lines for small phones; join them back before translating.
   function unwrap(text) { const out = [];
     for (const l of text.split('\n')) { const p = out[out.length - 1];

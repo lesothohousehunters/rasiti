@@ -87,6 +87,14 @@ export default route(async (req, res) => {
     return res.status(200).json({ ok: true });
   }
 
+  if (b.op === 'tip_sms') {
+    // Daily education SMS to people who subscribed (M2.00 a day, paid by them). Simulated: the pilot connects this to the SMS gateway.
+    const me = await requireRole(req, res, WORKERS); if (!me) return;
+    const count = Math.max(0, Math.min(100000, Math.round(Number(b.count) || 0)));
+    await audit(q, me, 'education_sms_sent', { count, cost_maloti: Number(b.cost) || 0, tip: String(b.tip || '').slice(0, 160), simulated: true });
+    return res.status(200).json({ ok: true, count });
+  }
+
   if (b.op === 'contacts') {
     const me = await requireRole(req, res, ['owner', 'admin']); if (!me) return;
     await audit(q, me, b.show ? 'contacts_shown' : 'contacts_hidden', { page: String(b.page || '').slice(0, 30) });
@@ -106,13 +114,17 @@ export default route(async (req, res) => {
       returns: await bulk(q, 'returns', [['id', 'text'], ['seller_no', 'text'], ['period', 'text'], ['sales', 'numeric'], ['declared', 'numeric'], ['nil_reason', 'text'], ['tax_due', 'numeric'], ['channel', 'text'], ['filed_at', 'timestamptz']], d.returns),
       payments: await bulk(q, 'payments', [['id', 'text'], ['seller_no', 'text'], ['period', 'text'], ['amount', 'numeric'], ['ref', 'text'], ['channel', 'text'], ['paid_at', 'timestamptz']], d.payments)
     };
+    // Demo: 1 in 8 customers subscribed to the optional daily tip by SMS (M2.00 a day).
+    const subs = await q(`INSERT INTO phone_prefs(phone, tips_sub) SELECT phone, TRUE FROM (SELECT DISTINCT phone FROM receipts WHERE phone IS NOT NULL ORDER BY phone) x
+      WHERE abs(hashtext(phone)) % 8 = 0 ON CONFLICT (phone) DO UPDATE SET tips_sub=TRUE RETURNING phone`);
+    counts.tip_subscribers = subs.length;
     await audit(q, me, 'demo_data_loaded', counts);
     return res.status(200).json({ ok: true, counts });
   }
 
   if (b.op === 'reset') {
     const me = await requireRole(req, res, ['owner']); if (!me) return;
-    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'returns', 'payments', 'sellers']) await q(`DELETE FROM ${t}`);
+    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'returns', 'payments', 'sellers', 'phone_prefs']) await q(`DELETE FROM ${t}`);
     await audit(q, me, 'demo_data_reset');
     return res.status(200).json({ ok: true });
   }
@@ -120,7 +132,7 @@ export default route(async (req, res) => {
   if (b.op === 'clear') {
     const me = await requireRole(req, res, ['owner']); if (!me) return;
     if (b.confirm !== 'CLEAR') throw bad('Type CLEAR to confirm.');
-    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'returns', 'payments', 'sellers', 'audit_log']) await q(`DELETE FROM ${t}`);
+    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'returns', 'payments', 'sellers', 'phone_prefs', 'audit_log']) await q(`DELETE FROM ${t}`);
     const gone = await q('DELETE FROM admin_users WHERE id <> $1 RETURNING id', [me.uid]);
     await audit(q, me, 'all_data_cleared', { users_removed: gone.length });
     return res.status(200).json({ ok: true, users_removed: gone.length });
