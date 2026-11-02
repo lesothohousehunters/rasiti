@@ -4,6 +4,7 @@
 // Optional: set USSD_KEY in the environment and add ?key=... to the callback URL to block other callers.
 import { db, audit } from './_lib/db.js';
 import { mkCode, normCode } from './_lib/codes.js';
+import { checkPin, hashPin, pinProblem } from './_lib/pin.js';
 import { readFile } from 'node:fs/promises';
 
 // Questions and answers live in public/faq.js, shared with the on-screen phones and the WhatsApp chatbot.
@@ -160,29 +161,68 @@ async function respond(q, parts, phone, sessionId, ctx) {
     return end('Please choose a number from the menu.');
   }
 
-  /* ---------- seller ---------- */
+  /* ---------- seller ----------
+     Sign in = 4-digit seller code + 4-digit PIN (the network also tells us the caller's number).
+     A merchant code (M-Pesa or EcoCash) is never a sign-in: it only tells Rasiti which seller was paid. */
   if (who === '2') {
-    const [code, m, a, b, c] = p;
+    const [code, pin, m, a, b, c] = p;
     if (code === undefined) return con('Seller\nEnter your 4-digit seller code\n(or 0 to join Rasiti):' + BACK);
 
-    if (code === '0') {
-      if (m === undefined) return con('Join Rasiti\nYour name:');
-      if (a === undefined) return con('Where do you trade?\n(e.g. Sefika rank)');
-      if (b === undefined) return con('What do you sell?');
+    if (code === '0') { // join: name, place, goods, PIN, PIN again
+      const [, name, place, goods, pin1, pin2] = p;
+      if (name === undefined) return con('Join Rasiti\nYour name:');
+      if (place === undefined) return con('Where do you trade?\n(e.g. Sefika rank)');
+      if (goods === undefined) return con('What do you sell?');
+      if (pin1 === undefined) return con('Choose a 4-digit PIN.\nYou need it every time you open your seller menu. Do not share it.');
+      const bad1 = pinProblem(pin1); if (bad1) return end(bad1 + '\nDial again to start.');
+      if (pin2 === undefined) return con('Enter the PIN again:');
+      if (pin2 !== pin1) return end('The two PINs are different.\nDial again to start.');
       let no, tries = 0;
       do { no = String(7000 + Math.floor(Math.random() * 2999)); tries++; } while ((await s(no)) && tries < 20);
-      await q("INSERT INTO sellers(no,name,trade,market,status,joined_at,phone) VALUES ($1,$2,$3,$4,'enrolled',now(),$5)",
-        [no, m.slice(0, 60), b.slice(0, 60), a.slice(0, 60), phone]);
+      await q("INSERT INTO sellers(no,name,trade,market,status,joined_at,phone,pin_hash) VALUES ($1,$2,$3,$4,'enrolled',now(),$5,$6)",
+        [no, name.slice(0, 60), goods.slice(0, 60), place.slice(0, 60), phone, await hashPin(pin1)]);
       await audit(q, null, 'seller_joined', { actor:'Seller ' + no, channel:'USSD', no });
-      return end(`Welcome ${m.slice(0, 40)}!\nYour seller code: ${no}\nYou can give receipts now. No tax number needed yet.`);
+      return end(`Welcome ${name.slice(0, 40)}!\nYour seller code: ${no}\nKeep your PIN secret. You can give receipts now. No tax number needed yet.`);
     }
 
     const seller = await s(code.replace(/\D/g, ''));
     if (!seller) return end(`Seller code ${code} not found.\nDial again and choose 0 to join.`);
+
+    if (!seller.pin_hash) { // older accounts: create a PIN once, only from the seller's own registered phone
+      if (!phone || phone !== seller.phone) return end('No PIN yet for this seller code.\nDial from your registered phone to create one, or call RSL on 8002 2009.');
+      if (pin === undefined) return con(`${seller.name}\nCreate a 4-digit PIN for your seller menu:`);
+      const bad1 = pinProblem(pin); if (bad1) return end(bad1 + '\nDial again to start.');
+      if (m === undefined) return con('Enter the PIN again:');
+      if (m !== pin) return end('The two PINs are different.\nDial again to start.');
+      await q('UPDATE sellers SET pin_hash=$1, pin_fails=0 WHERE no=$2', [await hashPin(pin), seller.no]);
+      await audit(q, null, 'seller_pin_set', { actor:'Seller ' + seller.no, channel:'USSD' });
+      return end('PIN saved.\nDial *999# again and sign in with your seller code and PIN.');
+    }
+    if (pin === undefined) return con(`Seller ${seller.no}\nEnter your 4-digit PIN:` + BACK);
+    const ok = await checkPin(q, seller, pin); // every wrong PIN counts, whatever follows it
+    if (!ok.ok) {
+      if (ok.lockedNow) await audit(q, null, 'seller_pin_locked', { actor:'Seller ' + seller.no, channel:'USSD', phone: mk(phone) });
+      return end(ok.msg);
+    }
     const pending = await q("SELECT * FROM claims WHERE seller_no=$1 AND state='pending' ORDER BY created_at, id LIMIT 3", [seller.no]);
 
-    if (m === undefined) return con(`Lumela ${seller.name}\nCode ${seller.no} · ${seller.status === 'registered' ? 'Registered' : 'Not yet registered'}\n1. Record cash sale\n2. Confirm receipts (${pending.length})\n3. My sales book\n4. ${seller.status === 'registered' ? 'My tax & badge' : 'Register for tax'}\n5. Questions & tax help` + BACK);
-    if (m === '5') return con((await faq()).ussd('seller', p.slice(2), ctx.lang) + BACK);
+    if (m === undefined) return con(`${seller.name}\nCode ${seller.no} · ${seller.status === 'registered' ? 'Registered' : 'Not yet registered'}\n1. Record cash sale\n2. Confirm receipts (${pending.length})\n3. My sales book\n4. ${seller.status === 'registered' ? 'My tax & badge' : 'Register for tax'}\n5. Questions & tax help\n6. Mobile money codes` + BACK);
+    if (m === '6') { // link the seller's own M-Pesa (Vodacom) or EcoCash (Econet) merchant code
+      if (a === undefined) return con(`Mobile money codes\nM-Pesa: ${seller.mpesa_code || 'not linked'}\nEcoCash: ${seller.ecocash_code || 'not linked'}\n1. Link M-Pesa merchant code\n2. Link EcoCash merchant code` + BACK);
+      if (a !== '1' && a !== '2') return end('Please choose 1 or 2. Dial again to start.');
+      const col = a === '1' ? 'mpesa_code' : 'ecocash_code', net = a === '1' ? 'M-Pesa' : 'EcoCash', opr = a === '1' ? 'Vodacom' : 'Econet';
+      if (b === undefined) return con(`Your ${net} merchant code\n(5 to 7 digits, from ${opr}):`);
+      const mc = b.replace(/\D/g, '');
+      if (!/^\d{5,7}$/.test(mc)) return end('A merchant code has 5 to 7 digits. Dial again to start.');
+      const [other] = await q(`SELECT no FROM sellers WHERE ${col}=$1 AND no<>$2`, [mc, seller.no]);
+      if (other) { await audit(q, null, 'merchant_code_conflict', { actor:'Seller ' + seller.no, channel:'USSD', network: net, merchant_code: mc, linked_to: other.no });
+        return end(`This ${net} code is already linked to another Rasiti seller. RSL will check it. Call 8002 2009 if it is yours.`); }
+      // Pilot: Rasiti asks the network that this merchant code belongs to this seller's phone or ID before linking. Simulated here.
+      await q(`UPDATE sellers SET ${col}=$1 WHERE no=$2`, [mc, seller.no]);
+      await audit(q, null, 'merchant_code_linked', { actor:'Seller ' + seller.no, channel:'USSD', network: net, merchant_code: mc, check: opr + ' confirmed (simulated)' });
+      return end(`${net} code ${mc} linked.\n${opr} confirmed it is yours (simulated).\nPayments to this code now give your customers receipts by themselves.`);
+    }
+    if (m === '5') return con((await faq()).ussd('seller', p.slice(3), ctx.lang) + BACK);
 
     if (m === '1') {
       if (a === undefined) return con('Record cash sale\nAmount (M):');

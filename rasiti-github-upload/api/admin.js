@@ -8,6 +8,7 @@
 //   {op:'clear', confirm:'CLEAR'}                             owner: deletes ALL data, the activity log and every other user
 import { db, audit } from './_lib/db.js';
 import { route, body, requireRole, bad } from './_lib/http.js';
+import { hashPin, DEMO_PIN } from './_lib/pin.js';
 
 const WORKERS = ['owner', 'admin', 'officer'];
 
@@ -107,13 +108,15 @@ export default route(async (req, res) => {
     if (n > 0) throw bad('The database already has data. Reset it first.');
     const d = b.data || {};
     const counts = {
-      sellers: await bulk(q, 'sellers', [['no', 'text'], ['name', 'text'], ['trade', 'text'], ['market', 'text'], ['status', 'text'], ['tin', 'text'], ['joined_at', 'timestamptz'], ['via_rasiti', 'boolean'], ['phone', 'text'], ['declared_last', 'numeric'], ['lat', 'double precision'], ['lng', 'double precision']], d.sellers),
+      sellers: await bulk(q, 'sellers', [['no', 'text'], ['name', 'text'], ['trade', 'text'], ['market', 'text'], ['status', 'text'], ['tin', 'text'], ['joined_at', 'timestamptz'], ['via_rasiti', 'boolean'], ['phone', 'text'], ['declared_last', 'numeric'], ['lat', 'double precision'], ['lng', 'double precision'], ['mpesa_code', 'text'], ['ecocash_code', 'text']], d.sellers),
       receipts: await bulk(q, 'receipts', [['code', 'text'], ['seller_no', 'text'], ['amount', 'numeric'], ['channel', 'text'], ['phone', 'text'], ['issued_at', 'timestamptz'], ['note', 'text']], d.receipts),
       reports: await bulk(q, 'reports', [['id', 'text'], ['phone', 'text'], ['type', 'text'], ['seller_no', 'text'], ['place_key', 'text'], ['place_label', 'text'], ['area', 'text'], ['kind', 'text'], ['lat', 'double precision'], ['lng', 'double precision'], ['created_at', 'timestamptz']], d.reports),
       fakes: await bulk(q, 'fakes', [['id', 'text'], ['code', 'text'], ['kind', 'text'], ['phone', 'text'], ['detail', 'text'], ['created_at', 'timestamptz']], d.fakes),
       returns: await bulk(q, 'returns', [['id', 'text'], ['seller_no', 'text'], ['period', 'text'], ['sales', 'numeric'], ['declared', 'numeric'], ['nil_reason', 'text'], ['tax_due', 'numeric'], ['channel', 'text'], ['filed_at', 'timestamptz']], d.returns),
       payments: await bulk(q, 'payments', [['id', 'text'], ['seller_no', 'text'], ['period', 'text'], ['amount', 'numeric'], ['ref', 'text'], ['channel', 'text'], ['paid_at', 'timestamptz']], d.payments)
     };
+    // Demo sellers all use the demo PIN (shown on the Start here page). Real sellers choose their own when they join.
+    await q('UPDATE sellers SET pin_hash=$1 WHERE pin_hash IS NULL', [await hashPin(DEMO_PIN)]);
     // Demo: 1 in 8 customers subscribed to the optional daily tip by SMS (M2.00 a day).
     const subs = await q(`INSERT INTO phone_prefs(phone, tips_sub) SELECT phone, TRUE FROM (SELECT DISTINCT phone FROM receipts WHERE phone IS NOT NULL ORDER BY phone) x
       WHERE abs(hashtext(phone)) % 8 = 0 ON CONFLICT (phone) DO UPDATE SET tips_sub=TRUE RETURNING phone`);

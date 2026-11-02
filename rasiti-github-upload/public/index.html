@@ -326,6 +326,7 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 .qr-pay{display:grid;grid-template-columns:1fr 100px;gap:8px;align-items:end}
 .qr-pay label{display:flex;flex-direction:column;gap:3px;font-size:.8rem;color:var(--muted);min-width:0}
 .qr-pay button{grid-column:span 2}
+.mm-pay{grid-template-columns:1fr 1fr}
 .cases{display:flex;flex-direction:column;gap:8px}
 .case{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;padding:11px 13px}
 .case:hover{border-color:var(--accent)}
@@ -503,6 +504,34 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 .login .lbtn{background:#1a1b2e;color:#fff}
 .login .err{color:#a01d14;font-weight:600}
 @media (max-width:760px){.login{background-position:62% center}.login-card{padding:24px 20px 18px}}
+
+/* Test agent */
+.ag-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+@media(max-width:900px){.ag-grid{grid-template-columns:1fr}}
+.ag-ask textarea{width:100%;min-height:84px;resize:vertical;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);box-sizing:border-box}
+.ag-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+.ag-mode{display:flex;gap:6px;flex-wrap:wrap}
+.ag-mode label{display:flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:99px;padding:6px 12px;cursor:pointer;font-size:.85rem;background:var(--surface)}
+.ag-mode input{margin:0}
+.ag-mode label:has(input:checked){border-color:var(--accent);background:var(--warn-soft)}
+.ag-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.ag-chips button{font-size:.8rem}
+.ag-steps{list-style:none;margin:0;padding:0;counter-reset:s}
+.ag-steps li{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:10px;align-items:start;padding:9px 0;border-top:1px solid var(--line)}
+.ag-steps li:first-child{border-top:0}
+.ag-ic{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:.75rem;font-weight:700;background:var(--sunk);color:var(--muted)}
+.ag-ic.ok{background:var(--green-soft);color:var(--green)}.ag-ic.bad{background:var(--bad-soft);color:var(--bad)}.ag-ic.blk{background:var(--warn-soft);color:var(--warn)}.ag-ic.run{background:var(--blue-soft);color:var(--blue);animation:agp 1s infinite}
+@keyframes agp{50%{opacity:.4}}
+.ag-steps .what{font-weight:600}.ag-steps .det{font-size:.8rem;color:var(--muted);white-space:pre-wrap;word-break:break-word;margin-top:2px}
+.ag-steps .t{font-size:.75rem;color:var(--muted);font-family:var(--f-mono)}
+.ag-sum{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px}
+.ag-hist td{font-size:.85rem}
+.ag-live{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));width:340px;max-width:calc(100vw - 32px);max-height:46vh;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.22);z-index:60;overflow:hidden}
+.ag-live header{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--navy);color:var(--on-navy);font-weight:600;font-size:.85rem}
+.ag-live header span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ag-live header button{background:transparent;border:1px solid rgba(255,255,255,.35);color:inherit;border-radius:8px;padding:3px 9px;font:inherit;font-size:.75rem;cursor:pointer}
+.ag-live .ag-steps{overflow:auto;padding:4px 12px 8px}
+.ag-hl{outline:3px solid var(--accent)!important;outline-offset:2px;border-radius:6px;transition:outline .2s}
 </style>
 </head>
 <body>
@@ -556,8 +585,8 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
         <li><b>Open Rasiti like a real user</b><a href="#phones">Phones</a>: on the <b>keypad phone</b>, press <span class="codebox">*999#</span> with the keys, then the green key. On the <b>smartphone</b>, tap <b>WhatsApp</b>, the green new-chat button, then <b>Rasiti</b>, and register.<div class="note">With the database connected, the keypad phone talks to the real USSD server, exactly as a mobile network would.</div></li>
         <li><b>Run the guided cases</b>Click the six cases on the right of the Phones page, top to bottom. After each one, a note says what happened and what to press next.</li>
         <li><b>Check a receipt as a customer</b>Customer phone: 2, then the genuine code <span class="codebox" id="sampleCode">…</span>. Then try the fake one <span class="codebox" id="sampleFake">…</span>.</li>
-        <li><b>Ask for a receipt after paying cash</b>Customer phone: 1, seller code <span class="codebox">3307</span>, any amount. Then on the seller phone (Ntate Thabo): 2, pick the request, 1 to confirm.</li>
-        <li><b>Join as a new seller</b>In the seller list choose "Someone not on Rasiti yet". Dial <span class="codebox">*999#</span>, choose 2 (seller), then 0 to join, and give a name, a place and what you sell.</li>
+        <li><b>Ask for a receipt after paying cash</b>Customer phone: 1, seller code <span class="codebox">3307</span>, any amount. Then on the seller phone (Ntate Thabo): sign in with PIN <span class="codebox">2580</span>, choose 2, pick the request, 1 to confirm.</li>
+        <li><b>Join as a new seller</b>In the seller list choose "Someone not on Rasiti yet". Dial <span class="codebox">*999#</span>, choose 2 (seller), then 0 to join, give a name, a place and what you sell, and choose a 4-digit PIN.</li>
         <li><b>Rate a shop</b>Customer phone: 3. On WhatsApp you can share your location, and the rating lands on the map in <a href="#watch">Community watch</a>.</li>
         <li><b>Look at the RSL side</b>Sign in, then try <a href="#shield">Fraud Shield</a>, <a href="#watch">Community watch</a>, <a href="#officer">Officer console</a> and <a href="#draw">Draw</a>.</li>
       </ol>
@@ -566,15 +595,16 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
       <div class="panel">
         <h3>Test sellers</h3>
         <div class="tbl-wrap"><table>
-          <tr><th>Code</th><th>Seller</th><th>Why it is interesting</th></tr>
-          <tr><td class="mono">3307</td><td>Ntate Thabo · snacks and drinks, Sefika rank</td><td>Registered, ordinary. Customers earn double entries.</td></tr>
-          <tr><td class="mono">4821</td><td>Mme Palesa · fruit and veg</td><td>On Rasiti but not registered. Option 4 registers her.</td></tr>
-          <tr><td class="mono">5140</td><td>Mme 'Mathabo · cooked food</td><td>Filed a nil return while her receipts show sales.</td></tr>
-          <tr><td class="mono">2264</td><td>Ntate Lebohang · shoe repair</td><td>Nil return that matches real inactivity. No action.</td></tr>
-          <tr><td class="mono">6018</td><td>Mme Lineo · hair salon</td><td>A group of new phones buying heavily. Held for review.</td></tr>
-          <tr><td class="mono">7735</td><td>Ntate Teboho · phone repairs</td><td>Bought from himself, which the Shield blocks.</td></tr>
-          <tr><td class="mono">3902</td><td>Mme Nthabiseng · clothes</td><td>One M2,400 sale that an officer should check.</td></tr>
+          <tr><th>Code</th><th>Seller</th><th>M-Pesa / EcoCash</th><th>Why it is interesting</th></tr>
+          <tr><td class="mono">3307</td><td>Ntate Thabo · snacks and drinks, Sefika rank</td><td class="mono">584112 / 20931</td><td>Registered, ordinary. Customers earn double entries.</td></tr>
+          <tr><td class="mono">4821</td><td>Mme Palesa · fruit and veg</td><td class="mono">584297 / –</td><td>On Rasiti but not registered. Option 4 registers her.</td></tr>
+          <tr><td class="mono">5140</td><td>Mme 'Mathabo · cooked food</td><td class="mono">– / 21468</td><td>Filed a nil return while her receipts show sales.</td></tr>
+          <tr><td class="mono">2264</td><td>Ntate Lebohang · shoe repair</td><td class="mono">– / – (cash only)</td><td>Nil return that matches real inactivity. No action.</td></tr>
+          <tr><td class="mono">6018</td><td>Mme Lineo · hair salon</td><td class="mono">585530 / 22075</td><td>A group of new phones buying heavily. Held for review.</td></tr>
+          <tr><td class="mono">7735</td><td>Ntate Teboho · phone repairs</td><td class="mono">586004 / –</td><td>Bought from himself, which the Shield blocks.</td></tr>
+          <tr><td class="mono">3902</td><td>Mme Nthabiseng · clothes</td><td class="mono">– / 22713</td><td>One M2,400 sale that an officer should check.</td></tr>
         </table></div>
+        <p class="note" style="margin-bottom:0">Seller PIN for every test seller: <span class="codebox">2580</span>. Sellers sign in with their seller code and PIN, never with a merchant code. M-Pesa (Vodacom) and EcoCash (Econet) merchant codes only tell Rasiti which seller was paid. Demo codes are fictional.</p>
       </div>
       <div class="panel">
         <h3>Questions for testers</h3>
@@ -598,12 +628,15 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
     <div class="phone-col">
       <div class="panel"><h3>Guided cases</h3><div class="cases" id="cases"></div></div>
       <div class="narr" id="narr"></div>
-      <div class="panel"><h3>Pay by mobile-money QR</h3>
-        <form class="qr-pay" id="qrForm">
-          <label for="qrSeller">Seller<select id="qrSeller"></select></label>
-          <label for="qrAmt">Amount (M)<input id="qrAmt" type="number" min="1" value="30"></label>
-          <button class="btn primary" type="submit">Scan and pay as the customer</button>
-        </form></div>
+      <div class="panel"><h3>Customer pays with M-Pesa or EcoCash</h3>
+        <p class="note" style="margin-top:0">Sellers keep their own M-Pesa (Vodacom) or EcoCash (Econet) merchant code. The customer pays it as usual; the network tells Rasiti, and the receipt and draw entries come to the customer by themselves.</p>
+        <form class="qr-pay mm-pay" id="mmForm">
+          <label for="mmNet">Pay with<select id="mmNet"><option value="mpesa">M-Pesa</option><option value="ecocash">EcoCash</option></select></label>
+          <label for="mmSeller">Seller<select id="mmSeller"></select></label>
+          <label for="mmCode">Merchant code<input id="mmCode" inputmode="numeric" autocomplete="off" maxlength="7"></label>
+          <label for="mmAmt">Amount (M)<input id="mmAmt" type="number" min="1" value="30"></label>
+          <button class="btn primary" type="submit">Pay as the customer</button>
+        </form><p class="note" id="mmNote" style="margin-bottom:0"></p></div>
       <div class="panel"><h3>Latest receipt</h3><div id="receiptCard"><div class="receipt-empty">Run a case or make a sale to print a receipt.</div></div></div>
       <div class="panel"><h3>Live activity</h3><ul class="feed" id="feed"></ul></div>
     </div>
@@ -767,6 +800,45 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
   </div>
 </section>
 
+<section data-view="agent" hidden>
+  <p class="lede"><b>Mohlomi AI</b> ("the wise one") is Rasiti's test agent. Tell it what to check, in plain words. It plans the steps, opens Rasiti's pages and demo phones, clicks through them while you watch, and reports what passed and what failed. Every run is written to the system log. Owners and admins only.</p>
+  <div class="ag-grid">
+    <div class="stack">
+      <div class="panel ag-ask">
+        <div class="bh-head"><img class="bh-logo" src="img/mohlomi-96.png" alt=""><div><b>Mohlomi AI</b><small>Test agent · checks Rasiti for you</small></div></div>
+        <h3>What should Mohlomi AI test?</h3>
+        <label for="agQ" class="note" style="display:block;margin:0 0 6px">For example: "Check that a customer can see the tip of the day on WhatsApp" or "Open every RSL page and download the reports".</label>
+        <textarea id="agQ" placeholder="Type what to test…"></textarea>
+        <div class="ag-row">
+          <div class="ag-mode" role="radiogroup" aria-label="What the agent may do">
+            <label><input type="radio" name="agMode" value="look" checked> Look only (safe during judging)</label>
+            <label><input type="radio" name="agMode" value="change"> Allow test changes (phones, buttons)</label>
+          </div>
+        </div>
+        <div class="ag-row"><button class="btn primary" type="button" id="agRun">Run test</button><button class="btn" type="button" id="agStop" hidden>Stop</button><span class="note" id="agStatus"></span></div>
+        <div class="ag-chips" id="agChips"></div>
+      </div>
+      <div class="panel" id="agResult" hidden>
+        <h3 class="h-row"><span id="agTitle">Result</span><span class="act-tools"><button class="btn small" type="button" id="agAgain">Run again</button><button class="btn small" type="button" id="agCopy">Copy report</button><button class="btn small primary" type="button" id="agPdf">PDF report</button></span></h3>
+        <div class="ag-sum" id="agSum"></div>
+        <p class="note" id="agNote"></p>
+        <ol class="ag-steps" id="agSteps"></ol>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel"><h3>Rules Mohlomi AI follows</h3>
+        <ul class="note" style="padding-left:18px;margin:0">
+          <li><b>Look only</b> opens pages, reads them and checks downloads. It changes nothing.</li>
+          <li><b>Allow test changes</b> also uses the demo phones and buttons such as the draw. Those changes are real demo data: use Undo or reset the demo data afterwards.</li>
+          <li>Clearing or resetting data, switching users off and passwords are always blocked.</li>
+          <li>Downloads are checked but not saved to your computer.</li>
+          <li>Without the AI service, Mohlomi AI uses its built-in test plans.</li>
+        </ul></div>
+      <div class="panel"><h3>Recent runs</h3><div class="tbl-wrap"><table class="ag-hist" id="agHist"></table></div></div>
+    </div>
+  </div>
+</section>
+
 <section data-view="logs" hidden>
   <p class="lede">Every action in Rasiti is recorded here: who did it, what they did and when. RSL staff appear by email. Customers and sellers using the phones appear with a masked number or their seller code. Entries cannot be changed from the platform.</p>
   <div class="panel wf-bar">
@@ -835,10 +907,11 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 
 <div class="toast" id="toast" hidden></div>
 <script src="vendor/leaflet.js"></script>
-<script src="i18n.js?v=20261102b"></script>
-<script src="faq.js?v=20261102b"></script>
-<script src="rsl-mock.js?v=20261102b"></script>
-<script src="tips.js?v=20261102b"></script>
-<script src="app.js?v=20261102b"></script>
+<script src="i18n.js?v=20261102d"></script>
+<script src="faq.js?v=20261102d"></script>
+<script src="rsl-mock.js?v=20261102d"></script>
+<script src="tips.js?v=20261102d"></script>
+<script src="app.js?v=20261102d"></script>
+<script src="agent.js?v=20261102d"></script>
 </body>
 </html>

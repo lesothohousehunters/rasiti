@@ -1,6 +1,8 @@
 /* Rasiti front end. Works online (API + Neon) or offline (local mock data only). */
 (() => {
 "use strict";
+// Hooks used by Mohlomi AI while it tests: it sees toasts and file names instead of saving downloads.
+const HOOK = {save:null, toast:null};
 
 /* ================= helpers ================= */
 const $ = s => document.querySelector(s);
@@ -21,6 +23,7 @@ function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a
 const hashStr = s => { let h = 2166136261; for (const c of String(s)) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 
 const BH_LOGO = 'img/bohlale-96.png';
+const MH_LOGO = 'img/mohlomi-96.png';
 const TILL_SVG = `<svg class="till" viewBox="0 0 200 222" xmlns="http://www.w3.org/2000/svg"><g class="ld-rc"><path d="M72 0H128V58l-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4-4 4-4-4z" fill="#fffdf8" stroke="#c9c3b5" stroke-width="1.2"/><rect x="82" y="8" width="36" height="5" rx="1.5" fill="#e8793a"/><rect x="80" y="19" width="40" height="2.5" rx="1" fill="#b9b4a8"/><rect x="80" y="25" width="28" height="2.5" rx="1" fill="#b9b4a8"/><rect x="80" y="31" width="34" height="2.5" rx="1" fill="#b9b4a8"/><path d="M82 40v10M85 40v10M87 40v10M91 40v10M93 40v10M96 40v10M100 40v10M102 40v10M106 40v10M109 40v10M111 40v10M115 40v10M118 40v10" stroke="#23262d" stroke-width="1.3"/></g><g class="ld-note"><rect x="58" y="108" width="84" height="44" rx="3" fill="#2f8f5b" stroke="#1f6b42"/><rect x="61.5" y="111.5" width="77" height="37" rx="2" fill="none" stroke="#a8dcbc" stroke-width="1"/><path d="M66 140q10-8 20 0t20 0 20 0" fill="none" stroke="#5fbf8a" stroke-width="1.2"/><circle cx="100" cy="128" r="11" fill="#e8793a"/><text x="100" y="132.5" font-family="Arial, sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">M</text><text x="66" y="120" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" fill="#e7f6ec">100</text><text x="134" y="146" font-family="Arial, sans-serif" font-size="7.5" font-weight="700" fill="#e7f6ec" text-anchor="end">100</text></g><rect x="34" y="60" width="132" height="96" rx="14" fill="#1a1b2e" stroke="#3a3d57" stroke-width="1.5"/><rect x="58" y="54" width="84" height="10" rx="5" fill="#2c2e45"/><rect x="64" y="58" width="72" height="2.5" rx="1.2" fill="#0b0c15"/><rect x="48" y="74" width="104" height="30" rx="6" fill="#0e2a1d"/><text class="ld-scr" x="100" y="95" font-family="ui-monospace, Menlo, monospace" font-size="15" font-weight="700" fill="#5cc994" text-anchor="middle">M 100.00</text><circle class="ld-led" cx="148" cy="66.5" r="2.6" fill="#3a3d57"/><g fill="#3a3d57"><rect x="50" y="114" width="20" height="9" rx="3"/><rect x="76" y="114" width="20" height="9" rx="3"/><rect x="102" y="114" width="20" height="9" rx="3"/><rect x="50" y="128" width="20" height="9" rx="3"/><rect x="76" y="128" width="20" height="9" rx="3"/><rect x="102" y="128" width="20" height="9" rx="3"/></g><rect x="128" y="114" width="22" height="23" rx="4" fill="#e8793a"/><rect x="54" y="150" width="92" height="10" rx="5" fill="#2c2e45"/><rect x="60" y="153.5" width="80" height="2.5" rx="1.2" fill="#0b0c15"/></svg>`;
 let NOW = Date.now();
 let clock = NOW;
@@ -63,13 +66,13 @@ function seed() {
   NOW = Date.now(); clock = NOW;
   const rnd = mulberry32(2026);
   S.traders = [
-    {no:'3307',name:'Ntate Thabo L.',trade:'Snacks & cold drinks',market:'Sefika taxi rank',status:'registered',tin:'200-338-114',joined:120,via:true,avg:18,perDay:9,decl:0.97,ph:'26658440017'},
-    {no:'4821',name:'Mme Palesa M.',trade:'Fruit & vegetables',market:'Maseru Main Market',status:'enrolled',joined:42,avg:34,perDay:7,ph:'26663120554'},
-    {no:'5140',name:"Mme 'Mathabo S.",trade:'Makoenya & cooked food',market:'Pitso Ground',status:'registered',tin:'200-412-907',joined:200,avg:22,perDay:10,decl:0,ph:'26658907731'},
+    {no:'3307',name:'Ntate Thabo L.',trade:'Snacks & cold drinks',market:'Sefika taxi rank',status:'registered',tin:'200-338-114',joined:120,via:true,avg:18,perDay:9,decl:0.97,ph:'26658440017',mp:'584112',ec:'20931'},
+    {no:'4821',name:'Mme Palesa M.',trade:'Fruit & vegetables',market:'Maseru Main Market',status:'enrolled',joined:42,avg:34,perDay:7,ph:'26663120554',mp:'584297'},
+    {no:'5140',name:"Mme 'Mathabo S.",trade:'Makoenya & cooked food',market:'Pitso Ground',status:'registered',tin:'200-412-907',joined:200,avg:22,perDay:10,decl:0,ph:'26658907731',ec:'21468'},
     {no:'2264',name:'Ntate Lebohang M.',trade:'Shoe repair',market:'Ha Hoohlo',status:'registered',tin:'200-127-550',joined:300,avg:40,perDay:.04,decl:0,ph:'26657712208'},
-    {no:'6018',name:'Mme Lineo N.',trade:'Hair salon',market:'Maseru Mall parking',status:'registered',tin:'200-560-221',joined:90,avg:90,perDay:.6,decl:1.1,ph:'26662981145'},
-    {no:'7735',name:'Ntate Teboho R.',trade:'Phone repairs',market:'Kingsway',status:'enrolled',joined:14,avg:120,perDay:1.3,ph:'26659230876'},
-    {no:'3902',name:'Mme Nthabiseng K.',trade:'Second-hand clothes',market:'Maseru Main Market',status:'registered',tin:'200-301-845',joined:150,via:true,avg:80,perDay:3,decl:0.9,ph:'26663557019'}
+    {no:'6018',name:'Mme Lineo N.',trade:'Hair salon',market:'Maseru Mall parking',status:'registered',tin:'200-560-221',joined:90,avg:90,perDay:.6,decl:1.1,ph:'26662981145',mp:'585530',ec:'22075'},
+    {no:'7735',name:'Ntate Teboho R.',trade:'Phone repairs',market:'Kingsway',status:'enrolled',joined:14,avg:120,perDay:1.3,ph:'26659230876',mp:'586004'},
+    {no:'3902',name:'Mme Nthabiseng K.',trade:'Second-hand clothes',market:'Maseru Main Market',status:'registered',tin:'200-301-845',joined:150,via:true,avg:80,perDay:3,decl:0.9,ph:'26663557019',ec:'22713'}
   ];
   S.traders.forEach(t => { const ll = placeLatLng('T' + t.no, t.market); t.lat = ll[0]; t.lng = ll[1]; });
   S.receipts = []; S.reports = []; S.fakes = []; S.claims = [];
@@ -153,7 +156,7 @@ function loadState(st) {
   NOW = Date.now(); clock = NOW;
   S.traders = st.sellers.map(s => ({no:s.no, name:s.name, trade:s.trade, market:s.market, status:s.status, tin:s.tin, joinedAt:Date.parse(s.joined_at || s.created_at),
     joined:Math.max(0, Math.round((NOW - Date.parse(s.joined_at || s.created_at)) / DAY)), via:s.via_rasiti, ph:s.phone,
-    declared:s.declared_last == null ? null : Number(s.declared_last), helper:s.helper, regAt:s.registered_at ? Date.parse(s.registered_at) : null, lat:s.lat, lng:s.lng}));
+    declared:s.declared_last == null ? null : Number(s.declared_last), helper:s.helper, regAt:s.registered_at ? Date.parse(s.registered_at) : null, lat:s.lat, lng:s.lng, mp:s.mpesa_code || null, ec:s.ecocash_code || null}));
   S.receipts = st.receipts.map(r => ({code:r.code, no:r.seller_no, amt:Number(r.amount), ch:r.channel, ph:r.phone, t:Date.parse(r.issued_at), note:r.note, live:r.source === 'tester' || r.source === 'ussd'}));
   S.receipts.forEach(r => used.add(r.code));
   S.claims = st.claims.map(c => ({id:c.id, no:c.seller_no, amt:Number(c.amount), ph:c.phone, t:Date.parse(c.created_at), state:c.state}));
@@ -182,7 +185,7 @@ async function refresh(quiet) {
 function exportSeed() {
   const iso = t => new Date(t).toISOString();
   return {
-    sellers: S.traders.map(t => ({no:t.no, name:t.name, trade:t.trade, market:t.market, status:t.status, tin:t.tin || null, joined_at:iso(t.joinedAt || NOW), via_rasiti:!!t.via, phone:t.ph, declared_last:t.declared ?? null, lat:t.lat, lng:t.lng})),
+    sellers: S.traders.map(t => ({no:t.no, name:t.name, trade:t.trade, market:t.market, status:t.status, tin:t.tin || null, joined_at:iso(t.joinedAt || NOW), via_rasiti:!!t.via, phone:t.ph, declared_last:t.declared ?? null, lat:t.lat, lng:t.lng, mpesa_code:t.mp || null, ecocash_code:t.ec || null})),
     receipts: S.receipts.map(r => ({code:r.code, seller_no:r.no, amount:r.amt, channel:r.ch, phone:r.ph, issued_at:iso(r.t), note:r.note || null})),
     reports: S.reports.map(r => ({id:r.id, phone:r.ph, type:r.type, seller_no:r.target.no || null, place_key:r.target.place || null, place_label:r.target.label || null, area:r.target.area || null, kind:r.target.kind || null, lat:r.lat ?? null, lng:r.lng ?? null, created_at:iso(r.t)})),
     fakes: S.fakes.map(f => ({id:f.id, code:f.code, kind:f.kind, phone:f.by, detail:f.detail, created_at:iso(f.t)})),
@@ -290,7 +293,7 @@ function drawStatus(r) { const s = shieldState(r); if (!r.ph) return 'none'; if 
 
 /* ================= feed / toast ================= */
 function log(kind, text) { S.feed.unshift({t:clock, kind, text}); renderFeed(); }
-let toastT; function toast(m) { const el = $('#toast'); el.textContent = m; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => el.hidden = true, 2800); }
+let toastT; function toast(m) { if (HOOK.toast) HOOK.toast(m); const el = $('#toast'); el.textContent = m; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => el.hidden = true, 2800); }
 function narrate(html) { $('#narr').innerHTML = html; }
 
 /* ================= actions ================= */
@@ -302,6 +305,28 @@ function issue(no, amt, ch, ph, silent) {
   const st = shieldState(r); const tr = tByNo(no);
   if (!silent) log(st === 'clear' ? 'ok' : st === 'held' ? 'warn' : 'bad', `Receipt ${code} · ${tr.name} · ${M(r.amt)} by ${ch === 'momo' ? 'mobile money' : 'cash'}${st !== 'clear' ? ' · Shield: ' + st : ''}`);
   renderReceipt(); renderAll(); return r;
+}
+/* Mobile money: the customer pays the seller's own M-Pesa or EcoCash merchant code. The network notifies Rasiti (/api/momo),
+   Rasiti finds the seller who linked that code and sends the receipt and draw entries to the payer. No QR code needed. */
+function mmFill() { const tr = tByNo($('#mmSeller').value); if (!tr) return; const c = $('#mmNet').value === 'mpesa' ? tr.mp : tr.ec;
+  $('#mmCode').value = c || ''; $('#mmNote').textContent = c ? `${tr.name}'s ${NETNAME[$('#mmNet').value]} merchant code is ${c}.` : `${tr.name} has not linked a ${NETNAME[$('#mmNet').value]} merchant code. Try the other network, or type any code to see what happens.`; }
+async function payMerchant(net, code, amt) {
+  const ph = PH.c.who, key = net === 'mpesa' ? 'mp' : 'ec', name = NETNAME[net]; amt = Math.round(amt);
+  if (!/^\d{5,7}$/.test(code)) { toast('A merchant code has 5 to 7 digits.'); return null; }
+  const paid = `${name}: You paid ${M(amt)}.00\nto merchant ${code}`;
+  if (saved()) {
+    let j; try { const r = await fetch('/api/momo', {method:'POST', headers:{'content-type':'application/json', 'x-rasiti-demo':'1'}, body:JSON.stringify({network:net, merchant_code:code, amount:amt, msisdn:ph, txn:'DEMO' + rid().toUpperCase()})}); j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); }
+    catch (e) { toast('Payment not recorded: ' + e.message); return null; }
+    if (!j.receipt) { PH.c.st = 'end'; show('c', `${paid}\n\nThis merchant is not on Rasiti,\nso no receipt or draw entries.\nAsk the seller to join Rasiti.\n\n0. Menu`); log('warn', j.reason); return null; }
+    const x = j.receipt; const r = {code:x.code, no:x.seller_no, amt:x.amount, ch:'momo', ph, t:tick(), live:true, net};
+    S.receipts.push(r); used.add(r.code); reEval(); S.lastReceipt = r; renderReceipt(); renderAll();
+    log('ok', `${name} payment to merchant ${code} · receipt ${r.code} · ${x.seller} · ${M(amt)}`);
+    PH.c.st = 'end'; show('c', `${paid}\n(${x.seller})\n\n🧾 Rasiti receipt\n${r.code}\n+${entriesFor(r)} draw entries\n\n0. Menu`); return r;
+  }
+  const tr = S.traders.find(t => t[key] === code);
+  if (!tr) { PH.c.st = 'end'; show('c', `${paid}\n\nThis merchant is not on Rasiti,\nso no receipt or draw entries.\nAsk the seller to join Rasiti.\n\n0. Menu`); log('warn', `${name} merchant code ${code} is not linked to a Rasiti seller: no receipt`); return null; }
+  const r = issue(tr.no, amt, 'momo', ph); r.net = net; PH.c.st = 'end';
+  show('c', `${paid}\n(${tr.name})\n\n🧾 Rasiti receipt\n${r.code}\n+${entriesFor(r)} draw entries\n\n0. Menu`); return r;
 }
 function addFake(f) { const x = {id:rid(), t:tick(), ...f}; S.fakes.push(x); persist({kind:'fake', id:x.id, code:x.code, fkind:x.kind, phone:x.by, detail:x.detail}).catch(() => {}); }
 function addReport(ph, type, target, ll) {
@@ -447,7 +472,7 @@ function phoneToast(k, m) { const t = $('#' + k + 'Toast'); t.textContent = m; t
 function nowLabel() { const d = new Date(); return [pad(d.getHours()) + ':' + pad(d.getMinutes()), DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + ['January','February','March','April','May','June','July','August','September','October','November','December'][d.getMonth()]]; }
 function resetPhone(k, who) {
   const p = PH[k]; if (k === 't') p.who = who; else p.who = who;
-  p.st = 'home'; p.d = {}; p.live = null; p.u = 'idle'; p.dial = '';
+  p.st = 'home'; p.d = {}; p.live = null; p.u = 'idle'; p.dial = ''; p.auth = false; p.pin = null; p.pinFails = 0;
   $('#' + k + 'Log').innerHTML = ''; uRender(k); waView(k, 'home');
 }
 
@@ -514,7 +539,7 @@ const phoneOf = k => { if (k === 'c') return PH.c.who; const tr = tByNo(PH.t.who
 function startUssd(k) {
   const p = PH[k];
   if (API.online && !API.dbEmpty) { p.u = 'live'; p.live = {sid:'demo-' + rid(), parts:[]}; uRender(k); log('info', `USSD ${RASITI_CODE} dialled on the ${k === 't' ? "seller's" : "customer's"} phone (live server session)`); liveStep(k, null); }
-  else { p.u = 'session'; uRender(k); home(k); }
+  else { p.u = 'session'; if (k === 't') p.auth = false; uRender(k); home(k); }
 }
 async function liveStep(k, v) {
   const p = PH[k]; if (!p.live) return; if (v !== null) p.live.parts.push(v);
@@ -565,6 +590,7 @@ function waMe(k, text, quote) {
 }
 function waSend(k, v, label) {
   if (!String(v).trim()) return;
+  if (k === 't' && !label && /^(t_pin|j_pin|j_pin2)$/.test(PH.t.st) && /^\d{4}$/.test(String(v).trim())) label = '••••'; // a PIN is never shown in the chat
   const bots = $('#' + k + 'Log').querySelectorAll('.bb.bot'); const q = label && bots.length ? bots[bots.length - 1].dataset.q : null;
   waMe(k, label || v, q);
   if (/^(sesotho|se-sotho|puo ea sesotho)$/i.test(String(v).trim())) { setLang(k, 'st'); home(k); return; }
@@ -592,6 +618,7 @@ function tipSub(k, on) { const p = PH[k]; const ph = phoneOf(k); if (!!p.tipSub 
 function home(k) { PH[k].st = 'home'; PH[k].d = {};
   if (PH[k].mode === 'wa' && PH[k].tipDay !== new Date(clock).toDateString() && (k === 't' ? tByNo(PH.t.who) : isCustomer(PH.c.who))) tipMsg(k);
   if (k === 'c' && !isCustomer(PH.c.who)) { PH.c.st = 'c_reg0'; show('c', regPrompt()); return; }
+  if (k === 't' && tByNo(PH.t.who) && !PH.t.auth) { PH.t.st = 't_pin'; const tr = tByNo(PH.t.who); show('t', `${tr.name}\nSeller code ${tr.no}\n\nEnter your 4-digit PIN:`); return; }
   show(k, k === 't' ? tHome() : cHome()); }
 /* Language: English or Sesotho, chosen on each phone with 9 (or by typing "Sesotho" / "English" on WhatsApp). Saved per phone number, so the real USSD menu uses it too. */
 const I18N = window.RASITI_I18N;
@@ -599,6 +626,11 @@ const langOpt = k => PH[k].lang === 'st' ? '9. English' : '9. Sesotho';
 function setLang(k, lang) { const p = PH[k]; p.lang = lang; const ph = phoneOf(k);
   if (ph) persist({kind:'lang', phone:ph, lang}).catch(() => {});
   log('info', `${k === 'c' ? 'Customer' : 'Seller'} phone switched to ${lang === 'st' ? 'Sesotho' : 'English'}`); }
+// Seller sign-in: seller code + 4-digit PIN. Merchant codes (M-Pesa from Vodacom, EcoCash from Econet) only say which seller was paid.
+const DEMO_PIN = '2580'; // all demo sellers; real sellers choose their own when they join
+const WEAK_PINS = ['0000','1111','2222','3333','4444','5555','6666','7777','8888','9999','1234','4321','0123','9876'];
+const pinProblem = v => !/^\d{4}$/.test(v) ? 'The PIN must be 4 digits.' : WEAK_PINS.includes(v) ? 'That PIN is too easy to guess.\nChoose another.' : null;
+const NETNAME = {mpesa:'M-Pesa', ecocash:'EcoCash'};
 const REG_PROMPT = 'Lumela! 👋 Welcome to Rasiti, the receipt lottery.\nRegister free to get receipts and win in the monthly draw.\n\n1. Register now\n2. How does it work?';
 const regPrompt = () => REG_PROMPT + '\n' + langOpt('c');
 const statusLbl = t => t.status === 'registered' ? 'Registered · SBT' : 'Enrolled · not yet registered';
@@ -606,7 +638,7 @@ const statusLbl = t => t.status === 'registered' ? 'Registered · SBT' : 'Enroll
 function tHome() { const tr = tByNo(PH.t.who);
   if (!tr) return 'Lumela! Rasiti keeps a free\nsales book on your phone and\nbrings customers who want\nreceipts.\n\n1. Join Rasiti (2 minutes)\n2. What do I get?\n3. Questions & tax help\n' + langOpt('t');
   const pend = S.claims.filter(c => c.no === tr.no && c.state === 'pending').length;
-  return `Lumela ${tr.name.split(' ').slice(0, 2).join(' ')}\nCode ${tr.no} · ${statusLbl(tr)}\n\n1. Record cash sale\n2. Confirm receipts (${pend})\n3. My sales book\n4. ${tr.status === 'enrolled' ? 'Register for tax' : 'My tax & badge'}\n5. Questions & tax help\n${langOpt('t')}`; }
+  return `Lumela ${tr.name.split(' ').slice(0, 2).join(' ')}\nCode ${tr.no} · ${statusLbl(tr)}\n\n1. Record cash sale\n2. Confirm receipts (${pend})\n3. My sales book\n4. ${tr.status === 'enrolled' ? 'Register for tax' : 'My tax & badge'}\n5. Questions & tax help\n6. Mobile money codes\n${langOpt('t')}`; }
 function cHome() { return 'Rasiti receipts\n\n1. Get receipt for cash\n2. Check a receipt\n3. Rate a shop\n4. My draw entries\n5. Shops that give receipts\n6. Questions & answers\n' + langOpt('c'); }
 /* Questions and answers (public/faq.js): short pages on USSD, whole answers on WhatsApp */
 const FAQ = window.RASITI_FAQ;
@@ -642,17 +674,21 @@ function tStep(inp) { const p = PH.t, tr = tByNo(p.who), v = String(inp).trim();
       if (tr.status === 'enrolled') { p.st = 't_reg'; show('t', `Register for tax\n\nSales last 30 days: ${M(m)}\nYearly estimate: ${M(m * 12)}\nYou fit Simplified Business\nTax (under M2,000,000).\n\nRegistered sellers get double\ndraw entries for customers,\nbigger seller prizes and a\nbadge banks recognise.\n\n1. Register now\n2. Ask a helper to call me\n0. Menu`); }
       else { p.st = 't_tax'; show('t', taxMenu(tr)); } }
     else if (v === '5') faqStart('t', 'seller');
+    else if (v === '6') { p.st = 't_mc'; show('t', `Mobile money codes\nM-Pesa: ${tr.mp || 'not linked'}\nEcoCash: ${tr.ec || 'not linked'}\n\n1. Link M-Pesa merchant code\n2. Link EcoCash merchant code\n\n0. Menu`); }
     else if (p.mode === 'wa' && !/^\d+$/.test(v)) { if (!faqFree('t', 'seller', v)) show('t', tHome()); }
     return;
   case 'j_name': if (!v) return; p.d.name = v.slice(0, 60); p.st = 'j_mkt'; show('t', 'Where do you trade?\n(e.g. Sefika rank)'); return;
   case 'j_mkt': if (!v) return; p.d.mkt = v.slice(0, 60); p.st = 'j_trade'; show('t', 'What do you sell?'); return;
-  case 'j_trade': { if (!v) return; let no; do { no = String(7000 + Math.floor(Math.random() * 2999)); } while (tByNo(no));
+  case 'j_trade': if (!v) return; p.d.trade = v.slice(0, 60); p.st = 'j_pin'; show('t', 'Choose a 4-digit PIN.\nYou need it every time you open\nyour seller menu. Do not share it.'); return;
+  case 'j_pin': { const bad = pinProblem(v); if (bad) { show('t', bad + '\n\nChoose a 4-digit PIN:'); return; } p.d.pin = v; p.st = 'j_pin2'; show('t', 'Enter the PIN again:'); return; }
+  case 'j_pin2': if (v !== p.d.pin) { p.st = 'j_pin'; show('t', 'The two PINs are different.\n\nChoose a 4-digit PIN:'); return; }
+  { let no; do { no = String(7000 + Math.floor(Math.random() * 2999)); } while (tByNo(no));
     const area = Object.keys(AREAS).find(a => p.d.mkt.toLowerCase().includes(a.split(' ')[0].toLowerCase())) || p.d.mkt;
     const ll = placeLatLng('T' + no, area);
-    const tr2 = {no, name:p.d.name, trade:v.slice(0, 60), market:p.d.mkt, status:'enrolled', joined:0, joinedAt:clock, ph:randPhone(Math.random), lat:ll[0], lng:ll[1]};
-    S.traders.push(tr2); persist({kind:'seller_join', no, name:tr2.name, trade:tr2.trade, market:tr2.market, phone:tr2.ph, lat:ll[0], lng:ll[1]}).catch(() => {});
-    log('ok', `New seller enrolled: ${tr2.name} (${tr2.market}), code ${no}`); p.who = no; fillSelects(); p.st = 'end';
-    show('t', `Welcome ${tr2.name}!\nYour seller code: ${no}\n\nPut the Rasiti sticker where\ncustomers can see it. You\ncan give receipts now.\nNo tax number needed yet.\n\n0. Menu`); renderAll(); return; }
+    const tr2 = {no, name:p.d.name, trade:p.d.trade, market:p.d.mkt, status:'enrolled', joined:0, joinedAt:clock, ph:randPhone(Math.random), lat:ll[0], lng:ll[1]};
+    S.traders.push(tr2); tr2.pin = p.d.pin; persist({kind:'seller_join', no, pin:p.d.pin, name:tr2.name, trade:tr2.trade, market:tr2.market, phone:tr2.ph, lat:ll[0], lng:ll[1]}).catch(() => {});
+    log('ok', `New seller enrolled: ${tr2.name} (${tr2.market}), code ${no}`); p.who = no; p.auth = true; p.pin = p.d.pin; fillSelects(); p.st = 'end';
+    show('t', `Welcome ${tr2.name}!\nYour seller code: ${no}\nKeep your PIN secret.\n\nPut the Rasiti sticker where\ncustomers can see it. You\ncan give receipts now.\nNo tax number needed yet.\n\n0. Menu`); renderAll(); return; }
   case 't_amt': { const a = parseFloat(v); if (!(a > 0)) { show('t', 'Amount (M), numbers only:'); return; } p.d.amt = a; p.st = 't_amt_ph'; show('t', `Sale ${M(a)}\n\nCustomer phone for their\nreceipt SMS (or 0 to skip):`); return; }
   case 't_amt_ph': { let ph = null; if (v !== '0') { const d = v.replace(/\D/g, ''); ph = d.length === 8 ? '266' + d : d.length === 11 ? d : null; if (!ph) { show('t', 'Phone: 8 digits, or 0 to skip:'); return; } }
     const r = issue(tr.no, p.d.amt, 'cash', ph); p.st = 'end';
@@ -703,8 +739,29 @@ function tStep(inp) { const p = PH.t, tr = tByNo(p.who), v = String(inp).trim();
     log('ok', `${tr.name} registered through Rasiti · TIN ${tin} · customers now earn double entries`); fillSelects(); p.st = 'end';
     show('t', `Checking RSL register...\n${look.found ? 'Found on RSL register.' : 'RSL issued your TIN.'}\nTIN ${tin}\nYou are a registered seller.\n\nYour customers now earn\ndouble draw entries.\nFirst return due ${dueDate()},\nprefilled from your book.\n\n0. Menu`);
     narrate(`<b>Tax net widened.</b> ${esc(tr.name)} registered from her own phone. Her customers keep their entries and now earn double, which gives them a reason to choose her stall.`); renderAll(); return; }
+  case 't_pin': {
+    if (!/^\d{4}$/.test(v)) { show('t', 'The PIN has 4 digits.\n\nEnter your 4-digit PIN:'); return; }
+    if (tr.lockUntil > clock) { p.st = 'end'; show('t', 'Too many wrong PINs.\nTry again in 15 minutes,\nor call RSL on 8002 2009.'); return; }
+    if (saved()) { api('event', {kind:'seller_pin', no:tr.no, pin:v}, {quiet:true}).then(r => pinDone(r.ok, r.msg, v)).catch(e => show('t', e.message)); return; }
+    const ok = v === (tr.pin || DEMO_PIN); p.pinFails = ok ? 0 : (p.pinFails || 0) + 1;
+    if (!ok && p.pinFails >= 3) { tr.lockUntil = clock + 15 * MIN; p.pinFails = 0; pinDone(false, 'Wrong PIN 3 times. The seller menu is locked for 15 minutes.', v); return; }
+    pinDone(ok, ok ? '' : `Wrong PIN. ${3 - p.pinFails} ${3 - p.pinFails === 1 ? 'try' : 'tries'} left.`, v); return; }
+  case 't_mc': if (v !== '1' && v !== '2') { show('t', 'Choose 1 or 2, or 0 for the menu.'); return; }
+    p.d.net = v === '1' ? 'mpesa' : 'ecocash'; p.st = 't_mc_code'; show('t', `Your ${NETNAME[p.d.net]} merchant code\n(5 to 7 digits, from ${p.d.net === 'mpesa' ? 'Vodacom' : 'Econet'}):`); return;
+  case 't_mc_code': { const mc = v.replace(/\D/g, ''); const key = p.d.net === 'mpesa' ? 'mp' : 'ec', net = NETNAME[p.d.net];
+    if (!/^\d{5,7}$/.test(mc)) { show('t', 'A merchant code has 5 to 7 digits.\n\nYour merchant code:'); return; }
+    const other = S.traders.find(x => x.no !== tr.no && x[key] === mc);
+    const done = () => { tr[key] = mc; p.st = 'end'; log('ok', `${tr.name} linked ${net} merchant code ${mc} (network check simulated)`);
+      show('t', `${net} code ${mc} linked.\n${p.d.net === 'mpesa' ? 'Vodacom' : 'Econet'} confirmed it is yours\n(simulated).\n\nPayments to this code now\ngive your customers receipts\nby themselves.\n\n0. Menu`); renderAll(); };
+    if (other) { p.st = 'end'; log('warn', `${net} code ${mc} is already linked to seller ${other.no}: RSL to check`); show('t', `This ${net} code is already\nlinked to another Rasiti seller.\nRSL will check it.\n\n0. Menu`); return; }
+    if (saved()) { api('event', {kind:'merchant_link', no:tr.no, pin:p.pin, network:p.d.net, code:mc}, {quiet:true}).then(done).catch(e => { p.st = 'end'; show('t', e.message + '\n\n0. Menu'); }); return; }
+    done(); return; }
   case 'end': home('t'); return;
   } }
+function pinDone(ok, msg, v) { const p = PH.t, tr = tByNo(p.who);
+  if (ok) { p.auth = true; p.pin = v; p.st = 'home'; log('info', `${tr.name} signed in to the seller menu with a PIN`); show('t', tHome()); return; }
+  if (/locked|Too many/.test(msg)) { p.st = 'end'; log('warn', `Seller menu ${tr.no} locked after 3 wrong PINs`); show('t', msg + '\n\nCall RSL on 8002 2009 if you forgot it.'); return; }
+  show('t', msg + '\n\nEnter your 4-digit PIN:'); }
 
 function cStep(inp) { const p = PH.c, v = String(inp).trim();
   if (v === '0' && !['c_amt', 'c_paper', 'c_place', 'c_reg0', 'c_reg_name'].includes(p.st)) { home('c'); return; }
@@ -788,9 +845,11 @@ function fillSelects() {
   const ts = $('#tSel'); if (!ts) return;
   ts.innerHTML = S.traders.map(t => `<option value="${t.no}">${esc(t.name)} · ${esc(t.trade)} (${t.status})</option>`).join('') + '<option value="new">Someone not on Rasiti yet</option>';
   ts.value = PH.t.who || 'new';
-  $('#qrSeller').innerHTML = S.traders.map(t => `<option value="${t.no}">${esc(t.name)} · ${t.no}</option>`).join('');
+  const ms = $('#mmSeller'); if (ms) { const keep = ms.value; ms.innerHTML = S.traders.map(t => `<option value="${t.no}">${esc(t.name)} · ${t.no}</option>`).join(''); ms.value = keep && tByNo(keep) ? keep : (S.traders.find(t => t.mp) || S.traders[0] || {}).no || ''; mmFill(); }
   $('#cSel').innerHTML = PERSONAS.map(p => `<option value="${p.ph}">${p.name} · ${mask(p.ph)}</option>`).join(''); $('#cSel').value = PH.c.who;
 }
+// Guided cases sign the seller in with the demo PIN, as the seller would.
+function caseSeller(no) { setT(no); PH.t.auth = true; PH.t.pin = DEMO_PIN; PH.t.st = 'home'; show('t', tHome()); }
 function setT(no) { if (PH.t.who !== no) resetPhone('t', no); $('#tSel').value = no; home('t'); }
 function setC(ph) { if (PH.c.who !== ph) resetPhone('c', ph); $('#cSel').value = ph; home('c'); }
 
@@ -799,16 +858,11 @@ function renderReceipt() { const r = S.lastReceipt; if (!r) return; const tr = t
   $('#receiptCard').innerHTML = `<div class="receipt"><div class="rh"><svg viewBox="0 0 176 100" role="img" aria-label="Rasiti"><use href="#rasiti-mark"/></svg></div>
     <div>${esc(tr.name)}<br>${esc(tr.trade)} · ${esc(tr.market)}</div>
     <div class="row"><span>Seller code</span><span>${tr.no}</span></div>
-    <div class="row"><span>${fT(r.t)}</span><span>${r.ch === 'momo' ? 'Mobile money' : 'Cash'}</span></div>
+    <div class="row"><span>${fT(r.t)}</span><span>${r.ch === 'momo' ? (r.net ? NETNAME[r.net] : 'Mobile money') : 'Cash'}</span></div>
     <div class="row" style="font-weight:600;font-size:.9rem;margin-top:4px"><span>TOTAL</span><span>${M(r.amt)}.00</span></div>
-    <canvas width="21" height="21" id="qrc" aria-label="Pattern standing in for a QR code"></canvas>
     <div class="code">${r.code}</div>
     <div class="row"><span>Draw entries</span><span>${entriesFor(r)} · ${drawStatus(r)}</span></div>
-    <div class="foot">Check it: dial *999#, or WhatsApp Rasiti<br>QR pattern is illustrative</div></div>`;
-  const c = $('#qrc').getContext('2d'); const rr = mulberry32(hashStr(r.code));
-  c.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--paper-ink').trim() || '#222';
-  for (let y = 0; y < 21; y++) for (let x = 0; x < 21; x++) { const f = (x < 7 && y < 7) || (x > 13 && y < 7) || (x < 7 && y > 13);
-    if (f) { const ax = x > 13 ? x - 14 : x, ly = y > 13 ? y - 14 : y; if (Math.max(Math.abs(ax - 3), Math.abs(ly - 3)) !== 2) c.fillRect(x, y, 1, 1); } else if (rr() < .5) c.fillRect(x, y, 1, 1); } }
+    <div class="foot">Check it: dial *999#, or WhatsApp Rasiti</div></div>`; }
 function renderFeed() { $('#feed').innerHTML = S.feed.slice(0, 40).map(f => `<li><time>${hm(f.t)}</time><span><span class="k-${f.kind}">●</span> ${esc(f.text)}</span></li>`).join('') || '<li><span></span><span class="note">Nothing yet.</span></li>'; }
 
 /* ================= Fraud Shield view ================= */
@@ -1092,7 +1146,7 @@ function downloadCSV(name, cols, rows) {
   const txt = '﻿' + [cols.map(c => csvCell(c[0])).join(','), ...rows.map(r => cols.map(c => csvCell(c[1](r))).join(','))].join('\r\n');
   saveBlob(new Blob([txt], {type:'text/csv;charset=utf-8'}), name); toast('Downloaded ' + name);
 }
-function saveBlob(blob, name) { const u = URL.createObjectURL(blob); const l = document.createElement('a'); l.href = u; l.download = name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
+function saveBlob(blob, name) { if (HOOK.save) { HOOK.save(name); return; } const u = URL.createObjectURL(blob); const l = document.createElement('a'); l.href = u; l.download = name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
 const stamp = () => { const d = new Date(); return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()); };
 const isoT = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const maskCsv = p => p ? (SHOWPH ? p : p.slice(0, 4) + '****' + p.slice(-3)) : '';
@@ -1150,7 +1204,7 @@ async function makePdf(file, title, blocks) {
   });
   const n = doc.getNumberOfPages(); const who = API.user ? API.user.name || API.user.email : 'demo user';
   for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); mut(); doc.text(pdfTxt(`Generated ${isoT(Date.now())} by ${who} · Rasiti`), MX, 291); doc.text(`Page ${i} of ${n}`, W - MX, 291, {align:'right'}); }
-  doc.save(file);
+  if (HOOK.save) HOOK.save(file); else doc.save(file);
 }
 async function withBusy(fn, msg) { netBusy(true); try { await fn(); toast(msg); } catch (e) { toast('Could not make the PDF: ' + e.message); } finally { netBusy(false); } }
 /* ---- Real map images for PDF reports: satellite tiles drawn on a canvas, markers on top ---- */
@@ -1529,12 +1583,11 @@ async function setAction(it, on) {
 
 /* ================= guided cases ================= */
 const CASES = [
- {tag:'Ordinary', cls:'', t:'Customer pays by QR', d:'Lerato pays Ntate Thabo M30. The receipt issues itself.', run() {
-   setC(PERSONAS[0].ph); setT('3307'); const r = issue('3307', 30, 'momo', PERSONAS[0].ph); PH.c.st = 'end';
-   show('c', `M-Pesa: You paid M30.00 to\n${tByNo('3307').name} (3307)\n\n🧾 Rasiti receipt\n${r.code}\n+${entriesFor(r)} draw entries\n\n0. Menu`); PH.t.st = 'home'; tStep('3');
-   narrate(`<b>Ordinary case.</b> Payment and receipt are one step. The sale lands in Thabo's sales book and Lerato gets ${entriesFor(r)} entries, double because Thabo is registered. The Fraud Shield scored it clear.`); }},
+ {tag:'Ordinary', cls:'', t:'Customer pays with M-Pesa', d:"Lerato pays M30 to Ntate Thabo's M-Pesa merchant code. The receipt issues itself.", async run() {
+   setC(PERSONAS[0].ph); caseSeller('3307'); const tr = tByNo('3307'); const r = await payMerchant('mpesa', tr.mp || '584112', 30); if (!r) return;
+   narrate(`<b>Ordinary case.</b> Lerato paid Thabo's own M-Pesa merchant code (${esc(tr.mp || '584112')}), as she always does. M-Pesa told Rasiti, which found the seller who linked that code and sent Lerato receipt ${esc(r.code)} with ${entriesFor(r)} entries, double because Thabo is registered. No QR code and no extra step. The Fraud Shield scored it clear.`); }},
  {tag:'Exception', cls:'ex', t:'Cash sale, no signal', d:"Tumelo pays M45 cash at Thabo's with no network. The request waits, then the seller confirms.", run() {
-   setC(PERSONAS[1].ph); setT('3307'); PH.c.offline = true; PH.c.st = 'c_amt'; PH.c.d = {no:'3307'}; cStep('45');
+   setC(PERSONAS[1].ph); caseSeller('3307'); PH.c.offline = true; PH.c.st = 'c_amt'; PH.c.d = {no:'3307'}; cStep('45');
    narrate('<b>Exception.</b> No signal at the rank. The request is saved on the phone…');
    setTimeout(() => { PH.c.offline = false; S.claims.filter(c => c.state === 'queued').forEach(c => { c.state = 'pending'; persist({kind:'claim', id:c.id, seller_no:c.no, amount:c.amt, phone:c.ph, state:'pending'}).catch(() => {}); });
      log('info', 'Signal back: queued receipt request sent to Ntate Thabo');
@@ -1549,14 +1602,14 @@ const CASES = [
    narrate('<b>Fake receipt.</b> The check character does not match, so the phone says NOT GENUINE at once. Choose "Report the seller" to report it.'); }},
  {tag:'New taxpayer', cls:'nx', t:'Mme Palesa registers', d:'An enrolled fruit seller registers from her phone. Her customers start earning double entries.', run() {
    const tr = tByNo('4821'); if (!tr || tr.status === 'registered') { narrate('Mme Palesa is already registered. Pick another enrolled seller, or ask an owner to reset the demo data.'); return; }
-   setT('4821'); PH.t.st = 'home'; tStep('4');
+   caseSeller('4821'); tStep('4');
    narrate('<b>Widening the tax net.</b> Palesa has used the free sales book for 6 weeks. On her phone, choose Register now, then enter any ID number such as <b>0123456789</b>.'); }},
  {tag:'New lead', cls:'nx', t:'Third report on an unlisted stall', d:'Lerato reports the chisa nyama stall at Sefika rank. It crosses the 3-reporter line.', run() {
    setC(PERSONAS[0].ph); PH.c.st = 'c_rtype'; PH.c.d = {type:'unlisted'}; finishRating({place:'sefika-p3', label:'Chisa nyama stall, Sefika rank platform 3', area:'Sefika taxi rank', kind:'Informal'}, null);
    narrate('<b>New lead.</b> Three different customers have now named the same stall. It moves from Watching to an assisted enrolment visit in the <a href="#officer">officer console</a>, and appears on the map. The reporter stays anonymous.'); }},
  {tag:'Sustained payment', cls:'', t:'Mme Nthabiseng catches up', d:'A seller with overdue tax files from her sales book and pays part by mobile money.', run() {
    const tr = tByNo('3902'); if (!tr || tr.status !== 'registered') { narrate('Mme Nthabiseng is not a registered seller in this data. Reset and load the demo data first.'); return; }
-   setT('3902'); PH.t.st = 'home'; tStep('4');
+   caseSeller('3902'); tStep('4');
    const x = taxOf('3902');
    narrate(`<b>Sustained payment.</b> Nthabiseng owes ${M(x.owed)}${x.overdueAmt ? `, of which ${M(x.overdueAmt)} is overdue` : ''}. On her phone, choose <b>1</b> to file the ${perName(lastPer())} return straight from her sales book, then <b>2</b> to pay part now by mobile money. The officer console shows a payment-plan suggestion, not a penalty, and her streak starts again once she is up to date.`); }}
 ];
@@ -1987,7 +2040,7 @@ function dashPDF() { return withBusy(async () => { const D = dashData(); const k
 
 /* ================= System log: who did what, and when ================= */
 const LG = {rows:[], total:0, offset:0, busy:false};
-const ACTLABEL = a => ({rsl_tin_check:'RSL TIN check (simulated)', rsl_return_sent:'Return sent to RSL (simulated)', education_sms_sent:'Education SMS sent (simulated)', tip_subscribed:'Subscribed to daily tip SMS', tip_unsubscribed:'Stopped daily tip SMS', login:'Signed in', logout:'Signed out', login_failed:'Failed sign-in', password_changed:'Changed own password', password_reset:'Reset a user\'s password', user_created:'Added a user', user_updated:'Changed a user',
+const ACTLABEL = a => ({rsl_tin_check:'RSL TIN check (simulated)', rsl_return_sent:'Return sent to RSL (simulated)', education_sms_sent:'Education SMS sent (simulated)', seller_pin_set:'Seller created a PIN', seller_pin_locked:'Seller menu locked (3 wrong PINs)', merchant_code_linked:'Linked a mobile-money merchant code', merchant_code_conflict:'Merchant code already linked to another seller', momo_unlinked:'Paid a merchant code not on Rasiti', test_agent_run:'Ran Mohlomi AI tests', tip_subscribed:'Subscribed to daily tip SMS', tip_unsubscribed:'Stopped daily tip SMS', login:'Signed in', logout:'Signed out', login_failed:'Failed sign-in', password_changed:'Changed own password', password_reset:'Reset a user\'s password', user_created:'Added a user', user_updated:'Changed a user',
   review:'Decided held receipts', undo_review:'Undid a review decision', worklist_done:'Marked a worklist item done', worklist_invite:'Sent a registration invitation', worklist_visit:'Booked a visit or referral', undo_worklist:'Undid a worklist action',
   draw_run:'Ran the monthly draw', undo_draw:'Undid a draw', demo_data_loaded:'Loaded the demo data', demo_data_reset:'Reset the demo data', all_data_cleared:'Cleared all data',
   bohlale_ask:'Asked Bohlale AI', contacts_shown:'Showed full phone numbers', contacts_hidden:'Hid phone numbers', receipt_issued:'Receipt issued', receipt_claimed:'Receipt claimed by a customer',
@@ -2030,15 +2083,15 @@ function renderContactsBtn() { const b = $('#phBtn'); if (!b) return; const can 
   b.hidden = !(can && RSL_VIEWS.includes(currentView())); b.textContent = SHOWPH ? 'Hide contacts' : 'Show contacts'; b.setAttribute('aria-pressed', SHOWPH); b.classList.toggle('on', SHOWPH); }
 
 /* ================= shell: nav, auth, routing ================= */
-const NAVICONS = {dash:'<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>', logs:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>', guide:'<circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z"/>', phones:'<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>', shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>', watch:'<circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/>', officer:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>', draw:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>', bohlale:'<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>', users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>'};
-const TITLES = {guide:'Start here', phones:'Phones', shield:'Fraud Shield', watch:'Community watch', officer:'Officer console · General Clients', draw:'Monthly draw', bohlale:'Bohlale AI · officer assistant', users:'Users and activity', logs:'System log', dash:'Dashboard · bird\'s-eye view'};
-const RSL_VIEWS = ['dash', 'shield', 'watch', 'officer', 'draw', 'bohlale', 'users', 'logs'];
+const NAVICONS = {dash:'<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>', logs:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>', guide:'<circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z"/>', phones:'<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>', shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>', watch:'<circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/>', officer:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>', draw:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>', bohlale:'<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>', agent:'<rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/>', users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>'};
+const TITLES = {guide:'Start here', phones:'Phones', shield:'Fraud Shield', watch:'Community watch', officer:'Officer console · General Clients', draw:'Monthly draw', bohlale:'Bohlale AI · officer assistant', users:'Users and activity', logs:'System log', agent:'Mohlomi AI · test agent', dash:'Dashboard · bird\'s-eye view'};
+const RSL_VIEWS = ['dash', 'shield', 'watch', 'officer', 'draw', 'bohlale', 'users', 'logs', 'agent'];
 const VIEWS = ['guide', 'phones', ...RSL_VIEWS];
 function renderNav() {
   const ic = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NAVICONS[k]}</svg>`;
-  const a = k => `<a href="#${k}">${k === 'bohlale' ? `<img class="nav-img" src="${BH_LOGO}" alt="">` : ic(k)}${TITLES[k].split(' ·')[0]}</a>`;
+  const a = k => `<a href="#${k}">${k === 'bohlale' ? `<img class="nav-img" src="${BH_LOGO}" alt="">` : k === 'agent' ? `<img class="nav-img" src="${MH_LOGO}" alt="">` : ic(k)}${TITLES[k].split(' ·')[0]}</a>`;
   const showUsers = API.online && API.user && ['owner', 'admin'].includes(API.user.role);
-  $('#nav').innerHTML = '<div class="grp">Try it</div>' + a('guide') + a('phones') + '<div class="grp">RSL side' + (API.online && !API.user ? ' · sign in' : '') + '</div>' + a('dash') + a('shield') + a('watch') + a('officer') + a('draw') + a('bohlale') + (showUsers ? a('users') + a('logs') : '');
+  $('#nav').innerHTML = '<div class="grp">Try it</div>' + a('guide') + a('phones') + '<div class="grp">RSL side' + (API.online && !API.user ? ' · sign in' : '') + '</div>' + a('dash') + a('shield') + a('watch') + a('officer') + a('draw') + a('bohlale') + (showUsers ? a('users') + a('logs') + a('agent') : '');
   const f = $('#sideFoot');
   if (!API.online) f.innerHTML = '<b>Offline demo</b>Not connected to the database.<br>Data resets on reload.';
   else if (API.user) f.innerHTML = `<b>${esc(API.user.name)}</b>${esc(API.user.role[0].toUpperCase() + API.user.role.slice(1))} · ${esc(API.user.email)}<br><button type="button" id="logoutBtn">Sign out</button>`;
@@ -2060,7 +2113,7 @@ const currentView = () => { const h = location.hash.slice(1); return VIEWS.inclu
 function route() {
   const v = currentView();
   const needLogin = API.online && RSL_VIEWS.includes(v) && !API.user;
-  const noAccess = (v === 'users' || v === 'logs') && !(API.online && API.user && ['owner', 'admin'].includes(API.user.role));
+  const noAccess = (v === 'users' || v === 'logs' || v === 'agent') && !(API.online && API.user && ['owner', 'admin'].includes(API.user.role));
   $('#login').hidden = !needLogin;
   const show = noAccess ? 'guide' : v;
   document.querySelectorAll('[data-view]').forEach(s => s.hidden = s.dataset.view !== show);
@@ -2074,6 +2127,7 @@ function route() {
   if (show === 'logs') renderLogs(true);
   renderHist(); renderContactsBtn();
   if (show === 'bohlale') renderBohlale();
+  if (show === 'agent' && window.AGENT) AGENT.render();
   window.scrollTo(0, 0);
 }
 /* Simulated RSL e-services link: every registration, return and payment, with the answer RSL e-services would give. */
@@ -2109,8 +2163,8 @@ function reEvalIfNeeded() { if (!S.eval || Object.keys(S.eval).length !== S.rece
 function wire() {
   $('#cases').innerHTML = CASES.map((c, i) => `<button type="button" class="case" data-case="${i}"><span class="tag ${c.cls}">${c.tag}</span><b>${c.t}</b><small>${c.d}</small></button>`).join('');
   $('#cases').addEventListener('click', e => { const b = e.target.closest('[data-case]'); if (b) CASES[+b.dataset.case].run(); });
-  $('#qrForm').addEventListener('submit', e => { e.preventDefault(); const no = $('#qrSeller').value; const a = parseFloat($('#qrAmt').value); if (!(a > 0)) return;
-    const r = issue(no, a, 'momo', PH.c.who); PH.c.st = 'end'; show('c', `M-Pesa: paid ${M(a)} to\n${tByNo(no).name} (${no})\n\n🧾 Rasiti receipt\n${r.code}\n+${entriesFor(r)} draw entries\n\n0. Menu`); toast('Receipt issued: ' + r.code); });
+  $('#mmForm').addEventListener('submit', e => { e.preventDefault(); const a = parseFloat($('#mmAmt').value); if (!(a > 0)) return; payMerchant($('#mmNet').value, $('#mmCode').value.trim(), a); });
+  $('#mmSeller').addEventListener('change', mmFill); $('#mmNet').addEventListener('change', mmFill);
   $('#streamFilters').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (b) { S.filter = b.dataset.f; renderShield(); } });
   $('#shopFilters').addEventListener('click', e => { const b = e.target.closest('[data-sf]'); if (b) { WF.sig = b.dataset.sf; renderWatch(); } });
   $('#wfType').innerHTML = '<option value="all">All problems</option>' + Object.entries(REPTYPE).filter(x => x[0] !== 'got').map(x => `<option value="${x[0]}">${x[1]}</option>`).join('');
@@ -2233,5 +2287,8 @@ async function boot() {
   const ld = $('#loader'); setTimeout(() => { ld.classList.add('out'); setTimeout(() => { ld.hidden = true; }, 450); }, Math.max(0, 4800 - performance.now()));
   log('info', API.online ? (API.dbEmpty ? 'Connected. Database is empty, using local demo data.' : `Connected to the database: ${S.traders.length} sellers, ${S.receipts.length.toLocaleString('en-US')} receipts`) : 'Offline demo: mock data in your browser only');
 }
+// What Mohlomi AI (public/agent.js) may use. Everything else stays private to this file.
+window.RASITI_APP = {HOOK, TITLES, PH, RASITI_CODE, currentView, setMode, uNav, uRender, uDial, ussdSend, openChat, waSend,
+  api, esc, fT, stamp, makePdf, withBusy, toast, user:() => API.user};
 boot();
 })();

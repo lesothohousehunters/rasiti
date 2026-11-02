@@ -2,6 +2,7 @@
 // For a live pilot, split this into a public endpoint (no phone numbers) and an officer endpoint.
 import { db } from './_lib/db.js';
 import { route } from './_lib/http.js';
+import { publicSeller } from './_lib/pin.js';
 
 export default route(async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
@@ -21,5 +22,5 @@ export default route(async (req, res) => {
     q("SELECT id, seller_no, period, amount::float AS amount, ref, channel, paid_at FROM payments WHERE paid_at > now() - interval '400 days' ORDER BY paid_at")
   ]);
   const [{ subs }] = await q('SELECT count(*)::int AS subs FROM phone_prefs WHERE tips_sub');
-  res.status(200).json({ tip_subscribers: subs, empty: false, now: new Date().toISOString(), sellers, receipts, claims, reports, fakes, reviews, actions, draws, returns, payments });
+  res.status(200).json({ tip_subscribers: subs, empty: false, now: new Date().toISOString(), sellers: sellers.map(publicSeller), receipts, claims, reports, fakes, reviews, actions, draws, returns, payments });
 });

@@ -93,6 +93,46 @@ Optional settings (any OpenAI-compatible service works):
 
 **Production:** run an open model (for example gpt-oss, Qwen or Gemma) on RSL's own server with vLLM or Ollama, and point `AI_BASE_URL` to it (for example `http://10.0.0.5:8000/v1`). Taxpayer data then never leaves RSL. Free cloud services must only receive mock data.
 
+## Seller sign-in: seller code and PIN
+
+Sellers sign in to their menu with their **4-digit seller code and a 4-digit PIN**, on USSD and on WhatsApp. A merchant code is never used to sign in.
+
+- New sellers choose a PIN when they join (entered twice; easy PINs such as 1234 are refused). It is stored only as a bcrypt hash, never shown, and never sent to the browser.
+- 3 wrong PINs lock the seller menu for 15 minutes; the lock is written to the system log.
+- Sellers who joined before PINs existed create one the first time they dial, and only from their own registered phone number.
+- Demo sellers loaded with the demo dataset all use PIN **2580** (shown on the Start here page).
+- On WhatsApp the PIN is shown as •••• in the chat.
+
+## Mobile money: M-Pesa and EcoCash merchant codes (no QR codes)
+
+M-Pesa (Vodacom Lesotho) and EcoCash (Econet Telecom Lesotho) already give sellers **merchant codes**. Customers pay them as usual. Three codes work together:
+
+| Code | Who gives it | What it is for |
+| --- | --- | --- |
+| Rasiti seller code (4 digits) | Rasiti, when the seller joins | The seller's identity in Rasiti: sticker, cash receipts, officer records, sign-in with the PIN |
+| M-Pesa merchant code | Vodacom | Where M-Pesa payments go. Linked to one Rasiti seller |
+| EcoCash merchant code | Econet | Where EcoCash payments go. Linked to one Rasiti seller |
+
+- The seller links their own merchant codes: `*999#` > 2 > seller code > PIN > **6. Mobile money codes** (or the same menu on WhatsApp). One merchant code can belong to only one seller; a clash is refused and logged for RSL to check. In a pilot, Rasiti asks the network to confirm the code belongs to the seller before linking (simulated here).
+- When a customer pays a linked merchant code, the network sends a payment notification to **`/api/momo`**. Rasiti finds the seller, issues the receipt and draw entries to the payer's number, and ignores repeats of the same transaction. A code that is not linked gets no receipt.
+- Settings: optional `MOMO_KEY`. Give the networks (or the payment aggregator) the callback `https://your-subdomain/api/momo?key=THAT-WORD`. The demo panel on the Phones page works without the key.
+
+Example notification (JSON or form-encoded):
+```
+POST /api/momo?key=MOMO_KEY
+{"network":"mpesa","merchant_code":"584112","amount":30,"msisdn":"26658123301","txn":"QK7XYZ123"}
+```
+
+## Mohlomi AI (test agent)
+
+**Mohlomi AI** ("the wise one") is a test agent inside Rasiti, for owners and admins only (menu: Mohlomi AI). Type what to check in plain words, for example "check that a customer who pays by M-Pesa gets a receipt". Mohlomi plans the steps, opens Rasiti's pages and demo phones in your browser while you watch, and reports what passed and what failed (copy or PDF). Every run is written to the system log.
+
+- **Look only** (default, safe during judging): opens pages, reads them and checks downloads. Changes nothing.
+- **Allow test changes**: also uses the demo phones and buttons such as payments and the draw. These are real demo records; use Undo or reset the demo data afterwards.
+- Clearing or resetting data, switching users off and passwords are always blocked.
+- Planning uses the same AI settings as Bohlale (`AI_API_KEY`). Without them, Mohlomi uses four built-in tests: every page, every download, the phones (USSD, PIN, M-Pesa payment, WhatsApp) and show/hide contacts.
+- Bohlale remains the officers' AI assistant; Mohlomi only tests the platform.
+
 ## Downloads and analytics
 
 - **Community watch** has filters (period, area, shop type, signal), three maps (shop ratings, hotspots without receipts, receipt rate by area), charts, and an "Ask Bohlale about this view" box that works as the data analyst.
@@ -187,19 +227,22 @@ public/tips.js      Daily education messages (tip of the day), English and Sesot
 public/rsl-mock.js  Simulated RSL e-services link: TIN check, return acknowledgement, payment receipt
 public/i18n.js      Sesotho for every phone screen (USSD, WhatsApp, on-screen phones)
 public/app.js       Phones, Fraud Shield, maps, officer console, draw, Bohlale AI, users
+public/agent.js     Mohlomi AI test agent (runs the steps in the browser)
 public/vendor/      Leaflet maps and jsPDF (served locally)
-public/img/         Login photo and Bohlale AI logo
+public/img/         Login photo, Bohlale AI and Mohlomi AI logos
 api/state.js        GET all demo data
 api/event.js        POST actions from the public phones (validated)
 api/auth.js         Sign in, sign out, change password
 api/users.js        Add and manage users, activity log
 api/admin.js        Reviews, worklist actions, draws, load/reset demo data
 api/health.js       Health check for uptime monitors (no database)
-api/ussd.js         Real USSD menus for a gateway (Africa's Talking format)
+api/ussd.js         Real USSD menus for a gateway (Africa's Talking format); seller code + PIN
+api/momo.js         M-Pesa / EcoCash payment notifications: merchant code -> seller -> receipt
+api/agent.js        Mohlomi AI: plans tests from plain words, logs each run
 api/bohlale.js      Bohlale AI: sends masked data to an OpenAI-compatible model
 api/logs.js         Full system log (who, what, when) for owners and admins
 api/tile.js         Map tiles for PDF reports (satellite, street map as backup; Lesotho only)
-api/_lib/           Database, sessions, schema, receipt code checks
+api/_lib/           Database, sessions, schema, receipt code checks, seller PINs
 schema.sql          Same tables as the app creates automatically
 dev-server.mjs      Server used by Render (npm start) and for local testing
 vercel.json         Vercel settings

@@ -11,7 +11,7 @@
 import { db, audit } from './_lib/db.js';
 import { route, body, requireRole, bad } from './_lib/http.js';
 
-const KEY = () => (process.env.AI_API_KEY || '').trim();
+export const KEY = () => (process.env.AI_API_KEY || '').trim();
 // Accepts common mistakes: a missing /openai/v1, a trailing /chat/completions, extra slashes or spaces.
 function BASE() {
   let u = (process.env.AI_BASE_URL || 'https://api.groq.com/openai/v1').trim().replace(/\/+$/, '').replace(/\/chat\/completions$/, '').replace(/\/+$/, '');
@@ -67,7 +67,7 @@ function choose(ids) {
 }
 const modelProblem = (r, msg) => r.status === 404 || (r.status === 400 && /model|decommission|not found|does not exist/i.test(msg));
 // Calls the model; if the configured model is missing or retired, picks another one once and remembers it.
-async function complete(messages, signal) {
+export async function complete(messages, signal) {
   let model = picked || WANTED() || PREFERRED[0];
   let { r, j, msg } = await post(model, messages, signal);
   if (!r.ok && modelProblem(r, msg)) {
@@ -76,7 +76,7 @@ async function complete(messages, signal) {
   } else if (r.ok && !picked) picked = model;
   return { r, j, msg, model };
 }
-function why(r, msg) {
+export function why(r, msg) {
   if (r.status === 401 || r.status === 403) return `The AI key was not accepted (${r.status}: ${msg}). Check AI_API_KEY in Render`;
   if (r.status === 429) return 'The free AI limit was reached for now. Try again in a minute';
   if (r.status === 404) return `The AI service could not find the model or address (404: ${msg}). Check AI_BASE_URL and AI_MODEL in Render, or delete AI_MODEL so Bohlale picks one`;

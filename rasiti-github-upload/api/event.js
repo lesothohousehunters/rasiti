@@ -3,6 +3,7 @@
 import { db, audit } from './_lib/db.js';
 import { route, body, bad } from './_lib/http.js';
 import { validCode, PHONE, inLesotho } from './_lib/codes.js';
+import { checkPin, hashPin, pinProblem } from './_lib/pin.js';
 
 const ID = /^[a-z0-9-]{6,40}$/i;
 const txt = (v, n) => String(v ?? '').trim().slice(0, n);
@@ -65,8 +66,9 @@ export default route(async (req, res) => {
       if (!/^\d{4}$/.test(b.no || '')) throw bad('Seller code must be 4 digits.');
       const name = txt(b.name, 60); if (!name) throw bad('Name required.');
       const [lat, lng] = coords(b);
-      const rows = await q("INSERT INTO sellers(no,name,trade,market,status,joined_at,phone,lat,lng) VALUES ($1,$2,$3,$4,'enrolled',now(),$5,$6,$7) ON CONFLICT DO NOTHING RETURNING no",
-        [b.no, name, txt(b.trade, 60), txt(b.market, 60), phoneOrNull(b.phone), lat, lng]);
+      const pp = pinProblem(b.pin); if (pp) throw bad(pp);
+      const rows = await q("INSERT INTO sellers(no,name,trade,market,status,joined_at,phone,lat,lng,pin_hash) VALUES ($1,$2,$3,$4,'enrolled',now(),$5,$6,$7,$8) ON CONFLICT DO NOTHING RETURNING no",
+        [b.no, name, txt(b.trade, 60), txt(b.market, 60), phoneOrNull(b.phone), lat, lng, await hashPin(b.pin)]);
       if (!rows.length) return res.status(409).json({ error: 'That seller code is taken. Try again.' });
       break;
     }
@@ -113,6 +115,25 @@ export default route(async (req, res) => {
     case 'lang': {
       const ph = phoneOrNull(b.phone); if (!ph) throw bad('Phone required.'); if (!['en', 'st'].includes(b.lang)) throw bad('Language must be en or st.');
       await q('INSERT INTO phone_prefs(phone, lang) VALUES ($1,$2) ON CONFLICT (phone) DO UPDATE SET lang=EXCLUDED.lang, updated_at=now()', [ph, b.lang]);
+      break;
+    }
+    case 'seller_pin': { // WhatsApp seller sign-in: seller code + PIN, 3 wrong PINs lock it for 15 minutes
+      const [sl] = await q('SELECT * FROM sellers WHERE no=$1', [String(b.no || '')]); if (!sl) throw bad('Unknown seller code.');
+      const r = await checkPin(q, sl, String(b.pin || ''));
+      if (r.lockedNow) await audit(q, null, 'seller_pin_locked', { actor: 'Seller ' + sl.no, channel: 'WhatsApp' });
+      return res.status(200).json({ ok: r.ok, msg: r.ok ? '' : r.msg });
+    }
+    case 'merchant_link': { // the seller links their own M-Pesa or EcoCash merchant code; needs their PIN
+      const [sl] = await q('SELECT * FROM sellers WHERE no=$1', [String(b.no || '')]); if (!sl) throw bad('Unknown seller code.');
+      const r = await checkPin(q, sl, String(b.pin || '')); if (!r.ok) return res.status(403).json({ error: r.msg });
+      const net = b.network === 'ecocash' ? 'ecocash' : b.network === 'mpesa' ? 'mpesa' : null; if (!net) throw bad('Network must be mpesa or ecocash.');
+      const mc = String(b.code || '').replace(/\D/g, ''); if (!/^\d{5,7}$/.test(mc)) throw bad('A merchant code has 5 to 7 digits.');
+      const col = net + '_code', NETN = net === 'mpesa' ? 'M-Pesa' : 'EcoCash';
+      const [other] = await q(`SELECT no FROM sellers WHERE ${col}=$1 AND no<>$2`, [mc, sl.no]);
+      if (other) { await audit(q, null, 'merchant_code_conflict', { actor: 'Seller ' + sl.no, channel: 'WhatsApp', network: NETN, merchant_code: mc, linked_to: other.no });
+        return res.status(409).json({ error: `This ${NETN} code is already linked to another Rasiti seller. RSL will check it.` }); }
+      await q(`UPDATE sellers SET ${col}=$1 WHERE no=$2`, [mc, sl.no]);
+      await audit(q, null, 'merchant_code_linked', { actor: 'Seller ' + sl.no, channel: 'WhatsApp', network: NETN, merchant_code: mc, check: (net === 'mpesa' ? 'Vodacom' : 'Econet') + ' confirmed (simulated)' });
       break;
     }
     default: throw bad('Unknown event.');

@@ -6,6 +6,22 @@
   // [English pattern, Sesotho]. Option numbers ("1. ") are kept automatically, so menu items are listed without them.
   const LINES = [
     // main menus
+    // seller sign-in with PIN, and mobile-money merchant codes
+    ['Enter your 4-digit PIN:', 'Kenya PIN ea hau ea linomoro tse 4:'], ['Seller code {}', 'Khoutu ea morekisi {}'], ['Seller {}', 'Morekisi {}'],
+    ['Choose a 4-digit PIN.', 'Khetha PIN ea linomoro tse 4.'], ['Choose a 4-digit PIN:', 'Khetha PIN ea linomoro tse 4:'],
+    ['You need it every time you open your seller menu. Do not share it.', 'U e hloka nako le nako ha u bula lenane la morekisi. U se ke ua e arolelana le motho.'],
+    ['Enter the PIN again:', 'Kenya PIN hape:'], ['The two PINs are different.', 'Li-PIN tse peli ha li tšoane.'], ['The PIN must be 4 digits.', 'PIN e lokela ho ba linomoro tse 4.'],
+    ['The PIN has 4 digits.', 'PIN e na le linomoro tse 4.'], ['That PIN is too easy to guess. Choose another.', "PIN eo e bonolo ho e nahana. Khetha e 'ngoe."],
+    ['Wrong PIN. {} tries left.', 'PIN e fosahetse. Ho setse menyetla e {}.'], ['Wrong PIN. {} try left.', 'PIN e fosahetse. Ho setse monyetla o le {}.'],
+    ['Wrong PIN 3 times. The seller menu is locked for 15 minutes.', 'PIN e fosahetse ka makhetlo a 3. Lenane la morekisi le notletsoe metsotso e 15.'],
+    ['Too many wrong PINs. Try again after {}, or call RSL on 8002 2009.', 'Li-PIN tse fosahetseng li ngata. Leka hape ka mor\'a {}, kapa letsetsa RSL ho 8002 2009.'],
+    ['Call RSL on 8002 2009 if you forgot it.', 'Letsetsa RSL ho 8002 2009 haeba u e lebetse.'], ['Keep your PIN secret.', 'Boloka PIN ea hau e le lekunutu.'],
+    ['Keep your PIN secret. You can give receipts now. No tax number needed yet.', 'Boloka PIN ea hau e le lekunutu. Joale u ka fana ka lirasiti. Ha u hloke nomoro ea lekhetho hajoale.'],
+    ['Mobile money codes', 'Likhoutu tsa chelete ea mohala'], ['Link M-Pesa merchant code', 'Hokela khoutu ea mohoebi ea M-Pesa'], ['Link EcoCash merchant code', 'Hokela khoutu ea mohoebi ea EcoCash'],
+    ['Your {} merchant code', 'Khoutu ea hau ea mohoebi ea {}'], ['(5 to 7 digits, from {}):', '(linomoro tse 5 ho isa ho 7, ho tsoa ho {}):'],
+    ['{} code {} linked.', 'Khoutu ea {} {} e hoketsoe.'], ['{} confirmed it is yours (simulated).', '{} e netefalitse hore ke ea hau (ketsiso).'],
+    ['Payments to this code now give your customers receipts by themselves.', 'Litefo khoutung ena joale li fa bareki ba hau lirasiti ka bo tsona.'],
+    ['PIN saved.', 'PIN e bolokiloe.'], ['Create a 4-digit PIN for your seller menu:', 'Etsa PIN ea linomoro tse 4 bakeng sa lenane la morekisi:'],
     ['Tip of the day', 'Keletso ea kajeno'], ['Daily tip by SMS (M2/day)', 'Keletso ka SMS (M2 ka letsatsi)'], ['Daily tip by SMS: {}', 'Keletso ka SMS: {}'],
     ['One tax tip every day for M2.00 a day, charged to your airtime.', 'Keletso e le \'ngoe letsatsi le leng le le leng ka M2.00, e lefelloa ka airtime.'], ['Subscribe', 'Ingolise'], ['Stop', 'Emisa'],
     ['Subscribed. You will get one tax tip by SMS every day for M2.00 a day.', 'U ngolisitse. U tla fumana keletso ka SMS letsatsi le leng le le leng ka M2.00.'], ['To stop: *999# > 3 > 4 > 2.', 'Ho emisa: *999# > 3 > 4 > 2.'],

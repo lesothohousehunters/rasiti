@@ -44,6 +44,14 @@ export const SCHEMA = [
   `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS reminders BOOLEAN NOT NULL DEFAULT TRUE`,
   `CREATE TABLE IF NOT EXISTS phone_prefs(phone TEXT PRIMARY KEY, lang TEXT NOT NULL DEFAULT 'en', updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
   `ALTER TABLE phone_prefs ADD COLUMN IF NOT EXISTS tips_sub BOOLEAN NOT NULL DEFAULT FALSE`,
+  // Seller sign-in PIN (hashed) and mobile-money merchant codes: M-Pesa (Vodacom Lesotho) and EcoCash (Econet Telecom Lesotho).
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS pin_hash TEXT`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS pin_fails INT NOT NULL DEFAULT 0`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS pin_lock_until TIMESTAMPTZ`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS mpesa_code TEXT`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS ecocash_code TEXT`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS sellers_mpesa_code ON sellers(mpesa_code) WHERE mpesa_code IS NOT NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS sellers_ecocash_code ON sellers(ecocash_code) WHERE ecocash_code IS NOT NULL`,
   `CREATE TABLE IF NOT EXISTS audit_log(
      id SERIAL PRIMARY KEY, user_id INT, user_email TEXT, action TEXT NOT NULL,
      detail JSONB, at TIMESTAMPTZ NOT NULL DEFAULT now())`

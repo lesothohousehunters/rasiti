@@ -7,6 +7,7 @@ const faqJs = await readFile('public/faq.js', 'utf8');
 const i18nJs = await readFile('public/i18n.js', 'utf8');
 const rslJs = await readFile('public/rsl-mock.js', 'utf8');
 const tipsJs = await readFile('public/tips.js', 'utf8');
+const agentJs = await readFile('public/agent.js', 'utf8');
 const bg = (await readFile('public/img/login-bg.jpg')).toString('base64');
 const logo = 'data:image/png;base64,' + (await readFile('public/img/bohlale-96.png')).toString('base64');
 const head = html.slice(html.indexOf('<head>') + 6, html.indexOf('</head>'))
@@ -20,6 +21,7 @@ const body = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>')).rep
   .replace(/<script src="faq.js[^"]*"><\/script>/, () => `<script>${faqJs}</script>`)
   .replace(/<script src="rsl-mock.js[^"]*"><\/script>/, () => `<script>${rslJs}</script>`)
   .replace(/<script src="tips.js[^"]*"><\/script>/, () => `<script>${tipsJs}</script>`)
+  .replace(/<script src="agent.js[^"]*"><\/script>/, () => `<script>${agentJs}</script>`)
   .replace(/<script src="app.js[^"]*"><\/script>/, () => `<script>${app.replace("'img/bohlale-96.png'", `'${logo}'`).replace("'vendor/jspdf.umd.min.js'", "'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'")}</script>`);
 await writeFile(process.argv[2] || 'preview.html', `<meta name="claude:viewport-fit-sides" content="cover">\n${head}\n${body}`);
 console.log('preview written');
