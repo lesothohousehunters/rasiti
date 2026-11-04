@@ -21,32 +21,40 @@
   const BUILTIN = {
     health: {title:'Quick health check of every page', changes:false, steps:[
       go('dash'), see('Needs attention', 'Dashboard shows the "Needs attention" list'),
+      go('officer'), see('Worklist', 'Officer console shows the worklist'), see('RSL e-services link', 'The simulated RSL e-services link is there'),
       go('shield'), see('Rules', 'Fraud Shield shows its rules'),
       go('watch'), see('Map of shop ratings', 'Community watch shows the ratings map'),
-      go('officer'), see('Worklist', 'Officer console shows the worklist'), see('RSL e-services link', 'The simulated RSL e-services link is there'),
+      go('draw'), see('Prize calendar', 'Monthly draw page shows the prize calendar'),
       go('search'), see('Transactions found', 'Transaction search lists the history'),
       {do:'type', field:'sxQ', value:'3307', say:'Search for seller 3307'}, {do:'wait', seconds:1}, see('Ntate Thabo', 'Results show only that seller'), {do:'click', text:'Reset filters', say:'Clear the search'},
-      go('draw'), see('Prize calendar', 'Monthly draw page shows the prize calendar'),
+      go('reports'), see('Officer console', 'Reports page lists the officer reports'),
       go('bohlale'), see('Rules Bohlale follows', 'Bohlale AI page opens'),
-      go('users'), see('Add a user', 'Users and activity opens'),
+      go('users'), see('Add a user', 'Users page opens'),
       go('logs'), see('Download', 'System log opens'),
       go('phones'), see('Guided cases', 'Phones page opens with the guided cases'),
       go('guide'), see('Steps', 'Start here opens')]},
     downloads: {title:'Check every download and report', changes:false, steps:[
-      go('shield'), dl('Receipts CSV'), dl('Fake codes CSV'), dl('PDF report', 'Fraud Shield PDF report'),
-      go('watch'), dl('Ratings CSV'),
-      go('officer'), dl('Worklist CSV'),
+      go('reports'), dl('Dashboard PDF'), dl('Worklist CSV'), dl('Cash claims CSV'), dl('Officer PDF'),
+      dl('Fraud Shield receipts CSV'), dl('Fraud Shield PDF'), dl('Ratings CSV'), dl('Community watch PDF'), dl('Draw entries CSV'), dl('Draw PDF'),
       go('search'), dl('Results CSV'), dl('Results PDF', 'Transaction search PDF'),
-      go('draw'), dl('Entries CSV'),
       go('logs'), dl('Log CSV'), dl('Log PDF')]},
+    cash: {title:'Cash sale: the buyer claims, the seller confirms', changes:true, steps:[
+      go('phones'),
+      {do:'ussd', phone:'customer', inputs:['1', '1', '3307', '40'], say:'Customer says "I paid cash": seller 3307, M40'}, see('Sent to', 'The claim goes to the seller to confirm', 'customer'),
+      {do:'ussd', phone:'customer', inputs:['1', '5'], say:'Customer checks her draw entries'}, see('waiting for the seller', 'The claim waits: nothing counts yet', 'customer'),
+      {do:'ussd', phone:'seller', inputs:['2', '3307', '2580'], say:'Seller 3307 signs in'}, see('Confirm cash sales', 'The seller menu shows cash sales to confirm', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '3307', '2580', '1'], say:'Seller opens the cash sales to confirm'}, see('Confirm all', 'The list has a "Confirm all" option', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '3307', '2580', '1', '9'], say:'Seller confirms them all'}, see('Confirmed', 'The sales are confirmed', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '3307', '2580', '1'], say:'Seller opens the list again'}, see('No cash sales to confirm', 'Nothing is left to confirm', 'seller')]},
     phones: {title:'Test the phones: USSD and WhatsApp', changes:true, steps:[
       go('phones'),
       {do:'ussd', phone:'customer', inputs:[], say:'Customer dials *999#'}, see('I am a customer', 'The main menu appears', 'customer'),
+      {do:'ussd', phone:'customer', inputs:['1'], say:'Customer opens the customer menu'}, see('I paid cash', 'Cash and card come first', 'customer'),
       {do:'ussd', phone:'customer', inputs:['3', '3'], say:'Customer opens Questions, then Tip of the day'}, see('Tip of the day', 'Tip of the day is shown', 'customer'),
       {do:'ussd', phone:'seller', inputs:['2', '3307', '2580'], say:'Seller 3307 signs in on *999# with code and PIN'}, see('My sales book', 'The seller menu appears', 'seller'),
       {do:'ussd', phone:'seller', inputs:['2', '3307', '0000'], say:'A wrong PIN is refused'}, see('Wrong PIN', 'Rasiti refuses the wrong PIN', 'seller'),
-      {do:'ussd', phone:'seller', inputs:['2', '3307', '2580', '1'], say:'Seller opens My sales book'}, see('Sales', 'Sales totals are shown', 'seller'),
-      {do:'select', field:'mmSeller', option:'Ntate Thabo', say:'Choose seller Ntate Thabo'}, {do:'select', field:'mmNet', option:'M-Pesa', say:'Choose M-Pesa'}, 
+      {do:'ussd', phone:'seller', inputs:['2', '3307', '2580', '2'], say:'Seller opens My sales book'}, see('Sales', 'Sales totals are shown', 'seller'),
+      {do:'select', field:'mmSeller', option:'Ntate Thabo', say:'Choose seller Ntate Thabo'}, {do:'select', field:'mmNet', option:'M-Pesa', say:'Choose M-Pesa'},
       {do:'click', text:'Pay as the customer', say:'Customer pays M30 to a seller\'s M-Pesa merchant code'}, see('Rasiti receipt', 'The receipt arrives by itself', 'customer'),
       {do:'whatsapp', phone:'customer', message:'TIP', say:'Customer sends TIP on WhatsApp'}, see('Tip of the day', 'Rasiti replies with the tip', 'customer')]},
     privacy: {title:'Check show and hide contacts', changes:true, steps:[
@@ -57,6 +65,7 @@
   function pickBuiltin(text, allow) {
     const t = norm(text);
     if (/contact|privacy|phone number|mask/.test(t)) return allow ? 'privacy' : 'health';
+    if (/cash|confirm|claim/.test(t)) return allow ? 'cash' : 'health';
     if (/ussd|whatsapp|\*999|phone|customer|seller|tip|sms|receipt/.test(t)) return allow ? 'phones' : 'health';
     if (/download|pdf|csv|report|export/.test(t)) return 'downloads';
     return 'health';

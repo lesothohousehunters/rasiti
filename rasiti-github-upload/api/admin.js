@@ -2,7 +2,7 @@
 //   {op:'review', codes[], decision:'approved'|'rejected'}   officer+
 //   {op:'action', item_id, kind, target}                     officer+
 //   {op:'draw', seed, live, winners[]}                       officer+
-//   {op:'seed', data:{sellers,receipts,reports,fakes}}       owner/admin, empty database only
+//   {op:'seed', data:{sellers,receipts,claims,reports,fakes,returns,payments}}       owner/admin, empty database only
 //   {op:'unreview', codes[]} · {op:'unaction', item_id} · {op:'undraw', id}   officer+: undo
 //   {op:'reset'}                                              owner: deletes all demo data, keeps users and audit log
 //   {op:'clear', confirm:'CLEAR'}                             owner: deletes ALL data, the activity log and every other user
@@ -113,6 +113,7 @@ export default route(async (req, res) => {
       reports: await bulk(q, 'reports', [['id', 'text'], ['phone', 'text'], ['type', 'text'], ['seller_no', 'text'], ['place_key', 'text'], ['place_label', 'text'], ['area', 'text'], ['kind', 'text'], ['lat', 'double precision'], ['lng', 'double precision'], ['created_at', 'timestamptz']], d.reports),
       fakes: await bulk(q, 'fakes', [['id', 'text'], ['code', 'text'], ['kind', 'text'], ['phone', 'text'], ['detail', 'text'], ['created_at', 'timestamptz']], d.fakes),
       returns: await bulk(q, 'returns', [['id', 'text'], ['seller_no', 'text'], ['period', 'text'], ['sales', 'numeric'], ['declared', 'numeric'], ['nil_reason', 'text'], ['tax_due', 'numeric'], ['channel', 'text'], ['filed_at', 'timestamptz']], d.returns),
+      claims: await bulk(q, 'claims', [['id', 'text'], ['seller_no', 'text'], ['amount', 'numeric'], ['phone', 'text'], ['state', 'text'], ['created_at', 'timestamptz'], ['decided_at', 'timestamptz'], ['receipt_code', 'text']], (d.claims || []).filter(c => ['pending', 'confirmed', 'rejected'].includes(c.state))),
       payments: await bulk(q, 'payments', [['id', 'text'], ['seller_no', 'text'], ['period', 'text'], ['amount', 'numeric'], ['ref', 'text'], ['channel', 'text'], ['paid_at', 'timestamptz']], d.payments)
     };
     // Demo sellers all use the demo PIN (shown on the Start here page). Real sellers choose their own when they join.

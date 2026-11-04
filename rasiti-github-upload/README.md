@@ -103,15 +103,26 @@ Sellers sign in to their menu with their **4-digit seller code and a 4-digit PIN
 - Demo sellers loaded with the demo dataset all use PIN **2580** (shown on the Start here page).
 - On WhatsApp the PIN is shown as •••• in the chat.
 
-## No cash receipts: only payments a network or bank saw
+## Cash: the buyer claims, the seller confirms
 
-Rasiti gives receipts only for **M-Pesa, EcoCash and card** payments. There is no cash receipt. If buyers could record cash sales, anyone could type in sales that never happened (from home, one a day at many different shops) and those shops would be asked to pay tax on sales they never made. With digital payments nobody can add a sale to a shop's book without really paying the shop. Sellers still declare their cash sales themselves when they file the quarterly return (the return screen asks them to add cash to the card and mobile-money total).
+Most informal trade is cash, so cash gets receipts too, but **only the seller can put a sale into the seller's book**:
+
+1. The buyer pays cash, dials `*999#` > 1 (customer) > **1. I paid cash**, and enters the seller code and the amount. This makes a **pending claim**: it is not in the sales book, not taxed and gives no draw entry.
+2. The seller gets an SMS (simulated) and answers on `*999#` > 2 > seller code > PIN > **1. Confirm cash sales**: pick one and choose 1 Yes or 2 No, or **9** to confirm all at once. On WhatsApp the same menu works, with the PIN.
+3. A **confirmed** claim becomes a receipt (channel `cash`): **1 draw entry** (2 at a registered seller), whatever the amount, and the sale is in the sales book, so the cash total is already there at filing time.
+4. A **rejected** claim, or one ignored for 3 days (expired), never touches the sales book or the tax bill.
+
+Limits: 5 claims per phone a day, M1 to M5,000 a claim (bigger sales: mobile money or card), no claims at your own shop, no duplicate within 10 minutes. Nobody can post a cash receipt directly (`/api/event` refuses it).
+
+**The rule:** only three things can create tax: the seller's own confirmation, the seller's own return, and a payment a network or bank saw. Anything a buyer says (a cash claim, a rating) is a reason to look, never a bill. A person at home who claims cash at many shops changes nothing. A seller who confirms fake cash for friends pays tax on it and wins only 1 entry each time.
+
+**Refusals as a signal, not a bill:** when one seller rejects or ignores most cash claims (at least half) from 3 or more different buyers who also pay by mobile money or card, the officer worklist suggests a friendly visit to explain cash confirmations. Phones made up for the purpose do not count. In the demo, Mme 'Mathabo (5140) shows this.
 
 ## Mobile money: M-Pesa and EcoCash merchant codes (no QR codes, nothing extra to type)
 
 Every seller already has M-Pesa (Vodacom Lesotho) and EcoCash (Econet Telecom Lesotho) merchant accounts. Buyers pay them exactly as they do today.
 
-1. The seller links their own merchant code once: `*999#` > 2 > seller code > PIN > **3. Payment codes** (or the same menu on WhatsApp). By linking, the seller agrees that payments to that code get Rasiti receipts. One merchant code can belong to only one seller; a clash is refused and logged. In a pilot, the network confirms the code belongs to the seller before linking (simulated here).
+1. The seller links their own merchant code once: `*999#` > 2 > seller code > PIN > **4. Payment codes** (or the same menu on WhatsApp). By linking, the seller agrees that payments to that code get Rasiti receipts. One merchant code can belong to only one seller; a clash is refused and logged. In a pilot, the network confirms the code belongs to the seller before linking (simulated here).
 2. The buyer pays the merchant code as usual.
 3. The network (or its payment aggregator) sends each payment to a linked code to Rasiti at **`/api/momo`**: network, merchant code, amount, payer's number, transaction id.
 4. Rasiti issues the receipt and draw entries to the payer by SMS and records the sale in the seller's book. Repeats of the same transaction are ignored; a code that is not linked gets no receipt.
@@ -135,9 +146,9 @@ POST /api/momo?key=MOMO_KEY
 
 Most informal sellers have no card machine; registered shops often do. Card payments work like mobile money, except that a bank rarely knows the buyer's phone:
 
-1. The seller links the card machine once: `*999#` > 2 > seller code > PIN > **3. Payment codes > 3. Link card machine**, then the bank (Standard Lesotho Bank, FNB Lesotho, Nedbank Lesotho or Lesotho PostBank) and the terminal ID. In a pilot the bank confirms the machine belongs to the seller (simulated here).
+1. The seller links the card machine once: `*999#` > 2 > seller code > PIN > **4. Payment codes > 3. Link card machine**, then the bank (Standard Lesotho Bank, FNB Lesotho, Nedbank Lesotho or Lesotho PostBank) and the terminal ID. In a pilot the bank confirms the machine belongs to the seller (simulated here).
 2. The buyer taps or swipes as usual. The bank sends each payment to **`/api/card`**: bank, terminal ID, amount, last 4 digits of the card, transaction id (and the phone, if the bank has it).
-3. The receipt is issued at once. The buyer claims it on `*999#` > 1 > **1. Claim a card payment**: seller code, amount, last 4 digits of the card, within 3 days. No reference number to type. A payment can be claimed by one phone only; 3 claims that do not match in a day block that phone until tomorrow, and each miss is shown to officers.
+3. The receipt is issued at once. The buyer claims it on `*999#` > 1 > **2. I paid by card**: seller code, amount, last 4 digits of the card, within 3 days. No reference number to type. A payment can be claimed by one phone only; 3 claims that do not match in a day block that phone until tomorrow, and each miss is shown to officers.
 4. A reversal from the bank (`{"type":"reversal","bank":"slb","txn":"..."}`) cancels the receipt.
 
 - Settings: optional `CARD_KEY`. Give the banks `https://your-subdomain/api/card?key=THAT-WORD`.
@@ -147,36 +158,38 @@ POST /api/card?key=CARD_KEY
 {"bank":"slb","terminal_id":"SLB60181","amount":250,"card_last4":"4471","txn":"A91XYZ"}
 ```
 
-## Sellers do nothing after joining; buyers pay as usual
+## What the seller does
 
-- **Seller's only tasks:** join once (2 minutes, with a PIN) and link their payment codes once. Receipts then issue themselves; there is nothing to record or check.
-- **Fraud-proof payouts:** every receipt is a payment confirmed by a network or bank. The Fraud Shield scores every receipt, and every winner shows ID and the SIM registered to them before payout.
+- **Once:** join (2 minutes, with a PIN) and link their M-Pesa, EcoCash or card machine.
+- **For cash:** say Yes to real cash sales when a buyer claims one (one tap, or 9 to confirm all at the end of the day).
+- **Each quarter:** file from the sales book (prefilled) and pay by mobile money.
+- Mobile money and card receipts issue themselves. Every winner shows ID and the SIM registered to them before payout.
 
 ## Prize calendar (amounts to be agreed with RSL)
 
 | Draw | Prizes | Who can win |
 | --- | --- | --- |
-| Monthly | M5,000, M2,000, M1,000 cash; 5 smartphones; 20 x M100 airtime | Every receipt with the buyer's phone |
+| Monthly | M5,000, M2,000, M1,000 cash; 5 smartphones; 20 x M100 airtime | Every receipt with the buyer's phone (cash the seller confirmed, M-Pesa, EcoCash, card) |
 | Quarterly | 3 motorbikes: 2 for buyers, 1 for a registered seller who filed and paid the quarter on time | Every receipt in the quarter |
 | Every 6 months | M100,000 cash | Every receipt in the 6 months |
 | Every year | A car | Every receipt in the year |
 
 Every entry counts in its month and again in the quarter, half-year and year draws. Winners show their ID and the SIM registered to them before payout.
 
-### Digital payment fraud: what the Fraud Shield looks for
+### Payment fraud: what the Fraud Shield looks for
 
-With cash gone, a fake sale means really paying the seller. The rules look for money that did not stay paid, phones made only to farm entries, and people claiming other people's card payments:
+A fake digital sale means really paying the seller, and a fake cash sale needs the seller's own Yes. The rules look for money that did not stay paid, phones made only to farm entries, and people claiming other people's card payments:
 
 1. **Payment reversed or paid back** (60 points, blocked): the network or bank reports a reversal or refund (`{"type":"reversal",...}`), or that the seller's wallet sent the same amount back to the payer within 24 hours (`{"type":"payback",...}` on `/api/momo`). The receipt leaves the draw and the seller's sales book.
 2. **New phones paying the same amount** (40 points): 5 or more phones that never paid anyone before each pay one seller the same amount within an hour (a SIM-card farm).
 3. **One phone claims many cards** (30 points): one phone claims card payments made with 3 or more different cards in 7 days.
 4. The existing rules still run: seller buying from their own phone, one phone with many receipts in a day, a purchase split into small payments, a burst of new heavy buyers, and a sale far larger than usual.
 
-Faking digital sales also costs the network fee every time and raises the seller's taxable sales. Confirmed collusion: the prize is lost and both are barred from draws for 12 months. The demo data includes each pattern (sellers 4821, 3902 and 6018), so they show on the Fraud Shield page. The prototype runs the monthly draw (3 cash, 5 smartphones, 20 airtime) and shows the other draws with their live entry counts on the Monthly draw page.
+Faking sales costs the network fee (digital) or raises the seller's taxable sales (every confirmed sale). Confirmed collusion: the prize is lost and both are barred from draws for 12 months. The demo data includes each pattern (sellers 4821, 3902 and 6018), so they show on the Fraud Shield page. The prototype runs the monthly draw (3 cash, 5 smartphones, 20 airtime) and shows the other draws with their live entry counts on the Monthly draw page.
 
 ## Working with Lekuka (RSL's e-invoicing system)
 
-Lekuka is RSL's national e-invoicing platform: VAT-registered businesses issue invoices through an RSL-accredited billing system (EBS), which sends them to RSL's Invoice Data Management System (IDMS); buyers can check an invoice by scanning its QR code. It is compulsory for VAT-registered businesses from 1 November 2026 (VAT (E-Invoicing) Regulations 2026, Legal Notice 25 of 2026). Rasiti covers the traders Lekuka does not reach: small, mostly informal sellers below the VAT threshold who are paid by M-Pesa and EcoCash. Proposed links, to agree with RSL:
+Lekuka is RSL's national e-invoicing platform: VAT-registered businesses issue invoices through an RSL-accredited billing system (EBS), which sends them to RSL's Invoice Data Management System (IDMS); buyers can check an invoice by scanning its QR code. It is compulsory for VAT-registered businesses from 1 November 2026 (VAT (E-Invoicing) Regulations 2026, Legal Notice 25 of 2026). Rasiti covers the traders Lekuka does not reach: small, mostly informal sellers who are not VAT-registered and are paid in cash, by M-Pesa or by EcoCash. Proposed links, to agree with RSL:
 
 - **One taxpayer record:** a Rasiti seller's TIN is the same TIN used in RSL's systems, so a seller who grows past the VAT threshold moves onto Lekuka with their sales history.
 - **Rasiti receipts as simple e-receipts:** Rasiti could be accredited as a light EBS for small sellers, sending each receipt (seller TIN, amount, time, receipt code) to the IDMS, so RSL holds one record of all sales.
@@ -185,7 +198,7 @@ Lekuka is RSL's national e-invoicing platform: VAT-registered businesses issue i
 
 ## Transaction search (whole history)
 
-Menu **Transaction search**, for every signed-in RSL role. One list holds every receipt (M-Pesa, EcoCash, card; older cash records still show), every tax return and every tax payment since the start, searched on the server (`/api/search`). Type a receipt code, seller code or name, market, tax period, payment reference or the last digits of a phone, and filter by type, paid by, reported by (network, bank or seller), network notice (reversed or paid back), seller, market, dates and amount. Results download as CSV or PDF (up to 5,000 rows). Phone numbers stay masked unless an admin has switched on *Show contacts*, which is logged.
+Menu **Search**, for every signed-in RSL role. One list holds every receipt (cash the seller confirmed, M-Pesa, EcoCash, card), every tax return and every tax payment since the start, searched on the server (`/api/search`). Type a receipt code, seller code or name, market, tax period, payment reference or the last digits of a phone, and filter by type, paid by, reported by (network, bank or seller), network notice (reversed or paid back), seller, market, dates and amount. Results download as CSV or PDF (up to 5,000 rows). Phone numbers stay masked unless an admin has switched on *Show contacts*, which is logged.
 
 ## Mohlomi AI (test agent)
 
@@ -194,18 +207,16 @@ Menu **Transaction search**, for every signed-in RSL role. One list holds every 
 - **Look only** (default, safe during judging): opens pages, reads them and checks downloads. Changes nothing.
 - **Allow test changes**: also uses the demo phones and buttons such as payments and the draw. These are real demo records; use Undo or reset the demo data afterwards.
 - Clearing or resetting data, switching users off and passwords are always blocked.
-- Planning uses the same AI settings as Bohlale (`AI_API_KEY`). Without them, Mohlomi uses four built-in tests: every page, every download, the phones (USSD, PIN, M-Pesa payment, WhatsApp) and show/hide contacts.
+- Planning uses the same AI settings as Bohlale (`AI_API_KEY`). Without them, Mohlomi uses five built-in tests: every page, every download, a cash sale (buyer claims, seller confirms), the phones (USSD, PIN, M-Pesa payment, WhatsApp) and show/hide contacts. Plans are kept short (25 steps at most).
 - Bohlale remains the officers' AI assistant; Mohlomi only tests the platform.
 
-## Downloads and analytics
+## Reports (every download in one place)
 
-- **Community watch** has filters (period, area, shop type, signal), three maps (shop ratings, hotspots without receipts, receipt rate by area), charts, and an "Ask Bohlale about this view" box that works as the data analyst.
-- **Download:** ratings, shops and areas as CSV (opens in Excel), and a full **PDF report** with Bohlale's findings, charts, a schematic map and tables. Bohlale answers and the officer worklist can also be downloaded.
-- Customer phone numbers are masked in every download.
+Menu **Reports** (also a button in the top bar of every RSL page): the dashboard PDF; officer worklist, review queue, complaints, and filing & payments as CSV, plus the officer PDF; the **cash claims CSV** (every claim and what the seller did); Fraud Shield receipts and fake codes CSV and PDF; community watch ratings, shops and areas CSV and PDF (with Bohlale's latest analysis); draw entries and winners CSV and the draw PDF. Each report uses the filters last set on its own page. Search results and the system log keep their own downloads. Customer phone numbers are masked in every download.
 
 ## Filing and paying (sustained compliance)
 
-- Registered sellers choose **4. My tax** on USSD or WhatsApp to **file** the return for the quarter that just ended (prefilled from the sales book, a different amount, or nil with a reason), **pay** by mobile money in full or in small parts, see their **tax record** and on-time streak, and turn **reminders** on or off.
+- Registered sellers choose **3. My tax** on USSD or WhatsApp to **file** the return for the quarter that just ended (prefilled from the sales book, a different amount, or nil with a reason), **pay** by mobile money in full or in small parts, see their **tax record** and on-time streak, and turn **reminders** on or off.
 - Officers see a **Filing and payments** panel (on-time filing and payment, overdue tax, streaks), worklist items that suggest a **payment plan** rather than a penalty, and a **Send reminders** button. All of it is in the officer CSV/PDF downloads, the dashboard and Bohlale.
 - Demo schedule: one return a quarter (Jan–Mar by 20 April, Apr–Jun by 20 July, Jul–Sep by 20 October, Oct–Dec by 20 January). Tax uses a **demo rate of 3% of declared sales** (`SBT_DEMO_RATE` on the server); RSL sets the real SBT rate and schedule.
 - After deploying, use **Reset demo data** then **Load demo dataset** so the 6-month filing history is created.
@@ -244,7 +255,7 @@ The Officer console shows every exchange under **RSL e-services link**. In a pil
 - **Free to read every day:** a post on a Rasiti WhatsApp Channel, "Tip of the day" in the USSD Q&A menu (`*999#` → 3 → 3), and on WhatsApp (type `TIP`; the first chat of the day shows it).
 - **Optional daily SMS for M2.00 a day:** people subscribe on USSD (`*999#` → 3 → 4 → 1) or by sending `SUBSCRIBE` on WhatsApp, and stop with `STOP` or option 2. The subscriber pays from airtime, so the SMS costs the project nothing. The Dashboard shows subscribers, income, the network's billing share and SMS cost (all assumptions to agree with the networks), and has a button to send today's SMS (simulated).
 
-To use RSL's own education material, replace or add tips in `public/tips.js`; the list repeats every 31 days.
+To use RSL's own education material, replace or add tips in `public/tips.js`; the list repeats every 33 days.
 
 ## Who pays, and the laws to settle (to be agreed with RSL and the Ministry of Finance)
 
@@ -325,7 +336,7 @@ api/agent.js        Mohlomi AI: plans tests from plain words, logs each run
 api/bohlale.js      Bohlale AI: sends masked data to an OpenAI-compatible model
 api/logs.js         Full system log (who, what, when) for owners and admins
 api/tile.js         Map tiles for PDF reports (satellite, street map as backup; Lesotho only)
-api/_lib/           Database, sessions, schema, receipt code checks, seller PINs
+api/_lib/           Database, sessions, schema, receipt code checks, seller PINs, cash claims (cash.js)
 schema.sql          Same tables as the app creates automatically
 dev-server.mjs      Server used by Render (npm start) and for local testing
 vercel.json         Vercel settings

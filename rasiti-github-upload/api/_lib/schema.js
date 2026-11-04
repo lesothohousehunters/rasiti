@@ -58,6 +58,12 @@ export const SCHEMA = [
   `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS card_terminal TEXT`,
   `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS card_bank TEXT`,
   `CREATE UNIQUE INDEX IF NOT EXISTS sellers_card_terminal ON sellers(card_terminal) WHERE card_terminal IS NOT NULL`,
+  // Cash: the buyer claims a cash sale on *999#; it counts only when the seller confirms it (state pending -> confirmed or rejected; pending
+  // claims older than 3 days are treated as expired). A confirmed claim becomes a receipt with channel 'cash'.
+  `ALTER TABLE claims ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ`,
+  `ALTER TABLE claims ADD COLUMN IF NOT EXISTS receipt_code TEXT`,
+  `CREATE INDEX IF NOT EXISTS claims_seller_state ON claims(seller_no, state)`,
+  `CREATE INDEX IF NOT EXISTS claims_phone_time ON claims(phone, created_at)`,
   `CREATE TABLE IF NOT EXISTS audit_log(
      id SERIAL PRIMARY KEY, user_id INT, user_email TEXT, action TEXT NOT NULL,
      detail JSONB, at TIMESTAMPTZ NOT NULL DEFAULT now())`

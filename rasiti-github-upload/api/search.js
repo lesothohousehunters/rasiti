@@ -1,9 +1,9 @@
 // GET /api/search: search the whole transaction history for RSL staff (every signed-in role).
-// One list holds every receipt (M-Pesa, EcoCash, card; older cash receipts still show), every tax return and every tax payment, with filters:
+// One list holds every receipt (M-Pesa, EcoCash, card, and cash sales the seller confirmed), every tax return and every tax payment, with filters:
 //   ?q=        receipt code, seller code or name, market, tax period, payment reference, or the last digits of a phone
 //   &kind=     receipt | return | payment
-//   &paid=     momo (any mobile money) | mpesa | ecocash | card | cash (older records only)
-//   &rec=      network (M-Pesa/EcoCash told Rasiti) | bank (a card machine) | seller (older records)
+//   &paid=     momo (any mobile money) | mpesa | ecocash | card | cash (confirmed by the seller)
+//   &rec=      network (M-Pesa/EcoCash told Rasiti) | bank (a card machine) | seller (cash the seller confirmed, returns, payments)
 //   &flag=     reversed | payback | any   (the network or bank said the payment was reversed, or the money went back to the payer)
 //   &seller=   seller code      &market=  market or area
 //   &from= &to=  dates (YYYY-MM-DD, inclusive)      &min= &max=  amount in maloti
@@ -23,7 +23,7 @@ const BASE = `WITH t AS (
     CASE WHEN r.channel = 'cash' THEN 'cash' WHEN r.channel = 'card' THEN 'card' WHEN r.source IN ('mpesa','ecocash') THEN r.source
          WHEN r.note LIKE 'mpesa:%' THEN 'mpesa' WHEN r.note LIKE 'ecocash:%' THEN 'ecocash' ELSE 'momo' END AS paid,
     CASE WHEN r.channel = 'momo' THEN 'network' WHEN r.channel = 'card' THEN 'bank' ELSE 'seller' END AS rec,
-    r.flag, r.card_last4, r.phone, NULL::text AS period, CASE WHEN r.note ~ '^(mpesa|ecocash|card):' OR r.note IN ('confirmed','disputed') THEN NULL ELSE r.note END AS note
+    r.flag, r.card_last4, r.phone, NULL::text AS period, CASE WHEN r.note ~ '^(mpesa|ecocash|card|claim):' OR r.note IN ('confirmed','disputed') THEN NULL ELSE r.note END AS note
   FROM receipts r
   UNION ALL
   SELECT 'return', x.id, x.seller_no, x.declared::float, x.filed_at, NULL, 'seller', NULL, NULL, NULL, x.period,

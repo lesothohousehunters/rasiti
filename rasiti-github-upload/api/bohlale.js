@@ -43,17 +43,20 @@ What you know and the rules you keep:
 - You advise; officers decide. Never approve, reject, penalise or accuse anyone. Use words like "suggest", "check", "ask".
 - A nil return or a low receipt rate is never proof of wrongdoing. Suggest a friendly first step (a call, a visit, an invitation) first.
 - Phone numbers are masked. Never try to reveal or guess them.
+- How receipts work: mobile money (M-Pesa, EcoCash) and card receipts come from the network or bank by themselves. For cash, the buyer claims the sale on *999# and it counts ONLY when the seller confirms it; rejected claims, and claims ignored for 3 days, never reach the sales book or the tax. Only three things can create tax: the seller's own confirmation, the seller's own return, and a payment a network or bank saw. Anything a buyer says (a cash claim, a rating, a complaint) is a reason to look, never a bill.
+- Many cash claims rejected or ignored by one seller, from different buyers who also pay by mobile money or card, suggest a friendly visit to explain cash confirmations. It is not proof of hidden sales.
 - Simplified Business Tax (SBT): the call for innovation says SBT taxpayers have annual income below M2,000,000 and operate in specific sectors. Do not state rates or deadlines that are not in the data.
 - If asked to write in Sesotho, write it, then add: "Please check the Sesotho wording with a fluent speaker before sending."
 - For community watch analytics, act as the data analyst: key numbers, trends (first half vs second half), best and worst areas, time-of-day patterns and leads, then recommended actions. Warn when numbers are small.
 - When your answer uses figures from the DATA, end with a short line starting "Based on:" naming what you used. Skip that line for greetings and small talk.`;
 
+const shrink = (v, d = 0) => Array.isArray(v) ? v.slice(0, 6).map(x => shrink(x, d + 1)) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shrink(x, d + 1)])) : v;
 const clean = s => String(s || '').replace(/(sk|gsk|key)[-_][A-Za-z0-9_-]{8,}/g, '[hidden]').slice(0, 220);
 async function post(model, messages, signal) {
   const r = await fetch(BASE() + '/chat/completions', { method: 'POST', signal,
     headers: { 'content-type': 'application/json', authorization: 'Bearer ' + KEY() },
     // gpt-oss models think before answering; low effort keeps answers fast and inside the free limits.
-    body: JSON.stringify({ model, temperature: 0.4, max_tokens: 2000, messages, ...(/gpt-oss/.test(model) ? { reasoning_effort: 'low' } : {}) }) });
+    body: JSON.stringify({ model, temperature: 0.3, max_tokens: 1400, messages, ...(/gpt-oss/.test(model) ? { reasoning_effort: 'low' } : {}) }) });
   const j = await r.json().catch(() => ({}));
   return { r, j, msg: clean(j.error?.message || j.message || r.statusText) };
 }
@@ -108,7 +111,7 @@ export default route(async (req, res) => {
   const context = JSON.stringify(b.context || {});
   if (!question) throw bad('Type a question.');
   if (context.length > 90000) throw bad('Too much data for one question. Narrow it down.');
-  const history = (Array.isArray(b.history) ? b.history : []).slice(-8)
+  const history = (Array.isArray(b.history) ? b.history : []).slice(-6)
     .filter(m => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
     .map(m => ({ role: m.role, content: m.content.slice(0, 3000) }));
 
@@ -119,11 +122,13 @@ export default route(async (req, res) => {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 45000);
   try {
-    const { r, j, msg, model } = await complete([
+    const ask = ctx => [
       { role: 'system', content: SYSTEM + `\n\nThe officer talking to you is ${me.name || 'an RSL officer'} (role: ${me.role}). Today is ${new Date().toDateString()}.` },
       ...history,
-      { role: 'user', content: `DATA (current Rasiti data as JSON):\n${context}\n\nTASK: ${task}\nMESSAGE FROM THE OFFICER: ${question}` }
-    ], ctrl.signal);
+      { role: 'user', content: `DATA (current Rasiti data as JSON):\n${ctx}\n\nTASK: ${task}\nMESSAGE FROM THE OFFICER: ${question}` }];
+    let { r, j, msg, model } = await complete(ask(context), ctrl.signal);
+    // Free plans limit tokens per request: if the data was too big, ask once more with every list shortened to its first 6 items.
+    if (!r.ok && (r.status === 413 || (r.status === 429 && /token|too large|TPM/i.test(msg)))) ({ r, j, msg, model } = await complete(ask(JSON.stringify(shrink(b.context || {}))), ctrl.signal));
     if (!r.ok) {
       console.error('Bohlale AI provider error', r.status, msg);
       return res.status(200).json({ mode: 'template', note: `${why(r, msg)}. Showing a built-in answer instead.` });

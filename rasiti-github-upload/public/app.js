@@ -58,10 +58,16 @@ const S = { customers:{'26658123301':{name:'Lerato'}, '26662345118':{name:'Tumel
 const tByNo = no => S.traders.find(t => t.no === no);
 const PERSONAS = [{ph:'26658123301',name:'Lerato',card:'4471'},{ph:'26662345118',name:'Tumelo',card:'9035'},{ph:'26657000999',name:'New customer',card:'2286'}];
 const BANKS = {slb:'Standard Lesotho Bank', fnb:'FNB Lesotho', nedbank:'Nedbank Lesotho', postbank:'Lesotho PostBank'};
-// Receipts come only from payments the network or a bank saw: M-Pesa, EcoCash or a card machine. There is no cash receipt, so nobody
-// can put sales that never happened into a seller's sales book. A reversed payment, or one paid back to the buyer, does not count.
+// Receipts come from payments a network or bank saw (M-Pesa, EcoCash, card machine), or from cash sales the SELLER confirmed.
+// A buyer's cash claim is only pending until the seller says yes, so nobody can put a sale into a seller's book from home.
+// A reversed payment, or one paid back to the buyer, does not count.
 const counts = r => !r.flag;
-const PAYNAME = r => r.ch === 'card' ? 'Card' : r.ch === 'cash' ? 'Cash (older record)' : r.net ? NETNAME[r.net] : 'Mobile money';
+const PAYNAME = r => r.ch === 'card' ? 'Card' : r.ch === 'cash' ? 'Cash (seller confirmed)' : r.net ? NETNAME[r.net] : 'Mobile money';
+/* Cash claims: the buyer says "I paid cash" (seller code + amount). Pending claims are not in the sales book, not taxed and give no
+   entry. The seller confirms (receipt + 1 entry, 2 at a registered seller) or rejects. Unanswered for 3 days = expired. */
+const CASH = {maxAmount:5000, perPhoneDay:5, expireDays:3};
+const claimState = c => c.state === 'pending' && c.t < clock - CASH.expireDays * DAY ? 'expired' : c.state;
+const pendingOf = no => S.claims.filter(c => c.no === no && claimState(c) === 'pending').sort((a, b) => a.t - b.t);
 const API = { online:false, user:null, dbEmpty:false, setupNeeded:false };
 const randPhone = r => '266' + (r() < .5 ? '5' : '6') + String(Math.floor(r() * 1e7)).padStart(7, '0');
 const traderLL = t => (t.lat != null ? [t.lat, t.lng] : placeLatLng('T' + t.no, t.market));
@@ -92,8 +98,13 @@ function seed() {
       for (let i = 0; i < n; i++) {
         const t = d === 0 ? NOW - Math.floor(rnd() * 4 * 3600000) - MIN : NOW - d * DAY - Math.floor(rnd() * 11 * 3600000);
         const amt = Math.max(2, Math.round(tr.avg * (0.4 + 1.2 * rnd())));
-        const ch = tr.pos && rnd() < .35 ? 'card' : 'momo';
+        const x = rnd(); const ch = x < .4 ? 'cash' : tr.pos && x < .62 ? 'card' : 'momo';
         let ph = rnd() < .85 ? pool[Math.floor(rnd() * pool.length)] : global[Math.floor(rnd() * 160)];
+        // cash: the buyer claimed it, the seller answered. Mme 'Mathabo (5140) filed nil returns and rejects or ignores most cash claims.
+        if (ch === 'cash') { const id = rid(), refuse = tr.no === '5140' && rnd() < .8;
+          const c = {id, no:tr.no, amt, ph, t, state:refuse ? (rnd() < .5 ? 'rejected' : 'pending') : 'confirmed', dt:t + Math.floor(rnd() * 5 * 3600000)};
+          if (refuse && c.state === 'pending' && t > NOW - 4 * DAY) c.state = 'rejected';
+          S.claims.push(c); if (refuse) continue; c.code = mkCode(tr.no, rnd); S.receipts.push({code:c.code, no:tr.no, amt, ch:'cash', ph, t:c.dt, note:'claim:' + id}); continue; }
         const r = {code:mkCode(tr.no, rnd), no:tr.no, amt, ch, ph, t};
         // card: the bank does not know the buyer's phone; 6 in 10 card buyers claimed their receipt on *999#
         if (ch === 'card') { r.c4 = cardOf(ph); if (rnd() < .4) r.ph = null; } else { r.net = rnd() < .6 ? 'mpesa' : 'ecocash'; r.note = r.net + ':S' + r.code.slice(8, 12); }
@@ -107,7 +118,7 @@ function seed() {
   S.receipts.push({code:mkCode('7735', rnd), no:'7735', amt:150, ch:'momo', ph:'26659230876', t:NOW - 3 * DAY});
   S.receipts.push({code:mkCode('7735', rnd), no:'7735', amt:200, ch:'momo', ph:'26659230876', t:NOW - 6 * DAY});
   S.receipts.push({code:mkCode('3902', rnd), no:'3902', amt:2400, ch:'momo', net:'mpesa', ph:global[7], t:NOW - 5 * DAY, note:'Possible bulk bale purchase'});
-  /* Digital payment fraud (cash receipts no longer exist, so every case below involves real money moving through a network or bank):
+  /* Digital payment fraud (every case below involves real money moving through a network or bank):
      1. Round trip: a buyer pays Mme Palesa (4821) by M-Pesa and she sends the same money back to his phone. M-Pesa reports it.
      2. Reversal: an EcoCash payment to her is reversed after the receipt was sent.
      3. SIM farm: 6 phones that never paid anyone before each pay Mme Nthabiseng (3902) exactly M100 within 40 minutes.
@@ -118,7 +129,9 @@ function seed() {
   S.receipts.push({code:mkCode('4821', rnd), no:'4821', amt:500, ch:'momo', net:'ecocash', ph:CO, t:NOW - 3 * DAY - 5 * 3600000, flag:'reversed'});
   const farm0 = NOW - DAY - 4 * 3600000; for (let i = 0; i < 6; i++) S.receipts.push({code:mkCode('3902', rnd), no:'3902', amt:100, ch:'momo', net:'ecocash', ph:'2666210' + String(5100 + i).padStart(4, '0'), t:farm0 + i * 7 * MIN});
   const CC = '26657700112'; ['1180', '5523', '7741', '3069'].forEach((c4, i) => S.receipts.push({code:mkCode('6018', rnd), no:'6018', amt:150 + 20 * i, ch:'card', c4, ph:CC, t:NOW - (i * 1.5 + 0.5) * DAY}));
-  S.receipts.sort((a, b) => a.t - b.t);
+  // Cash claims waiting for Ntate Thabo (3307) today: he confirms them on *999# > 1.
+  [[25, 50], [40, 95], [15, 140]].forEach(([amt, ago], i) => S.claims.push({id:rid(), no:'3307', amt, ph:global[60 + i], t:NOW - ago * MIN, state:'pending'}));
+  S.receipts.sort((a, b) => a.t - b.t); S.claims.sort((a, b) => a.t - b.t);
   for (const tr of S.traders) { tr.joinedAt = NOW - tr.joined * DAY; if (tr.status === 'registered') tr.declared = Math.round(perEstimate(tr.no, lastPer()) * tr.decl / 10) * 10; }
   seedTax(rnd);
   const thaboR = S.receipts.filter(r => r.no === '3307'); const realT = thaboR[thaboR.length - 20];
@@ -181,7 +194,7 @@ function loadState(st) {
     const m = /^(mpesa|ecocash):/.exec(r.note || ''); if (m) x.net = m[1]; else if (r.source === 'mpesa' || r.source === 'ecocash') x.net = r.source;
     if (r.card_last4) x.c4 = r.card_last4; if (r.flag) x.flag = r.flag; return x; });
   S.receipts.forEach(r => used.add(r.code));
-  S.claims = st.claims.map(c => ({id:c.id, no:c.seller_no, amt:Number(c.amount), ph:c.phone, t:Date.parse(c.created_at), state:c.state}));
+  S.claims = (st.claims || []).map(c => ({id:c.id, no:c.seller_no, amt:Number(c.amount), ph:c.phone, t:Date.parse(c.created_at), state:c.state === 'expired' ? 'pending' : c.state, dt:c.decided_at ? Date.parse(c.decided_at) : null, code:c.receipt_code || null}));
   S.reports = st.reports.map(r => ({id:r.id, t:Date.parse(r.created_at), ph:r.phone, type:r.type, lat:r.lat, lng:r.lng,
     target:r.seller_no ? {no:r.seller_no} : {place:r.place_key, label:r.place_label, area:r.area, kind:r.kind}}));
   S.fakes = st.fakes.map(f => ({id:f.id, t:Date.parse(f.created_at), code:f.code, kind:f.kind, by:f.phone, detail:f.detail}));
@@ -212,7 +225,8 @@ function exportSeed() {
     reports: S.reports.map(r => ({id:r.id, phone:r.ph, type:r.type, seller_no:r.target.no || null, place_key:r.target.place || null, place_label:r.target.label || null, area:r.target.area || null, kind:r.target.kind || null, lat:r.lat ?? null, lng:r.lng ?? null, created_at:iso(r.t)})),
     fakes: S.fakes.map(f => ({id:f.id, code:f.code, kind:f.kind, phone:f.by, detail:f.detail, created_at:iso(f.t)})),
     returns: S.returns.map(r => ({id:r.id, seller_no:r.no, period:r.period, sales:r.sales, declared:r.declared, nil_reason:r.nil, tax_due:r.tax, channel:r.ch, filed_at:iso(r.t)})),
-    payments: S.payments.map(x => ({id:x.id, seller_no:x.no, period:x.period, amount:x.amt, ref:x.ref, channel:x.ch, paid_at:iso(x.t)}))
+    payments: S.payments.map(x => ({id:x.id, seller_no:x.no, period:x.period, amount:x.amt, ref:x.ref, channel:x.ch, paid_at:iso(x.t)})),
+    claims: S.claims.map(c => ({id:c.id, seller_no:c.no, amount:c.amt, phone:c.ph, state:c.state, created_at:iso(c.t), decided_at:c.dt ? iso(c.dt) : null, receipt_code:c.code || null}))
   };
 }
 
@@ -330,16 +344,15 @@ function evaluate(list, traderPhones, now) {
 }
 function reEval() { const tp = {}; S.traders.forEach(t => tp[t.no] = t.ph); S.eval = evaluate(S.receipts, tp, clock); }
 function shieldState(r) { const e = S.eval[r.code] || {state:'clear'}; const rv = S.reviews[r.code]; if (rv === 'approved') return 'approved'; if (rv === 'rejected') return 'rejected'; return e.state; }
-const baseEntries = r => r.ph ? Math.max(1, Math.min(5, Math.floor(r.amt / 10))) : 0;
+// 1 entry per M10 by mobile money or card (1 to 5 a receipt); a cash receipt the seller confirmed is always 1 entry, so inflating a cash amount wins nothing.
+const baseEntries = r => !r.ph ? 0 : r.ch === 'cash' ? 1 : Math.max(1, Math.min(5, Math.floor(r.amt / 10)));
 const entriesFor = r => { const tr = tByNo(r.no); return baseEntries(r) * (tr && tr.status === 'registered' ? 2 : 1); };
-/* Why there are no cash receipts: a customer (or a seller and a customer together) could record cash sales that never happened, at home,
-   one a day at many shops, and every shop would then be asked to pay tax on sales it never made. Rasiti now gives receipts only for
-   payments a network or bank saw: M-Pesa, EcoCash or a card machine. Nobody can add a sale to a shop's book without paying the shop.
-   Cash sales still exist: the seller adds them to the total when filing the return, as before. Faking a digital sale means really
-   paying the seller, the network fee is lost, and the seller's taxable sales go up; a reversal or a pay-back voids the receipt.
-   Every prize is paid only after the payout check: an officer calls the winner, who shows ID and the SIM registered to them. */
-const verifyLabel = r => r.ch === 'card' ? 'Card: confirmed by the bank' : r.ch === 'momo' ? 'Confirmed by the network' : 'Older cash record: payout check';
-function drawStatus(r) { const s = shieldState(r); if (!r.ph) return 'none'; if (r.flag || r.ch === 'cash') return 'excluded'; if (s === 'blocked' || s === 'rejected') return 'excluded'; if (s === 'held') return 'held'; return 'active'; }
+/* Only the seller's own confirmation, the seller's own return, or a payment a network or bank saw can create tax. Everything a buyer says
+   (a cash claim, a rating) is evidence for review, never a bill. So a person at home who claims cash sales at many shops changes nothing:
+   each claim waits for the seller, and a rejected or ignored claim never reaches the sales book. A seller who confirms fake cash sales for
+   friends pays tax on them, and each one is worth only 1 entry. Every prize is paid only after the payout check (ID and the SIM registered). */
+const verifyLabel = r => r.ch === 'card' ? 'Card: confirmed by the bank' : r.ch === 'momo' ? 'Confirmed by the network' : 'Cash: confirmed by the seller';
+function drawStatus(r) { const s = shieldState(r); if (!r.ph) return 'none'; if (r.flag) return 'excluded'; if (s === 'blocked' || s === 'rejected') return 'excluded'; if (s === 'held') return 'held'; return 'active'; }
 
 /* ================= feed / toast ================= */
 function log(kind, text) { S.feed.unshift({t:clock, kind, text}); renderFeed(); }
@@ -366,7 +379,7 @@ function mmFill() { const tr = tByNo($('#mmSeller').value); if (!tr) return; con
   $('#mmNote').textContent = card ? (c ? `${tr.name}'s card machine is ${c} (${BANKS[tr.bank] || 'bank'}). The bank tells Rasiti about the payment; the buyer then claims the receipt on *999# with the last 4 digits of the card.` : `${tr.name} has no card machine linked. Most informal sellers have none: they use M-Pesa or EcoCash. Choose Mme Lineo, Ntate Teboho or Mme Nthabiseng.`)
     : c ? `${tr.name}'s ${NETNAME[net]} merchant code is ${c}.` : `${tr.name} has not linked a ${NETNAME[net]} merchant code. Try the other network, or type any code to see what happens.`; }
 /* Card (speed point): the buyer taps or swipes at the seller's card machine. The bank tells Rasiti (/api/card) the terminal, the amount and
-   the last 4 digits of the card, but rarely the buyer's phone. So the receipt waits, and the buyer claims it on *999# (Customer > 1)
+   the last 4 digits of the card, but rarely the buyer's phone. So the receipt waits, and the buyer claims it on *999# (Customer > 2)
    with the seller code, the amount and the last 4 digits of the card, within 3 days. No reference number to type. */
 async function payCard(term, amt, l4) {
   term = String(term || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); amt = Math.round(amt); l4 = String(l4 || '').replace(/\D/g, '');
@@ -386,7 +399,7 @@ async function payCard(term, amt, l4) {
   }
   const t2 = tByNo(r.no); log('ok', `Card payment at ${t2.name} (${term}) · ${M(amt)} · card ••${l4} · receipt waiting to be claimed`);
   PH.c.st = 'c_card_now'; PH.c.d = {no:r.no, amt, l4};
-  show('c', `${slip}\n(${t2.name})\n\nGet your Rasiti receipt:\n*999# > 1 > seller code ${t2.no}\n> amount > last 4 digits.\n\n1. Claim it now\n0. Menu`); return r; }
+  show('c', `${slip}\n(${t2.name})\n\nGet your Rasiti receipt:\n*999# > 2 > seller code ${t2.no}\n> amount > last 4 digits.\n\n1. Claim it now\n0. Menu`); return r; }
 // Match a card payment: same seller, same amount, same last 4 digits, in the last 3 days, not reversed. 3 misses a day and the phone waits.
 async function claimCard(no, amt, l4) { const p = PH.c, who = p.who; amt = Math.round(amt);
   const misses = S.fakes.filter(f => f.kind === 'cardmiss' && f.by === who && f.t > clock - DAY).length;
@@ -732,8 +745,39 @@ const statusLbl = t => t.status === 'registered' ? 'Registered · SBT' : 'Enroll
 
 function tHome() { const tr = tByNo(PH.t.who);
   if (!tr) return 'Lumela! Rasiti keeps a free\nsales book on your phone and\nbrings customers who want\nreceipts.\n\n1. Join Rasiti (2 minutes)\n2. What do I get?\n3. Questions & tax help\n' + langOpt('t');
-  return `Lumela ${tr.name.split(' ').slice(0, 2).join(' ')}\nCode ${tr.no} · ${statusLbl(tr)}\n\n1. My sales book\n2. ${tr.status === 'enrolled' ? 'Register for tax' : 'My tax & badge'}\n3. Payment codes\n4. Questions & tax help\n${langOpt('t')}`; }
-function cHome() { return 'Rasiti receipts\n\n1. Claim a card payment\n2. Check a receipt\n3. Rate a shop\n4. My draw entries\n5. Shops that give receipts\n6. Questions & answers\n' + langOpt('c'); }
+  return `Lumela ${tr.name.split(' ').slice(0, 2).join(' ')}\nCode ${tr.no} · ${statusLbl(tr)}\n\n1. Confirm cash sales (${pendingOf(tr.no).length})\n2. My sales book\n3. ${tr.status === 'enrolled' ? 'Register for tax' : 'My tax & badge'}\n4. Payment codes\n5. Questions & tax help\n${langOpt('t')}`; }
+function cHome() { return 'Rasiti receipts\n\n1. I paid cash\n2. I paid by card\n3. Check a receipt\n4. Rate a shop\n5. My draw entries\n6. Questions & answers\n' + langOpt('c'); }
+/* ---- cash: the buyer claims, the seller confirms ---- */
+const short = ph => ph ? '…' + String(ph).slice(-3) : 'no phone';
+const hhmm = t => { const d = new Date(t); return (new Date(clock).toDateString() === d.toDateString() ? '' : fD(t) + ' ') + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+async function cashClaim(no, amt, from) { const who = from || PH.c.who, tr = tByNo(no); amt = Math.round(amt);
+  if (!(amt >= 1 && amt <= CASH.maxAmount)) return `Cash amount must be M1 to\n${M(CASH.maxAmount)}. Bigger sales: pay by\nM-Pesa, EcoCash or card.\n\n0. Menu`;
+  if (tr.ph === who) return 'You cannot claim a sale at\nyour own shop.\n\n0. Menu';
+  if (S.claims.filter(c => c.ph === who && c.t > clock - DAY).length >= CASH.perPhoneDay) return `You can claim ${CASH.perPhoneDay} cash sales a\nday. Try again tomorrow.\n\n0. Menu`;
+  if (S.claims.some(c => c.ph === who && c.no === no && c.amt === amt && c.state === 'pending' && c.t > clock - 10 * MIN)) return 'You already sent this claim.\nWait for the seller to confirm.\n\n0. Menu';
+  let id = rid();
+  if (saved()) { let j; try { j = await api('event', {kind:'cash_claim', seller_no:no, amount:amt, phone:who}, {quiet:true}); } catch (e) { return e.message + '\n\n0. Menu'; }
+    if (!j.ok) return j.msg + '\n\n0. Menu'; id = j.id; }
+  S.claims.push({id, no, amt, ph:who, t:tick(), state:'pending'});
+  log('info', `Cash claim: ${mask(who)} says they paid ${tr.name} ${M(amt)} cash · waiting for the seller (SMS sent)`); renderAll();
+  if (PH.t.who === no && PH.t.auth && ['home', 'end'].includes(PH.t.st)) show('t', tHome());
+  return `Sent to ${tr.name}\nto confirm: ${M(amt)} cash.\n\nWhen the seller confirms, you\nget your receipt and draw\nentry by SMS. Nothing counts\nuntil then.\n\n0. Menu`; }
+function cashList(tr) { const open = pendingOf(tr.no); const list = open.slice(-5).reverse(); PH.t.d.list = list.map(c => c.id);
+  return `Cash sales to confirm: ${open.length}\n\n` + list.map((c, i) => `${i + 1}. ${M(c.amt)} ${short(c.ph)} ${hhmm(c.t)}`).join('\n') + `\n9. Confirm all ${open.length}\n0. Menu`; }
+async function cashDecide(tr, ids, decision) { const pick = ids === 'all' ? pendingOf(tr.no) : pendingOf(tr.no).filter(c => ids.includes(c.id)); if (!pick.length) return [];
+  let codes = {};
+  if (saved()) { let j; try { j = await api('event', {kind:'cash_decide', no:tr.no, pin:PH.t.pin, ids:ids === 'all' ? 'all' : ids, decision}, {quiet:true}); } catch (e) { toast(e.message); return []; }
+    j.done.forEach(d => codes[d.id] = d.code || true); }
+  else pick.forEach(c => codes[c.id] = decision === 'confirm' ? mkCode(tr.no, Math.random) : true);
+  const out = [];
+  for (const c of pick) { if (!codes[c.id]) continue; c.dt = tick();
+    if (decision === 'confirm') { c.state = 'confirmed'; c.code = codes[c.id]; const r = {code:c.code, no:tr.no, amt:c.amt, ch:'cash', ph:c.ph, t:clock, live:true, note:'claim:' + c.id}; S.receipts.push(r); used.add(r.code); out.push(r); S.lastReceipt = r; }
+    else { c.state = 'rejected'; out.push(c); } }
+  reEval(); renderReceipt(); renderAll();
+  log(decision === 'confirm' ? 'ok' : 'info', `${tr.name} ${decision === 'confirm' ? 'confirmed' : 'rejected'} ${out.length} cash sale${out.length === 1 ? '' : 's'} (${M(out.reduce((a, x) => a + x.amt, 0))})${decision === 'confirm' ? ': receipts sent to the buyers' : ': not in the sales book, not taxed'}`);
+  const mine = decision === 'confirm' && out.find(r => r.ph === PH.c.who);
+  if (mine && ['home', 'end'].includes(PH.c.st)) { PH.c.st = 'end'; show('c', `Rasiti: ${tr.name} confirmed\nyour cash sale of ${M(mine.amt)}.\n\n🧾 Receipt ${mine.code}\n+${entriesFor(mine)} draw entr${entriesFor(mine) === 1 ? 'y' : 'ies'}\n\n0. Menu`); }
+  return out; }
 /* Questions and answers (public/faq.js): short pages on USSD, whole answers on WhatsApp */
 const FAQ = window.RASITI_FAQ;
 const RSLM = window.RASITI_RSL, TIPS = window.RASITI_TIPS; // simulated RSL e-services link; daily education messages
@@ -756,17 +800,27 @@ function tStep(inp) { const p = PH.t, tr = tByNo(p.who), v = String(inp).trim();
       else if (v === '3') faqStart('t', 'seller');
       else if (p.mode === 'wa' && !/^\d+$/.test(v)) { if (!faqFree('t', 'seller', v)) show('t', tHome()); }
       else if (v === '2') { p.st = 'end'; show('t', 'With Rasiti you get:\n- a free sales book\n- customers drawn by the\n  prize draw sign\n- a record banks can see\n- simple tax, no queues\n\n0. Back'); } return; }
-    if (v === '1') { const rs = S.receipts.filter(r => r.no === tr.no && counts(r)); const d0 = new Date(clock); d0.setHours(0, 0, 0, 0);
+    if (v === '1') { if (!pendingOf(tr.no).length) { p.st = 'end'; show('t', 'No cash sales to confirm.\n\nWhen a customer says they paid\nyou cash, you get an SMS and\nthe sale shows here.\n\n0. Menu'); return; }
+      p.st = 't_cash'; show('t', cashList(tr)); }
+    else if (v === '2') { const rs = S.receipts.filter(r => r.no === tr.no && counts(r)); const d0 = new Date(clock); d0.setHours(0, 0, 0, 0);
       const today = rs.filter(r => r.t >= d0.getTime()); const w = rs.filter(r => r.t > clock - 7 * DAY); const m = rs.filter(r => r.t > clock - 30 * DAY);
       const sm = a => a.reduce((x, r) => x + r.amt, 0); p.st = 'end';
-      show('t', `My sales book\n\nToday: ${today.length} sales, ${M(sm(today))}\n7 days: ${w.length} sales, ${M(sm(w))}\n30 days: ${m.length} sales, ${M(sm(m))}\nMobile money ${M(sm(m.filter(r => r.ch === 'momo')))} · card ${M(sm(m.filter(r => r.ch === 'card')))}\nReceipts come by themselves:\nnothing to record.\n\n0. Menu`); }
-    else if (v === '2') { const m = S.receipts.filter(r => r.no === tr.no && counts(r) && r.t > clock - 30 * DAY).reduce((x, r) => x + r.amt, 0);
+      show('t', `My sales book\n\nToday: ${today.length} sales, ${M(sm(today))}\n7 days: ${w.length} sales, ${M(sm(w))}\n30 days: ${m.length} sales, ${M(sm(m))}\nCash ${M(sm(m.filter(r => r.ch === 'cash')))} · mobile ${M(sm(m.filter(r => r.ch === 'momo')))} · card ${M(sm(m.filter(r => r.ch === 'card')))}\nMobile money and card come by\nthemselves. Cash: confirm with 1.\n\n0. Menu`); }
+    else if (v === '3') { const m = S.receipts.filter(r => r.no === tr.no && counts(r) && r.t > clock - 30 * DAY).reduce((x, r) => x + r.amt, 0);
       if (tr.status === 'enrolled') { p.st = 't_reg'; show('t', `Register for tax\n\nSales last 30 days: ${M(m)}\nYearly estimate: ${M(m * 12)}\nYou fit Simplified Business\nTax (under M2,000,000).\n\nRegistered sellers get double\ndraw entries for customers,\nbigger seller prizes and a\nbadge banks recognise.\n\n1. Register now\n2. Ask a helper to call me\n0. Menu`); }
       else { p.st = 't_tax'; show('t', taxMenu(tr)); } }
-    else if (v === '4') faqStart('t', 'seller');
-    else if (v === '3') { p.st = 't_mc'; show('t', `Payment codes\nM-Pesa: ${tr.mp || 'not linked'}\nEcoCash: ${tr.ec || 'not linked'}\nCard machine: ${tr.pos || 'not linked'}\n\n1. Link M-Pesa merchant code\n2. Link EcoCash merchant code\n3. Link card machine\n\n0. Menu`); }
+    else if (v === '5') faqStart('t', 'seller');
+    else if (v === '4') { p.st = 't_mc'; show('t', `Payment codes\nM-Pesa: ${tr.mp || 'not linked'}\nEcoCash: ${tr.ec || 'not linked'}\nCard machine: ${tr.pos || 'not linked'}\n\n1. Link M-Pesa merchant code\n2. Link EcoCash merchant code\n3. Link card machine\n\n0. Menu`); }
     else if (p.mode === 'wa' && !/^\d+$/.test(v)) { if (!faqFree('t', 'seller', v)) show('t', tHome()); }
     return;
+  case 't_cash': { if (v === '9') { p.st = 'end'; cashDecide(tr, 'all', 'confirm').then(o => show('t', `Confirmed ${o.length} cash sale${o.length === 1 ? '' : 's'}:\n${M(o.reduce((a, x) => a + x.amt, 0))}.\n\nYour customers got their\nreceipts. The sales are in your\nsales book.\n\n0. Menu`)); return; }
+    const id = (p.d.list || [])[+v - 1]; const c = id && S.claims.find(x => x.id === id); if (!c) { show('t', cashList(tr)); return; }
+    p.d.cid = id; p.st = 't_cash_one'; show('t', `${M(c.amt)} cash from ${short(c.ph)}\n${hhmm(c.t)}\n\n1. Yes, I sold this\n2. No, reject\n0. Menu`); return; }
+  case 't_cash_one': { if (v !== '1' && v !== '2') return; p.st = 'end';
+    cashDecide(tr, [p.d.cid], v === '1' ? 'confirm' : 'reject').then(o => { const r = o[0];
+      show('t', !r ? 'This claim was already answered.\n\n0. Menu' : v === '1' ? `Confirmed. Receipt ${r.code}\nsent to the customer.\nIn your sales book: ${M(r.amt)}.\n\n` + (pendingOf(tr.no).length ? '1. Next cash sale\n0. Menu' : '0. Menu') : 'Rejected. It is not in your\nsales book and not taxed.\n\n0. Menu');
+      if (r && pendingOf(tr.no).length) p.st = 't_cash_next'; }); return; }
+  case 't_cash_next': if (v === '1') { p.st = 't_cash'; show('t', cashList(tr)); } else home('t'); return;
   case 'j_name': if (!v) return; p.d.name = v.slice(0, 60); p.st = 'j_mkt'; show('t', 'Where do you trade?\n(e.g. Sefika rank)'); return;
   case 'j_mkt': if (!v) return; p.d.mkt = v.slice(0, 60); p.st = 'j_trade'; show('t', 'What do you sell?'); return;
   case 'j_trade': if (!v) return; p.d.trade = v.slice(0, 60); p.st = 'j_pin'; show('t', 'Choose a 4-digit PIN.\nYou need it every time you open\nyour seller menu. Do not share it.'); return;
@@ -778,10 +832,10 @@ function tStep(inp) { const p = PH.t, tr = tByNo(p.who), v = String(inp).trim();
     const tr2 = {no, name:p.d.name, trade:p.d.trade, market:p.d.mkt, status:'enrolled', joined:0, joinedAt:clock, ph:randPhone(Math.random), lat:ll[0], lng:ll[1]};
     S.traders.push(tr2); tr2.pin = p.d.pin; persist({kind:'seller_join', no, pin:p.d.pin, name:tr2.name, trade:tr2.trade, market:tr2.market, phone:tr2.ph, lat:ll[0], lng:ll[1]}).catch(() => {});
     log('ok', `New seller enrolled: ${tr2.name} (${tr2.market}), code ${no}`); p.who = no; p.auth = true; p.pin = p.d.pin; fillSelects(); p.st = 'end';
-    show('t', `Welcome ${tr2.name}!\nYour seller code: ${no}\nKeep your PIN secret.\n\nPut the Rasiti sticker where\ncustomers can see it. Then\nlink your payment codes:\noption 3.\nNo tax number needed yet.\n\n0. Menu`); renderAll(); return; }
+    show('t', `Welcome ${tr2.name}!\nYour seller code: ${no}\nKeep your PIN secret.\n\nPut the Rasiti sticker where\ncustomers can see it. Then\nlink your payment codes:\noption 4.\nNo tax number needed yet.\n\n0. Menu`); renderAll(); return; }
   case 't_tax': { const t = taxOf(tr.no); const lp = lastPer(), pn = perName(lp);
     if (v === '1') { if (t.last) { p.st = 'end'; show('t', `${pn} return filed: ${M(t.last.declared)}${t.last.nil ? ' (nil)' : ''}\nTax due ${M(t.last.tax)} by ${perDue(lp)}.\n\n2. Pay tax\n0. Menu`); p.st = 't_tax'; return; }
-      p.st = 't_file'; show('t', `${pn} return\n\nCard & mobile money receipts:\n${M(perSales(tr.no, lp))} for ${pn}.\nAdd your cash sales: choose 2.\n\n1. File this amount\n2. Enter a different amount\n3. I did not trade (nil)\n0. Menu`); }
+      p.st = 't_file'; show('t', `${pn} return\n\nSales book for ${pn}:\n${M(perSales(tr.no, lp))} (cash you confirmed,\nmobile money and card)\n\n1. File this amount\n2. Enter a different total\n3. I did not trade (nil)\n0. Menu`); }
     else if (v === '2') { if (t.owed <= 0) { show('t', 'Nothing to pay. Thank you for\npaying on time! ✅\n\n0. Menu'); return; }
       p.st = 't_pay'; show('t', `Tax due: ${M(t.owed)}${t.overdueAmt ? `\n(${M(t.overdueAmt)} is overdue)` : ''}\nDemo rate ${TAXRATE * 100}% of declared sales.\n\n1. Pay all by mobile money\n2. Pay part now (pay a little\n   each week before the date)\n0. Menu`); }
     else if (v === '3') { p.st = 't_tax'; show('t', 'My tax record\n\n' + (t.rets.slice(-4).map(r => `${perShort(r.period)}: ${r.declared ? M(r.declared) : 'nil'} · ${r.tax <= 0 ? 'no tax' : t.owedOf(r) <= .5 ? 'paid ✓' : 'owes ' + M(t.owedOf(r))}${t.onTimeFile(r) ? '' : ' · late'}`).join('\n') || 'No returns yet.') + `\n\nOn-time quarters in a row: ${t.streak}\n\n0. Menu`); }
@@ -790,7 +844,7 @@ function tStep(inp) { const p = PH.t, tr = tByNo(p.who), v = String(inp).trim();
     return; }
   case 't_file': { const lp = lastPer();
     if (v === '1') { const r = fileReturn(tr.no, Math.round(perSales(tr.no, lp)), null, p.mode === 'wa' ? 'wa' : 'ussd'); p.st = 't_filed'; show('t', `Filed! ✅ ${perName(lp)}: ${M(r.declared)}\nSent to RSL e-services ✓\nRSL ack ${ackOf(r)}\nTax due ${M(r.tax)} by ${perDue(lp)}\n(demo rate ${TAXRATE * 100}%).\n\n1. Pay now\n0. Menu`); }
-    else if (v === '2') { p.st = 't_file_amt'; show('t', `Your total sales for\n${perName(lp)}, cash included (M):`); }
+    else if (v === '2') { p.st = 't_file_amt'; show('t', `Your total sales for\n${perName(lp)} (M):`); }
     else if (v === '3') { p.st = 't_file_nil'; show('t', 'Why no trading?\n\n1. Stall was closed\n2. I was ill or away\n3. Other reason\n0. Menu'); }
     return; }
   case 't_file_amt': { const a = Math.round(parseFloat(v)); if (!(a >= 0 && a < 2000000)) { show('t', 'Amount (M), numbers only:'); return; }
@@ -853,13 +907,13 @@ function pinDone(ok, msg, v) { const p = PH.t, tr = tByNo(p.who);
   show('t', msg + '\n\nEnter your 4-digit PIN:'); }
 
 function cStep(inp) { const p = PH.c, v = String(inp).trim();
-  if (v === '0' && !['c_camt', 'c_cl4', 'c_paper', 'c_place', 'c_reg0', 'c_reg_name'].includes(p.st)) { home('c'); return; }
+  if (v === '0' && !['c_camt', 'c_cl4', 'c_cash_amt', 'c_paper', 'c_place', 'c_reg0', 'c_reg_name'].includes(p.st)) { home('c'); return; }
   switch (p.st) {
   case 'faq': faqStep('c', v); return;
   case 'c_reg0':
     if (v === '9') { setLang('c', p.lang === 'st' ? 'en' : 'st'); show('c', regPrompt()); return; }
     if (v === '1') { p.st = 'c_reg_name'; show('c', 'Great! What is your first name?'); }
-    else if (v === '2') show('c', 'Every Rasiti receipt is a free ticket in the monthly prize draw: 1 entry per M10, double at registered sellers.\nAsk for a receipt every time you buy.\n\n1. Register now');
+    else if (v === '2') show('c', 'Every Rasiti receipt is a free ticket in the monthly prize draw: 1 entry per M10 by M-Pesa, EcoCash or card, 1 entry for cash the seller confirms, double at registered sellers.\nPaid cash? Claim it: menu 1.\n\n1. Register now');
     else show('c', regPrompt());
     return;
   case 'c_reg_name': { const n = v.replace(/[^A-Za-z' -]/g, '').trim().slice(0, 30); if (!n) { show('c', 'Please type your first name:'); return; }
@@ -868,20 +922,25 @@ function cStep(inp) { const p = PH.c, v = String(inp).trim();
     p.st = 'home'; show('c', cHome()); return; }
   case 'home':
     if (v === '9') { setLang('c', p.lang === 'st' ? 'en' : 'st'); show('c', (p.lang === 'st' ? 'Language: Sesotho\n\n' : 'Language: English\n\n') + cHome()); return; }
-    if (v === '1') { p.st = 'c_seller'; show('c', 'Claim a card payment\n\nPaid by card at a Rasiti seller?\nSeller code (on the sticker):'); }
-    else if (v === '2') { p.st = 'c_check'; show('c', 'Check a receipt\n\nEnter the receipt code:'); }
-    else if (v === '3') { p.st = 'c_rtype'; show('c', 'Rate a shop you bought from\n\n1. I got a receipt\n2. No receipt given\n3. Charged extra for receipt\n4. Shop not on Rasiti\n5. Fake receipt\n0. Menu'); }
-    else if (v === '4') { const mine = S.receipts.filter(r => r.ph === p.who && r.t >= monthStart()); const sum = s => mine.filter(r => drawStatus(r) === s).reduce((x, r) => x + entriesFor(r), 0);
+    if (v === '1') { p.st = 'c_cash_seller'; show('c', 'I paid cash\n\nSeller code (on the sticker):'); }
+    else if (v === '2') { p.st = 'c_seller'; show('c', 'I paid by card\n\nSeller code (on the sticker):'); }
+    else if (v === '3') { p.st = 'c_check'; show('c', 'Check a receipt\n\nEnter the receipt code:'); }
+    else if (v === '4') { p.st = 'c_rtype'; show('c', 'Rate a shop you bought from\n\n1. I got a receipt\n2. No receipt given\n3. Charged extra for receipt\n4. Shop not on Rasiti\n5. Fake receipt\n6. Shops that give receipts\n0. Menu'); }
+    else if (v === '5') { const mine = S.receipts.filter(r => r.ph === p.who && r.t >= monthStart()); const wait = S.claims.filter(c => c.ph === p.who && claimState(c) === 'pending').length; const sum = s => mine.filter(r => drawStatus(r) === s).reduce((x, r) => x + entriesFor(r), 0);
       const live = (pool({from:monthStart(), to:Infinity}).by[p.who] || {e:0}).e;
-      const f = drawDay(); p.st = 'end'; show('c', `My draw entries (this month)\n\nLive: ${live}\nBeing checked: ${sum('held')}\n\nNext draw: ${f.getDate()} ${MON[f.getMonth()]}\nPay by M-Pesa, EcoCash or card:\nevery receipt plays for\nevery prize.\n\n0. Menu`); }
+      const f = drawDay(); p.st = 'end'; show('c', `My draw entries (this month)\n\nLive: ${live}\nBeing checked: ${sum('held')}${wait ? `\nCash claims waiting for the\nseller: ${wait}` : ''}\n\nNext draw: ${f.getDate()} ${MON[f.getMonth()]}\nEvery receipt plays for\nevery prize.\n\n0. Menu`); }
     else if (v === '6') faqStart('c', 'buyer');
     else if (p.mode === 'wa' && !/^\d+$/.test(v)) { if (!faqFree('c', 'buyer', v)) show('c', cHome()); }
-    else if (v === '5') { const good = shopStats().filter(x => x.badge).slice(0, 5); p.st = 'end'; show('c', 'Shops that give receipts\n(rated by customers)\n\n' + good.map(x => '✓ ' + x.label).join('\n') + '\n\n0. Menu'); }
     return;
   case 'c_seller': { const tr = tByNo(v.replace(/\D/g, ''));
     if (!tr) { p.st = 'c_unk'; show('c', `Seller ${v} is not on Rasiti.\n\n1. Tell RSL about this seller\n0. Menu`); return; }
     p.d.no = tr.no; p.st = 'c_camt'; show('c', `${tr.name}\n${tr.market}\n\nAmount paid by card (M):`); return; }
   case 'c_unk': if (v === '1') { p.d.type = 'unlisted'; askPlace(); } return;
+  case 'c_cash_seller': { const tr = tByNo(v.replace(/\D/g, ''));
+    if (!tr) { p.st = 'c_unk'; show('c', `Seller ${v} is not on Rasiti.\n\n1. Tell RSL about this seller\n0. Menu`); return; }
+    p.d.no = tr.no; p.st = 'c_cash_amt'; show('c', `${tr.name}\n${tr.market}\n\nAmount you paid in cash (M):`); return; }
+  case 'c_cash_amt': { const a = Math.round(parseFloat(v)); if (!(a > 0)) { show('c', 'Amount (M), numbers only:'); return; }
+    p.st = 'end'; cashClaim(p.d.no, a).then(t => show('c', t)); return; }
   case 'c_camt': { const a = Math.round(parseFloat(v)); if (!(a > 0)) { show('c', 'Amount (M), numbers only:'); return; } p.d.amt = a; p.st = 'c_cl4'; show('c', 'Last 4 digits of your card\n(on the card and the slip):'); return; }
   case 'c_cl4': { const l4 = v.replace(/\D/g, ''); if (!/^\d{4}$/.test(l4)) { show('c', 'The last 4 digits of the card\nnumber, e.g. 4471:'); return; }
     p.st = 'end'; claimCard(p.d.no, p.d.amt, l4).then(x => show('c', x.text)); return; }
@@ -897,7 +956,8 @@ function cStep(inp) { const p = PH.c, v = String(inp).trim();
       p.st = 'end'; show('c', `Amounts do not match.\nReal sale: ${M(r.amt)}\nYour paper: ${M(a)}\nReported to RSL. Thank you.\n\n0. Menu`); renderAll(); }
     else { p.st = 'end'; show('c', 'Amounts match. All good.\n\n0. Menu'); } return; }
   case 'c_bad': if (v === '1') { p.d.type = 'fake'; askPlace(); } return;
-  case 'c_rtype': { const t = {1:'got', 2:'none', 3:'extra', 4:'unlisted', 5:'fake'}[v]; if (!t) return; p.d.type = t; askPlace(); return; }
+  case 'c_rtype': { if (v === '6') { const good = shopStats().filter(x => x.badge).slice(0, 5); p.st = 'end'; show('c', 'Shops that give receipts\n(rated by customers)\n\n' + good.map(x => '✓ ' + x.label).join('\n') + '\n\n0. Menu'); return; }
+    const t = {1:'got', 2:'none', 3:'extra', 4:'unlisted', 5:'fake'}[v]; if (!t) return; p.d.type = t; askPlace(); return; }
   case 'c_place': {
     if (v === '9' && p.mode === 'wa') { shareLocation(); return; }
     if (!v) return; const no = v.replace(/\D/g, ''); let target;
@@ -1522,7 +1582,7 @@ function drawPDF() { const d = lastDrawData(); const per = drawPeriod(); const {
     {t:'desc', v:'The monthly draw is the reward that makes customers ask for receipts. Every receipt with a phone number earns entries; the Fraud Shield removes suspicious entries before the draw; winners are picked at random in proportion to their entries, with a published seed so anyone can repeat the draw and get the same result.'},
     {t:'h', v:'Key figures'}, {t:'kpis', v:[[o.active.toLocaleString('en-US'), 'Live entries'], [Object.keys(by).length, 'Customers in the draw'], [o.reg.toLocaleString('en-US'), 'From registered sellers'], [o.held, 'Held for review'], [o.excluded, 'Excluded by Fraud Shield'], ['M10,800', 'Prize pool']]},
     {t:'desc', v:`Live entries (${o.active.toLocaleString('en-US')}): entries that take part in this draw. Customers in the draw (${Object.keys(by).length}): different phone numbers holding those entries. From registered sellers (${o.reg.toLocaleString('en-US')}, ${pctS(o.reg, o.active)}): entries earned at sellers registered for tax, which count double, a direct reward for registering. Held for review (${o.held}) and excluded (${o.excluded}): entries the Fraud Shield paused or removed; they do not take part. Prize pool (M10,800): M8,000 in cash prizes, M800 in seller bonuses and M2,000 in airtime each month.`},
-    {t:'h', v:'Rules'}, {t:'p', v:'1 entry per M10 spent, at least 1 and at most 5 per receipt. Entries double at sellers registered for tax. Prizes: 1st M5,000 (seller bonus M500), 2nd M2,000 (M200), 3rd M1,000 (M100), plus 20 x M100 airtime.'},
+    {t:'h', v:'Rules'}, {t:'p', v:'1 entry per M10 paid by mobile money or card, at least 1 and at most 5 per receipt; 1 entry for each cash sale the seller confirmed. Entries double at sellers registered for tax. Prizes: 1st M5,000 (seller bonus M500), 2nd M2,000 (M200), 3rd M1,000 (M100), plus 20 x M100 airtime.'},
     ...(d ? [{t:'h', v:`Winners (draw run ${d.when})`}, {t:'desc', v:`${d.winners.length} winners were drawn from ${Number(d.live).toLocaleString('en-US')} live entries using seed ${d.seed}. Places 1st to 3rd win cash, and the seller who issued the winning receipt receives a bonus, so sellers also want their customers to ask for receipts. Places 4 to ${d.winners.length} win M100 airtime each. The winning receipt code lets RSL confirm the purchase with the seller before paying out.`},
       {t:'table', cols:[['Place', 12], ['Prize', 22], ['Customer', 24], ['Entries', 12, 1], ['Winning receipt', 30], ['Seller', 30]], rows:d.winners.map(w => [w.place, w.prize, wph(w), w.entries, w.code, w.seller])}]
       : [{t:'h', v:'Winners'}, {t:'desc', v:'The draw has not been run yet for this period. Click "Run the monthly draw" on the Monthly draw page, then download this report again to include the winners.'}]),
@@ -1535,24 +1595,38 @@ function remindTargets() { const lp = lastPer(); return S.traders.filter(t => t.
 async function sendReminders() { const ts = remindTargets(); if (!ts.length) return; const lp = lastPer();
   try { if (saved()) await api('admin', {op:'reminders', count:ts.length, period:lp, due:perDue(lp)}); } catch (e) { toast(e.message); return; }
   log('info', `Reminder SMS sent to ${ts.length} sellers: ${perName(lp)} return and payment due ${perDue(lp)} (simulated)`);
-  toast(`Reminder SMS sent to ${ts.length} sellers (simulated). Example: "Lumela! Your ${perName(lp)} return is due ${perDue(lp)}. Dial *999# > 2 > 4 to file from your sales book."`); }
+  toast(`Reminder SMS sent to ${ts.length} sellers (simulated). Example: "Lumela! Your ${perName(lp)} return is due ${perDue(lp)}. Dial *999#, choose 2 (seller), sign in, then 3 > 1 to file from your sales book."`); }
 function taxCSV() { downloadCSV(`rasiti-filing-payments-${stamp()}.csv`, [['Seller', r => (tByNo(r.no) || {}).name], ['Seller code', r => r.no], ['TIN', r => (tByNo(r.no) || {}).tin || ''], ['Period', r => r.period], ['Sales book (M)', r => r.sales], ['Declared (M)', r => r.declared], ['Nil reason', r => r.nil || ''], ['Tax due (M, demo rate)', r => r.tax], ['Paid (M)', r => taxOf(r.no).paid(r.period)], ['Filed', r => isoT(r.t)], ['Filed on time', r => r.t <= perDueT(r.period) ? 'Yes' : 'No'], ['Due date', r => perDue(r.period)], ['Channel', r => r.ch]],
   S.returns.filter(r => OF.area === 'all' || (tByNo(r.no) || {}).market === OF.area).slice().sort((a, b) => a.no === b.no ? (a.period < b.period ? -1 : 1) : a.no < b.no ? -1 : 1)); }
 /* Users and activity */
 let ACT = [];
+function cashCSV() { const ST = {pending:'Waiting for the seller', confirmed:'Confirmed by the seller', rejected:'Rejected by the seller', expired:'Ignored (expired after 3 days)'};
+  downloadCSV(`rasiti-cash-claims-${stamp()}.csv`, [['Claimed', c => isoT(c.t)], ['Seller', c => (tByNo(c.no) || {}).name], ['Seller code', c => c.no], ['Market', c => (tByNo(c.no) || {}).market], ['Amount (M)', c => c.amt],
+    ['Customer', c => maskCsv(c.ph)], ['Status', c => ST[claimState(c)]], ['Answered', c => c.dt ? isoT(c.dt) : ''], ['Receipt', c => c.code || ''], ['Counts for tax', c => c.state === 'confirmed' ? 'Yes' : 'No']],
+    S.claims.slice().sort((a, b) => b.t - a.t)); }
 function activityCSV() { downloadCSV(`rasiti-activity-log-${stamp()}.csv`, [['When', a => isoT(Date.parse(a.at))], ['Who', a => a.user_email || 'system'], ['Action', a => a.action.replace(/_/g, ' ')], ['Detail', a => a.detail ? JSON.stringify(a.detail) : '']], ACT.filter(a => !$('#actWho') || $('#actWho').value === 'all' || (a.user_email || 'system') === $('#actWho').value)); }
 
 /* ================= Officer console ================= */
 const canWork = () => !API.online || (API.user && ['owner', 'admin', 'officer'].includes(API.user.role));
+/* Cash claims per seller: what buyers said they paid in cash, and what the seller did with it. A refusal is a reason to look, never a bill.
+   "Established" buyers are phones that also paid someone by mobile money or card, so a phone made up for the purpose does not count. */
+function cashStats(no, days) { const from = clock - (days || 30) * DAY; const cs = S.claims.filter(c => c.no === no && c.t > from);
+  const est = new Set(S.receipts.filter(r => r.ph && r.ch !== 'cash').map(r => r.ph));
+  const refused = cs.filter(c => ['rejected', 'expired'].includes(claimState(c)));
+  return {claims:cs.length, confirmed:cs.filter(c => c.state === 'confirmed').length, pending:cs.filter(c => claimState(c) === 'pending').length, refused:refused.length,
+    refusedBuyers:new Set(refused.filter(c => est.has(c.ph)).map(c => c.ph)).size, value:cs.filter(c => c.state === 'confirmed').reduce((a, c) => a + c.amt, 0)}; }
 function worklist() {
   const items = []; const groups = reportGroups(); const spam = spamPhones(); const gT = no => groups.find(g => g.key === 'T' + no);
   const mon = perName(lastPer());
   for (const tr of S.traders) {
     const rs = S.receipts.filter(r => r.no === tr.no); const r30 = rs.filter(r => r.t > clock - 30 * DAY); const s30 = r30.reduce((a, r) => a + r.amt, 0);
     const g = gT(tr.no); const extra = g ? g.list.filter(x => x.type === 'extra' && !spam.has(x.ph)).length : 0; const ll = traderLL(tr);
+    const cs = cashStats(tr.no, 30);
+    if (cs.refusedBuyers >= 3 && cs.refused >= cs.claims / 2) items.push({id:'cash' + tr.no, pri:2, subj:tr, ll, act:'Visit: customers say they paid cash, the seller did not confirm',
+      why:[`${cs.refused} of ${cs.claims} cash claims in 30 days were rejected or ignored, from ${cs.refusedBuyers} different customers who also pay by mobile money or card`, 'Never a bill on its own: a claim is what a buyer says, not proof', 'Explain cash confirmations, then look at the sales book and the return together'], btn:'Mark visited', kind:'done'});
     if (tr.status === 'enrolled') {
       if (tr.helper) items.push({id:'help' + tr.no, pri:3, subj:tr, ll, act:'Call back: seller asked for help registering', why:['Requested from the phone menu', `${r30.length} receipts worth ${M(s30)} in 30 days`], btn:'Mark called', kind:'done'});
-      if (S.invited.has(tr.no)) items.push({id:'inv' + tr.no, pri:0, subj:tr, ll, act:'Invitation sent, waiting for seller', why:['Seller can register from the phone menu, option 4']});
+      if (S.invited.has(tr.no)) items.push({id:'inv' + tr.no, pri:0, subj:tr, ll, act:'Invitation sent, waiting for seller', why:['Seller can register from the phone menu, option 3']});
       else if (s30 >= 1500) items.push({id:'inv' + tr.no, pri:s30 > 5000 ? 3 : 2, subj:tr, ll, act:'Invite to register for Simplified Business Tax', why:[`On Rasiti for ${tr.joined} days, ${r30.length} receipts worth ${M(s30)} in 30 days`, `Yearly estimate ${M(s30 * 12)}, well under the M2,000,000 SBT ceiling`, "Selling point: registering doubles the seller's customers' draw entries"], btn:'Send invitation', kind:'invite', target:tr.no});
     } else {
       const rec = Math.round(perSales(tr.no, lastPer()));
@@ -1583,10 +1657,8 @@ function renderOfficer() {
   const on = S.traders.length; const reg = S.traders.filter(t => t.status === 'registered').length; const via = S.traders.filter(t => t.via).length;
   const r30 = S.receipts.filter(r => r.t > clock - 30 * DAY); const s30 = r30.reduce((a, r) => a + r.amt, 0);
   const groups = reportGroups(); const unlisted = groups.filter(g => g.target.place && g.indep > 0).length; const held = S.receipts.filter(r => shieldState(r) === 'held').length;
-  $('#offKpis').innerHTML = [[on, 'Sellers on Rasiti'], [via, 'Registered through Rasiti'], [M(s30), 'Receipted sales, 30 days'], [r30.length.toLocaleString('en-US'), 'Receipts, 30 days'], [unlisted, 'Unlisted shops reported'], [held, 'Receipts held for review']].map(kpi).join('');
-  const enrolled = S.traders.filter(t => t.status === 'enrolled').length; const filed = S.traders.filter(t => t.status === 'registered' && t.declared != null).length;
-  const steps = [['Reported by customers', unlisted], ['Enrolled, sales book only', enrolled], ['Registered for tax', reg], ['Filed last quarter', filed]]; const mx = Math.max(...steps.map(s => s[1]), 1);
-  $('#funnel').innerHTML = steps.map(s => `<div class="fn"><span>${s[0]}</span><span class="bar"><i style="width:${s[1] / mx * 100}%"></i></span><b>${s[1]}</b></div>`).join('');
+  const c30 = S.claims.filter(c => c.t > clock - 30 * DAY && claimState(c) !== 'pending'); const cOk = c30.filter(c => c.state === 'confirmed').length;
+  $('#offKpis').innerHTML = [[on, 'Sellers on Rasiti'], [via, 'Registered through Rasiti'], [M(s30), 'Receipted sales, 30 days'], [c30.length ? Math.round(cOk / c30.length * 100) + '%' : '–', 'Cash claims confirmed, 30 days'], [unlisted, 'Unlisted shops reported'], [held, 'Receipts held for review']].map(kpi).join('');
   $('#reportsTbl').innerHTML = '<tr><th>Shop</th><th class="num">Customers</th><th class="num">Discounted</th><th>Status</th></tr>' + complaintGroups().slice(0, 12).map(g => { const nm = g.target.no ? (tByNo(g.target.no) || {name:g.target.no}).name : g.target.label;
     return `<tr><td>${esc(nm)}<div class="note">${[...new Set(g.list.filter(x => x.type !== 'got').map(x => REPTYPE[x.type]))].join(', ')}</div></td><td class="num">${g.indep}</td><td class="num">${g.discounted}</td><td>${g.indep >= 3 ? '<span class="pill p-bad">Act</span>' : g.indep > 0 ? '<span class="pill p-mute">Watching</span>' : '<span class="pill p-mute">Discounted</span>'}</td></tr>`; }).join('');
   fillSel('#ofArea', [['all', 'All areas'], ...[...new Set([...S.traders.map(t => t.market), ...S.reports.map(r => r.target.area).filter(Boolean)])].sort().map(a => [a, a])], OF.area);
@@ -1613,10 +1685,10 @@ function drawPeriod() { const ms = monthStart(); const cur = {from:ms, to:Infini
   return {from:pm, to:ms, title:`${nm} draw (${fD(pm)} to ${fD(ms - DAY)}), held in the first days of ${MONTHS_FULL[d.getMonth()]}`, name:nm}; }
 const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 /* Prize calendar (amounts to be agreed with RSL). Every entry counts in its month, and again in the quarter, half-year and year draws.
-   Every receipt is a payment a network or bank saw (M-Pesa, EcoCash or card), so every receipt plays for every prize.
+   Every receipt is a payment a network or bank saw, or a cash sale the seller confirmed, so every receipt plays for every prize.
    The seller motorbike goes to a registered seller who filed and paid the quarter on time. */
 const PRIZE_LADDER = [
-  {draw:'Monthly', when:'Last day of each month', prizes:'M5,000, M2,000 and M1,000 cash · 5 smartphones · 20 × M100 airtime', who:'Every receipt with your phone number (M-Pesa, EcoCash or card)', months:1},
+  {draw:'Monthly', when:'Last day of each month', prizes:'M5,000, M2,000 and M1,000 cash · 5 smartphones · 20 × M100 airtime', who:'Every receipt with your phone number (cash the seller confirmed, M-Pesa, EcoCash or card)', months:1},
   {draw:'Quarterly', when:'End of March, June, September, December', prizes:'3 motorbikes: 2 for customers, 1 for a registered seller', who:'Every receipt in the quarter; sellers who filed and paid the quarter on time', months:3},
   {draw:'Every 6 months', when:'End of June and December', prizes:'M100,000 cash', who:'Every receipt in the 6 months', months:6},
   {draw:'Every year', when:'December', prizes:'A car', who:'Every receipt in the year', months:12}];
@@ -1628,7 +1700,7 @@ function renderLadder() { const el = $('#ladderTbl'); if (!el) return;
     return `<tr><td><b>${x.draw}</b></td><td>${x.when}</td><td>${x.prizes}</td><td>${x.who}</td><td class="num">${n.e.toLocaleString('en-US')}<div class="note">${n.people} people${x.months === 3 ? ` · ${okSellers} sellers` : ''}</div></td></tr>`; }).join(''); }
 function renderDraw() { renderLadder(); const per = drawPeriod(); const {o, by} = pool(per);
   $('#drawTitle').textContent = per.title;
-  $('#drawKpis').innerHTML = [[o.active.toLocaleString('en-US'), 'Live entries'], [Object.keys(by).length, 'Customers in the draw'], [o.reg.toLocaleString('en-US'), 'From registered sellers (double)'], [o.held, 'Held for review'], [o.excluded, 'Excluded (Fraud Shield, reversed or paid back)'], [o.waiting, 'Card payments not claimed yet']].map(kpi).join('');
+  $('#drawKpis').innerHTML = [[o.active.toLocaleString('en-US'), 'Live entries'], [Object.keys(by).length, 'Customers in the draw'], [o.reg.toLocaleString('en-US'), 'From registered sellers (double)'], [o.held, 'Held for review'], [o.excluded, 'Excluded (Fraud Shield, reversed or paid back)'], [o.waiting, 'Card payments not claimed yet'], [S.claims.filter(c => claimState(c) === 'pending').length, 'Cash claims waiting for the seller']].map(kpi).join('');
   $('#runDraw').disabled = !canWork();
   const pd = $('#pastDrawsPanel'); pd.hidden = !S.draws.length;
   $('#pastDraws').innerHTML = '<tr><th>When</th><th class="num">Live entries</th><th>Seed</th><th>Winners</th></tr>' + S.draws.map(d => `<tr><td>${fT(Date.parse(d.run_at))}</td><td class="num">${d.live_entries}</td><td class="mono">${d.seed}</td><td>${(d.winners || []).slice(0, 3).map(w => esc(wph(w)) + ' (' + esc(w.prize) + ')').join('<br>')}${(d.winners || []).length > 3 ? `<div class="note">+ ${d.winners.length - 3} airtime winners (M100 each)</div>` : ''}</td></tr>`).join(''); }
@@ -1689,40 +1761,41 @@ async function setAction(it, on) {
 
 /* ================= guided cases ================= */
 const CASES = [
+ {tag:'Ordinary', cls:'', t:'Customer pays cash', d:"Lerato pays Ntate Thabo M40 in cash and claims it on her phone. Thabo confirms it on his: only then does it count.", async run() {
+   setC(PERSONAS[0].ph); caseSeller('3307'); const tr = tByNo('3307');
+   const text = await cashClaim('3307', 40); PH.c.st = 'end'; show('c', text);
+   if (!/^Sent to/.test(text)) { narrate(`<b>Cash claim not sent.</b> ${esc(text.split('\n\n')[0].replace(/\n/g, ' '))}`); return; }
+   if (PH.t.auth) { PH.t.st = 't_cash'; show('t', cashList(tr)); }
+   narrate(`<b>Ordinary cash sale.</b> Lerato dialled *999#, chose <b>1. I paid cash</b>, typed Thabo's seller code and M40. That makes a <b>pending claim</b>: it is not in Thabo's sales book, not taxed and gives no entry yet. Thabo got an SMS. On <b>his</b> phone${PH.t.auth ? '' : ' (sign in with PIN 2580, then 1)'}, choose the claim and <b>1. Yes, I sold this</b>, or <b>9</b> to confirm all at once. Lerato then gets receipt and entry, and the M40 lands in his sales book, ready for filing.`); }},
  {tag:'Ordinary', cls:'', t:'Customer pays with M-Pesa', d:"Lerato pays M30 to Ntate Thabo's M-Pesa merchant code as usual. The receipt issues itself.", async run() {
    setC(PERSONAS[0].ph); caseSeller('3307'); const tr = tByNo('3307'); const r = await payMerchant('mpesa', tr.mp || '584112', 30); if (!r) return;
-   narrate(`<b>Ordinary case.</b> Lerato paid Thabo's own M-Pesa merchant code (${esc(tr.mp || '584112')}) as she always does: nothing extra to type. Because Thabo linked that code to Rasiti, M-Pesa told Rasiti, which found the seller who linked that code and sent Lerato receipt ${esc(r.code)} with ${entriesFor(r)} entries, double because Thabo is registered. No QR code and no extra step. The Fraud Shield scored it clear.`); }},
- {tag:'Ordinary', cls:'', t:'Customer pays by card', d:"Tumelo pays M250 by card at Mme Lineo's salon. The bank tells Rasiti; Tumelo claims the receipt with the last 4 digits of his card.", async run() {
+   narrate(`<b>Ordinary case.</b> Lerato paid Thabo's own M-Pesa merchant code (${esc(tr.mp || '584112')}) as she always does. M-Pesa told Rasiti, Rasiti found the seller who linked that code, and Lerato got receipt ${esc(r.code)} with ${entriesFor(r)} entries (double, because Thabo is registered). Nobody typed anything.`); }},
+ {tag:'Ordinary', cls:'', t:'Customer pays by card', d:"Tumelo pays M250 by card at Mme Lineo's salon, then claims the receipt with the last 4 digits of his card.", async run() {
    setC(PERSONAS[1].ph); caseSeller('6018'); const tr = tByNo('6018'); if (!tr || !tr.pos) { narrate('Mme Lineo has no card machine linked in this data. Reset and load the demo data first.'); return; }
    const r = await payCard(tr.pos, 250, PERSONAS[1].card); if (!r) return;
-   narrate(`<b>Card payment.</b> Tumelo tapped his card on Lineo's ${esc(BANKS[tr.bank] || 'bank')} card machine (${esc(tr.pos)}). The bank told Rasiti the terminal, the amount and the last 4 digits of the card, but not his phone. On his phone, choose <b>1. Claim it now</b>: Rasiti matches seller, amount and card ending (••${PERSONAS[1].card}) and adds the draw entries. Later he can do the same from *999# > 1 within 3 days.`); }},
- {tag:'Fraud', cls:'hr', t:'Money paid, then sent back', d:"A buyer pays Mme Palesa M300 by M-Pesa and she sends it back to him. M-Pesa reports the round trip and the receipt is voided.", async run() {
-   setC(PERSONAS[1].ph); const tr = tByNo('4821'); const r = await payMerchant('mpesa', tr.mp || '584297', 300); if (!r) return;
-   narrate('<b>Round trip…</b> M-Pesa is checking whether the money stays with the seller.');
-   setTimeout(async () => { r.flag = 'payback'; reEval();
-     if (saved() && r.txn) { try { await fetch('/api/momo', {method:'POST', headers:{'content-type':'application/json', 'x-rasiti-demo':'1'}, body:JSON.stringify({type:'payback', network:'mpesa', txn:r.txn})}); } catch {} }
-     log('bad', `M-Pesa: seller 4821 sent ${M(300)} back to ${mask(r.ph)} within 24 hours · receipt ${r.code} voided`);
-     PH.c.st = 'end'; show('c', `Rasiti: receipt ${r.code}\nwas cancelled. The money went\nback to your phone, so it was\nnot a sale. No draw entries.\n\n0. Menu`);
-     narrate(`<b>Fraud stopped.</b> The payment was real, but Mme Palesa's merchant wallet sent the same ${M(300)} back to the buyer. M-Pesa reports that to Rasiti, the receipt leaves the draw and her sales book, and the Fraud Shield rule "Payment reversed or paid back" shows it to officers. Faking digital sales costs the network fee every time and wins nothing.`); renderAll(); }, 1400); }},
- {tag:'Review', cls:'hr', t:'7 receipts from one phone', d:"One number collects 7 receipts at Mme Nthabiseng's stall in 30 minutes.", run() {
+   narrate(`<b>Card payment.</b> The bank told Rasiti the terminal (${esc(tr.pos)}), the amount and the last 4 digits of the card, but not Tumelo's phone. On his phone choose <b>1. Claim it now</b>: Rasiti matches seller, amount and card ending (••${PERSONAS[1].card}). He can also do it later on *999# > 2 within 3 days.`); }},
+ {tag:'Exception', cls:'hr', t:'Fake cash claims from home', d:'Someone at home claims cash sales at 3 shops to make them pay tax. Nothing counts unless a seller says yes.', async run() {
+   const prank = '26657444' + String(100 + Math.floor(Math.random() * 899));
+   for (const [no, a] of [['3307', 300], ['4821', 250], ['3902', 400]]) await cashClaim(no, a, prank);
+   const tr = tByNo('3307'); caseSeller('3307'); const c = pendingOf('3307').find(x => x.ph === prank);
+   if (c) { PH.t.st = 't_cash'; show('t', cashList(tr)); }
+   narrate(`<b>Exception: the loophole is closed.</b> A phone that never bought anything claimed M300, M250 and M400 "cash" at three shops. Each claim only <b>waits</b> for the seller. On Thabo's phone, open the M300 claim and choose <b>2. No, reject</b>. It never reaches his sales book or his tax. If he simply ignores it, it expires after ${CASH.expireDays} days. A phone can send at most ${CASH.perPhoneDay} claims a day, and refused claims only help RSL see where to look, never create a bill.`); renderAll(); }},
+ {tag:'Human review', cls:'hr', t:'7 receipts from one phone', d:"One number collects 7 receipts at Mme Nthabiseng's stall in 30 minutes.", run() {
    const p = '2666' + String(Math.floor(Math.random() * 1e7)).padStart(7, '0'); for (let i = 0; i < 7; i++) issue('3902', 35 + Math.round(Math.random() * 20), 'momo', p, true);
    log('warn', 'Fraud Shield held 7 receipts from one phone at Mme Nthabiseng K.'); S.filter = 'held';
    narrate('<b>Human review.</b> The Shield cannot know if this is a reseller stocking up or someone farming entries, so it holds the entries for an officer. Open the <a href="#officer">officer console</a> to decide, or see the reasons in the <a href="#shield">Fraud Shield</a>.'); renderAll(); }},
- {tag:'Fraud', cls:'hr', t:'Customer checks a fake receipt', d:'Someone shows a printed code. The customer checks it on the phone.', run() {
-   setC(PERSONAS[0].ph); const g = chk('3307ZZ8Q'); const bad = AL[(AL.indexOf(g) + 7) % 31]; PH.c.st = 'c_check'; if (PH.c.mode === 'wa') waMe('c', `RS-3307-ZZ8Q-${bad}`); cStep(`RS-3307-ZZ8Q-${bad}`);
-   narrate('<b>Fake receipt.</b> The check character does not match, so the phone says NOT GENUINE at once. Choose "Report the seller" to report it.'); }},
  {tag:'New taxpayer', cls:'nx', t:'Mme Palesa registers', d:'An enrolled fruit seller registers from her phone. Her customers start earning double entries.', run() {
    const tr = tByNo('4821'); if (!tr || tr.status === 'registered') { narrate('Mme Palesa is already registered. Pick another enrolled seller, or ask an owner to reset the demo data.'); return; }
-   caseSeller('4821'); tStep('2');
+   caseSeller('4821'); tStep('3');
    narrate('<b>Widening the tax net.</b> Palesa has used the free sales book for 6 weeks. On her phone, choose Register now, then enter any ID number such as <b>0123456789</b>.'); }},
  {tag:'New lead', cls:'nx', t:'Third report on an unlisted stall', d:'Lerato reports the chisa nyama stall at Sefika rank. It crosses the 3-reporter line.', run() {
    setC(PERSONAS[0].ph); PH.c.st = 'c_rtype'; PH.c.d = {type:'unlisted'}; finishRating({place:'sefika-p3', label:'Chisa nyama stall, Sefika rank platform 3', area:'Sefika taxi rank', kind:'Informal'}, null);
    narrate('<b>New lead.</b> Three different customers have now named the same stall. It moves from Watching to an assisted enrolment visit in the <a href="#officer">officer console</a>, and appears on the map. The reporter stays anonymous.'); }},
  {tag:'Sustained payment', cls:'', t:'Mme Nthabiseng catches up', d:'A seller with overdue tax files from her sales book and pays part by mobile money.', run() {
    const tr = tByNo('3902'); if (!tr || tr.status !== 'registered') { narrate('Mme Nthabiseng is not a registered seller in this data. Reset and load the demo data first.'); return; }
-   caseSeller('3902'); tStep('2');
+   caseSeller('3902'); tStep('3');
    const x = taxOf('3902');
-   narrate(`<b>Sustained payment.</b> Nthabiseng owes ${M(x.owed)}${x.overdueAmt ? `, of which ${M(x.overdueAmt)} is overdue` : ''}. On her phone, choose <b>1</b> to file the ${perName(lastPer())} return straight from her sales book, then <b>2</b> to pay part now by mobile money. The officer console shows a payment-plan suggestion, not a penalty, and her streak starts again once she is up to date.`); }}
+   narrate(`<b>Sustained payment.</b> Nthabiseng owes ${M(x.owed)}${x.overdueAmt ? `, of which ${M(x.overdueAmt)} is overdue` : ''}. On her phone, choose <b>1</b> to file the ${perName(lastPer())} return straight from her sales book (cash she confirmed, mobile money and card), then <b>2</b> to pay part now. The officer console suggests a payment plan, not a penalty.`); }}
 ];
 
 /* ================= users view ================= */
@@ -1736,8 +1809,7 @@ async function renderUsers() {
       const locked = u.id === me.uid || (me.role !== 'owner' && ['owner', 'admin'].includes(u.role));
       return `<tr><td><b>${esc(u.name)}</b>${u.id === me.uid ? ' <span class="pill p-info">You</span>' : ''}<div class="note">${esc(u.email)}</div></td><td>${roleSel(u)}</td><td>${u.active ? '<span class="pill p-ok">Active</span>' : '<span class="pill p-mute">Switched off</span>'}</td><td class="note">${u.last_login ? fT(Date.parse(u.last_login)) : 'Never'}</td>
         <td style="white-space:nowrap">${locked ? '' : `<button class="btn small" data-act="${u.id}" data-on="${u.active ? 0 : 1}">${u.active ? 'Switch off' : 'Switch on'}</button> <button class="btn small" data-reset="${u.id}">Reset password</button>`}</td></tr>`; }).join('');
-    ACT = activity; fillSel('#actWho', [['all', 'Everyone'], ...[...new Set(activity.map(a => a.user_email || 'system'))].map(w => [w, w])], $('#actWho').value || 'all');
-    $('#activityTbl').innerHTML = '<tr><th>When</th><th>Who</th><th>What</th></tr>' + activity.filter(a => $('#actWho').value === 'all' || (a.user_email || 'system') === $('#actWho').value).map(a => `<tr><td class="mono">${fT(Date.parse(a.at))}</td><td>${esc(a.user_email || 'system')}</td><td>${esc(a.action.replace(/_/g, ' '))}<div class="note">${esc(Object.entries(a.detail || {}).filter(([, v]) => v != null).map(([k, v]) => k + ': ' + v).join(' · '))}</div></td></tr>`).join('');
+    ACT = activity;
     $('#dataPanel').hidden = me.role !== 'owner';
   } catch (e) { $('#usersTbl').innerHTML = `<tr><td class="err">${esc(e.message)}</td></tr>`; }
 }
@@ -1750,6 +1822,7 @@ const BH_TASKS = [
   {id:'explain', label:'Explain a case', pick:'seller', ask:s => `Explain the case of seller ${s.name} (code ${s.no}) in plain language. What do the receipts, returns and customer ratings show, and what is a fair first step?`},
   {id:'invite', label:'Draft invitation SMS', pick:'enrolled', ask:s => `Draft a short, friendly SMS (under 300 characters) inviting ${s.name} (code ${s.no}) to register for Simplified Business Tax. Mention the benefits shown in the data. Give an English version and a Sesotho version.`},
   {id:'call', label:'Call script for a nil return', pick:'nil', ask:s => `Write a polite phone-call script for an RSL officer calling ${s.name} (code ${s.no}) about the nil return for the last quarter. Do not accuse. Ask questions, explain options, and agree a next step.`},
+  {id:'cash', label:'Cash claims not confirmed', ask:'Which sellers rejected or ignored many cash claims in the last 30 days? For each, give the numbers, an innocent explanation that could fit, and a friendly first step. Remember a claim is not proof.'},
   {id:'review', label:'Summarise held receipts', ask:'Summarise the receipts held by the Fraud Shield. For each group, say what looks unusual, what an officer should check, and what innocent explanation might exist.'},
   {id:'areas', label:'Where are receipts lowest?', ask:'Which areas and shops have the lowest receipt rates in the last 30 days? Suggest where tax helpers should visit first, and why.'},
   {id:'report', label:'Monthly report for management', ask:'Write a one-page monthly report for the Deputy Commissioner, General Clients: key numbers, progress in widening the tax net, risks found, and recommended next steps.'},
@@ -1768,7 +1841,8 @@ function bhContext(focusNo) {
       receipts_30d:r30.length, sales_30d:Math.round(sum(r30)), yearly_estimate:Math.round(sum(r30) * 12),
       declared_last_quarter:t.declared ?? null, receipts_last_quarter:Math.round(perSales(t.no, lastPer())),
       customer_complaints:g ? g.indep : 0, complaint_types:g ? [...new Set(g.list.filter(x => x.type !== 'got').map(x => REPTYPE[x.type]))] : [],
-      held_receipts:rs.filter(r => shieldState(r) === 'held').length, asked_for_helper:!!t.helper};
+      held_receipts:rs.filter(r => shieldState(r) === 'held').length, asked_for_helper:!!t.helper,
+      cash_claims_30d:(c => ({claims:c.claims, confirmed:c.confirmed, rejected_or_ignored:c.refused, waiting:c.pending, refusing_buyers_who_also_pay_digitally:c.refusedBuyers}))(cashStats(t.no, 30))};
   });
   const hr = S.receipts.filter(r => shieldState(r) === 'held'); const groups = {};
   for (const r of hr) { const ids = S.eval[r.code].flags.map(f => f.id).sort().join(','); const k = r.no + '|' + ids; const gg = groups[k] = groups[k] || {seller:(tByNo(r.no) || {}).name, code:r.no, receipts:0, amount:0, reasons:S.eval[r.code].flags.map(f => f.why), hint:r.note || null}; gg.receipts++; gg.amount += r.amt; }
@@ -1800,23 +1874,24 @@ function bhExtra() {
   const rev = Object.values(S.reviews);
   const sellerX = S.traders.map(t => { const rs = S.receipts.filter(r => r.no === t.no); const a30 = rs.filter(r => r.t > clock - 30 * DAY);
     return {code:t.no, name:t.name, receipts_today:rs.filter(r => r.t >= d0.getTime()).length, receipts_7d:rs.filter(r => r.t > clock - 7 * DAY).length,
-      average_sale:a30.length ? Math.round(sum(a30) / a30.length) : 0, mobile_money_pct:pct(a30.filter(r => r.ch === 'momo').length, a30.length),
-      receipts_without_phone:a30.filter(r => !r.ph).length, pending_requests:S.claims.filter(c => c.no === t.no && c.state === 'pending').length,
+      average_sale:a30.length ? Math.round(sum(a30) / a30.length) : 0, mobile_money_pct:pct(a30.filter(r => r.ch === 'momo').length, a30.length), cash_pct:pct(a30.filter(r => r.ch === 'cash').length, a30.length),
+      card_receipts_not_claimed:a30.filter(r => !r.ph).length, cash_claims_waiting:pendingOf(t.no).length,
       tin:t.tin || null, registered_through_rasiti:!!t.via, invited:S.invited.has(t.no), visit_planned:S.visits.has(t.no)}; });
   return {
     receipts:{today:{count:today.length, value:Math.round(sum(today))}, last_7_days:{count:r7.length, value:Math.round(sum(r7))}, last_30_days:{count:r30.length, value:Math.round(sum(r30)), average_sale:r30.length ? Math.round(sum(r30) / r30.length) : 0},
-      by_payment_30d:{mobile_money:r30.filter(r => r.ch === 'momo').length, card:r30.filter(r => r.ch === 'card').length, reversed_or_paid_back:r30.filter(r => r.flag).length}, daily_last_14_days:daily},
+      by_payment_30d:{cash_confirmed_by_seller:r30.filter(r => r.ch === 'cash').length, mobile_money:r30.filter(r => r.ch === 'momo').length, card:r30.filter(r => r.ch === 'card').length, reversed_or_paid_back:r30.filter(r => r.flag).length}, daily_last_14_days:daily},
     seller_details:sellerX,
     fraud_shield:{how_it_works:'Each receipt gets points from the rules. 30 or more: draw entries held for an officer. 60 or more: blocked. The sale always stays in the seller\'s book.',
       receipts_by_state:states, rules:RULES.map(r => ({rule:r.name, points:r.pts, what:r.what, receipts_hit:hits[r.id] || 0})),
       fake_or_misused_codes:S.fakes.slice(-15).map(f => ({date:fD(f.t), code:f.code, kind:f.kind, detail:f.detail || ''})),
       officer_reviews:{approved:rev.filter(x => x === 'approved').length, rejected:rev.filter(x => x === 'rejected').length}},
     draw:{period:per.title, live_entries:o.active, customers_in_draw:Object.keys(by).length, entries_from_registered_sellers:o.reg, held_for_review:o.held, excluded_by_fraud_shield:o.excluded,
-      rules:'1 entry per M10 spent, minimum 1 and maximum 5 per receipt; double at registered sellers; monthly draw; each phone can win once per draw.',
-      prizes:'Monthly: 1st M5,000 (seller bonus M500), 2nd M2,000 (seller M200), 3rd M1,000 (seller M100), 5 smartphones and 20 x M100 airtime. Quarterly: 3 motorbikes (2 for customers, 1 for a registered seller who filed and paid on time). Every 6 months: M100,000. Every year: a car. Receipts come only from M-Pesa, EcoCash or card payments (no cash receipts), so every receipt plays for every prize. A reversed payment, or one paid back to the buyer, gets no entries. All prize amounts to be agreed with RSL.',
+      rules:'1 entry per M10 paid by mobile money or card, minimum 1 and maximum 5 per receipt; 1 entry per cash receipt the seller confirmed; double at registered sellers; monthly draw; each phone can win once per draw.',
+      prizes:'Monthly: 1st M5,000 (seller bonus M500), 2nd M2,000 (seller M200), 3rd M1,000 (seller M100), 5 smartphones and 20 x M100 airtime. Quarterly: 3 motorbikes (2 for customers, 1 for a registered seller who filed and paid on time). Every 6 months: M100,000. Every year: a car. Every receipt is a payment a network or bank saw, or a cash sale the seller confirmed, so every receipt plays for every prize. A reversed payment, or one paid back to the buyer, gets no entries. All prize amounts to be agreed with RSL.',
       last_draw:last ? {when:fT(Date.parse(last.run_at)), live_entries:last.live_entries, seed:last.seed, cash_winners:(last.winners || []).slice(0, 3).map(w => ({place:w.place, prize:w.prize, phone:w.phone, entries:w.entries, seller:w.seller})), airtime_winners:(last.winners || []).slice(3).map(w => ({phone:w.phone, entries:w.entries, seller:w.seller}))}
         : S.lastDraw ? {when:'this session', cash_winners:S.lastDraw.winners.slice(0, 3).map(w => ({place:w.place, prize:w.prize, phone:w.phone, entries:w.entries, seller:w.seller})), airtime_winners:S.lastDraw.winners.slice(3).map(w => ({phone:w.phone, entries:w.entries, seller:w.seller}))} : null},
-    customer_requests:{pending:S.claims.filter(c => c.state === 'pending').length, queued_offline:S.claims.filter(c => c.state === 'queued').length},
+    cash_claims:(() => { const c30 = S.claims.filter(c => c.t > clock - 30 * DAY); return {how_it_works:`The buyer claims a cash sale on *999# (seller code and amount). It counts only when the seller confirms it; rejected claims and claims ignored for ${CASH.expireDays} days never reach the sales book or the tax. Limits: ${CASH.perPhoneDay} claims per phone a day, M${CASH.maxAmount} a claim, 1 draw entry per cash receipt.`,
+      waiting_now:S.claims.filter(c => claimState(c) === 'pending').length, last_30_days:{claims:c30.length, confirmed:c30.filter(c => c.state === 'confirmed').length, rejected:c30.filter(c => c.state === 'rejected').length, ignored_expired:c30.filter(c => claimState(c) === 'expired').length}}; })(),
     officer_actions:{invitations_sent:S.invited.size, visits_planned:S.visits.size, items_marked_done:S.done.size},
     filing_and_payments:{note:`Demo schedule: one return a quarter for the quarter just ended, due on the 20th of the next month; demo tax rate ${TAXRATE * 100}% of declared sales (RSL sets the real SBT rate).`, current_period:perName(lastPer()) + ' (due ' + perDue(lastPer()) + ')',
       sellers:S.traders.filter(t => t.status === 'registered').map(t => { const x = taxOf(t.no); return {code:t.no, name:t.name, last_return:x.last ? {declared:x.last.declared, nil_reason:x.last.nil, tax_due:x.last.tax, paid:x.paid(x.last.period)} : 'not filed', returns_12m:x.rets.length, filed_on_time:x.rets.filter(x.onTimeFile).length, overdue_tax:x.overdueAmt, overdue_quarters:x.overdue.map(r => perName(r.period)), on_time_streak:x.streak, reminders:t.reminders !== false}; }),
@@ -1830,7 +1905,7 @@ const BH_TOPICS = {
   seller_details:/seller|shop|stall|trader|tin|phone|request|pending|invite|visit|average|cash|mobile/i,
   fraud_shield:/fraud|fake|forg|tamper|held|hold|shield|flag|review|block|suspic|ring|velocity|split|outlier|self|reject|approv/i,
   draw:/draw|winner|win|prize|airtime|entr|lottery|jackpot|seed|budget/i,
-  customer_requests:/request|claim|pending|queue|confirm/i,
+  cash_claims:/cash|claim|pending|confirm|request|reject|refus|ignor/i,
   officer_actions:/invit|visit|contact|done|action|officer|follow/i,
   community_watch:/area|rating|rate|communit|watch|complain|report|market|hotspot|time of day|hour|lead|badge|unlisted|extra|where/i,
   recent_activity:/recent|just|latest|happen|activity|log/i,
@@ -1844,7 +1919,7 @@ function bhContextFor2(question, focusNo, full) {
   const keys = Object.keys(BH_TOPICS).filter(k => full || BH_TOPICS[k].test(question));
   const qn = String(question).toLowerCase().replace(/['’]/g, '');
   const namesSeller = S.traders.some(t => new RegExp('\\b(' + t.no + '|' + t.name.toLowerCase().replace(/^(ntate|mme)\s+/, '').replace(/['’]/g, '').split(/\s+/)[0] + ')\\b').test(qn));
-  if (!keys.length && namesSeller) keys.push('seller_details', 'receipts', 'customer_requests');
+  if (!keys.length && namesSeller) keys.push('seller_details', 'receipts', 'cash_claims');
   for (const k of (keys.length ? keys : Object.keys(BH_TOPICS))) base[k] = ex[k];
   return base;
 }
@@ -1861,7 +1936,7 @@ function bhChat(q) {
   if (is(/who are you|what are you|your name|introduce yourself/)) return 'I am **Bohlale**, which means "wisdom" in Sesotho. I am the assistant for RSL officers inside Rasiti. I read the receipts, the sellers\' sales books, customer ratings and Fraud Shield results, and I help you understand cases, spot patterns, draft messages and write reports. I only suggest. You decide.';
   if (is(/what can you do|help me|how can you help|what (can|should) i ask|examples?/)) return 'Here are some things you can ask me:\n- "Tell me about Thabo" or "Compare Palesa and Mathabo"\n- "How many receipts came in today?"\n- "Which area has the lowest receipt rate?"\n- "Who won the draw?"\n- "What did the Fraud Shield catch?"\n- "Who declared nil returns?"\nYou can also ask follow-ups like "and Palesa?" and I will keep the topic.';
   if (is(/what is rasiti|how does rasiti work|explain rasiti/)) return 'Rasiti is a **receipt lottery**. Customers ask for a receipt on every purchase, by USSD or WhatsApp, and each receipt gives them entries in a monthly draw. Sellers get a free digital sales book, and their customers earn double entries once the seller registers for tax. RSL gets a live, honest picture of informal trade, plus a Fraud Shield and community watch to keep it clean.';
-  if (is(/how does the draw work|draw rules|how (do|are) (winners|entries)|how many entries/)) return 'The main draw runs **once a month**. Customers earn 1 entry for every M10 on a receipt (at least 1, at most 5 per receipt), and entries **double** at sellers who are registered for tax. Cash receipts count for at most 10 entries a month at one shop and 20 in total; mobile money is not capped. Monthly prizes: M5,000, M2,000 and M1,000 in cash (the seller of the winning receipt gets a 10% bonus), 5 smartphones and 20 prizes of M100 airtime. Motorbikes (quarterly), M100,000 (every 6 months) and a car (yearly) need receipts paid by M-Pesa or EcoCash. Each phone can win only once per draw, and the seed is published so anyone can check the result.';
+  if (is(/how does the draw work|draw rules|how (do|are) (winners|entries)|how many entries/)) return 'The main draw runs **once a month**. Customers earn 1 entry for every M10 paid by mobile money or card (at least 1, at most 5 per receipt) and 1 entry for each cash sale the seller confirmed, and entries **double** at sellers who are registered for tax. Cash receipts count for at most 10 entries a month at one shop and 20 in total; mobile money is not capped. Monthly prizes: M5,000, M2,000 and M1,000 in cash (the seller of the winning receipt gets a 10% bonus), 5 smartphones and 20 prizes of M100 airtime. Motorbikes (quarterly), M100,000 (every 6 months) and a car (yearly) need receipts paid by M-Pesa or EcoCash. Each phone can win only once per draw, and the seed is published so anyone can check the result.';
   if (is(/what is the fraud shield|how does the fraud shield|explain the (fraud )?shield/)) return 'The **Fraud Shield** scores every receipt against simple rules: a seller buying from themselves, one phone collecting many receipts, a sale split into small ones, a burst of new heavy buyers, and unusually large sales. At 30 points the draw entries wait for an officer; at 60 they are blocked. The sale always stays in the seller\'s book, so honest sellers never lose their records.';
   if (is(/what is (sbt|simplified business tax)|explain sbt/)) return '**Simplified Business Tax (SBT)** is for small businesses with annual income below M2,000,000 in specific sectors, according to the call for innovation. Rasiti helps by estimating a seller\'s yearly income from their receipts, so officers can invite the right sellers to register. Rates and deadlines come from RSL, so please check those with the SBT team.';
   if (is(/what is community watch|how does community watch/)) return '**Community watch** lets customers rate any shop after buying: did they get a receipt, were they charged extra, or is the seller not on Rasiti? RSL looks at patterns, not single reports. Action starts only when 3 or more different customers report the same shop, and spam reporters are discounted.';
@@ -1888,7 +1963,8 @@ function bhLocal(q, c) {
       `- Receipts: ${x.receipts_today ?? '-'} today, ${x.receipts_7d ?? '-'} in 7 days, ${s.receipts_30d} in 30 days worth ${M(s.sales_30d)} (average sale ${M(x.average_sale || 0)}; ${x.mobile_money_pct ?? 0}% by mobile money).`,
       `- Yearly estimate from receipts: ${M(s.yearly_estimate)} (SBT limit M2,000,000).`,
       s.declared_last_quarter != null ? `- ${c.last_quarter} return: declared ${M(s.declared_last_quarter)}; receipts showed ${M(s.receipts_last_quarter)}.` : '- No return on record for last quarter.',
-      `- Customer complaints: ${s.customer_complaints}${s.complaint_types.length ? ' (' + s.complaint_types.join(', ').toLowerCase() + ')' : ''}. Held receipts: ${s.held_receipts}. Pending customer requests: ${x.pending_requests ?? 0}.`], `seller ${s.code} records`); }
+      `- Customer complaints: ${s.customer_complaints}${s.complaint_types.length ? ' (' + s.complaint_types.join(', ').toLowerCase() + ')' : ''}. Held receipts: ${s.held_receipts}.`,
+      `- Cash claims (30 days): ${s.cash_claims_30d.claims}, of which ${s.cash_claims_30d.confirmed} confirmed by the seller, ${s.cash_claims_30d.rejected_or_ignored} rejected or ignored, ${s.cash_claims_30d.waiting} waiting.`], `seller ${s.code} records`); }
   for (const a of aNamed.slice(0, 2)) sec(`${a.area} (last 30 days)`, [`- ${a.ratings} ratings, ${a.receipt_rate_pct}% got a receipt (first half ${a.first_half_pct ?? '-'}%, second half ${a.second_half_pct ?? '-'}%).`, `- ${a.shops} shops rated, ${a.not_on_rasiti} not on Rasiti, ${a.new_leads} new lead${a.new_leads === 1 ? '' : 's'}, ${a.low_receipt_shops} with low receipts.`], 'community watch ratings');
   for (const s of shNamed.slice(0, 2)) sec(s.shop, [`- Not on Rasiti. ${s.ratings} ratings from ${s.people} people; receipt rate ${s.receipt_rate_pct ?? '-'}%. Signal: ${s.signal}.`], 'community watch ratings');
   if (!sNamed.length && (top || low) && has(/seller|trader|stall|vendor|who/) && !has(/area|place|location/)) { const rk = sel.slice().sort((a, b) => low ? a[metric] - b[metric] : b[metric] - a[metric]);
@@ -1902,10 +1978,10 @@ function bhLocal(q, c) {
   if (has(/how many|number of|count/) && has(/seller|trader/)) { const k = c.kpis;
     sec('Sellers', [`- ${k.sellers_on_rasiti} sellers on Rasiti; ${k.registered} registered for tax (${k.registered_through_rasiti} registered through Rasiti); ${k.sellers_on_rasiti - k.registered} not yet registered.`, ...sel.map(s => `- ${s.name} (${s.code}): ${s.status}`)]); }
   const specific = has(/fraud|fake|forg|tamper|held|shield|draw|winner|prize|area|complain|nil|declar|regist|request|pending/) || aNamed.length || shNamed.length;
-  if (c.receipts && !sNamed.length && (has(/sale|sold|cash|mobile|momo|payment|today|week|trend|average|busiest|value|revenue/) || (has(/receipt/) && !specific))) { const r = c.receipts; const busy = r.daily_last_14_days.slice().sort((a, b) => b.receipts - a.receipts)[0];
+  if (c.receipts && !sNamed.length && !has(/claim|reject|ignor|refus/) && (has(/sale|sold|cash|mobile|momo|payment|today|week|trend|average|busiest|value|revenue/) || (has(/receipt/) && !specific))) { const r = c.receipts; const busy = r.daily_last_14_days.slice().sort((a, b) => b.receipts - a.receipts)[0];
     sec('Receipts', [`- Today: ${r.today.count} receipts worth ${M(r.today.value)}.`, `- Last 7 days: ${r.last_7_days.count} worth ${M(r.last_7_days.value)}. Last 30 days: ${r.last_30_days.count} worth ${M(r.last_30_days.value)}, average sale ${M(r.last_30_days.average_sale)}.`,
-      `- Payment (30 days): ${r.by_payment_30d.mobile_money} by mobile money, ${r.by_payment_30d.card} by card${r.by_payment_30d.reversed_or_paid_back ? `; ${r.by_payment_30d.reversed_or_paid_back} reversed or paid back (no entries)` : ''}.`, `- Busiest day in the last 2 weeks: ${busy.date} (${busy.receipts} receipts).`]); }
-  if (c.fraud_shield && has(/fraud|fake|forg|tamper|held|hold|shield|flag|review|block|suspic|ring|reject|approv/)) { const f = c.fraud_shield; const st = f.receipts_by_state;
+      `- Payment (30 days): ${r.by_payment_30d.cash_confirmed_by_seller} cash (confirmed by the seller), ${r.by_payment_30d.mobile_money} by mobile money, ${r.by_payment_30d.card} by card${r.by_payment_30d.reversed_or_paid_back ? `; ${r.by_payment_30d.reversed_or_paid_back} reversed or paid back (no entries)` : ''}.`, `- Busiest day in the last 2 weeks: ${busy.date} (${busy.receipts} receipts).`]); }
+  if (c.fraud_shield && !has(/claim/) && has(/fraud|fake|forg|tamper|held|hold|shield|flag|review|block|suspic|ring|reject|approv/)) { const f = c.fraud_shield; const st = f.receipts_by_state;
     sec('Fraud Shield', [`- Receipts: ${st.clear || 0} clear, ${st.held || 0} held for review, ${st.blocked || 0} blocked, ${st.approved || 0} approved and ${st.rejected || 0} rejected by officers.`,
       ...f.rules.filter(r => r.receipts_hit).map(r => `- ${r.rule}: ${r.receipts_hit} receipts (${r.points} points).`),
       `- Fake or misused codes stopped: ${c.kpis.fake_codes_stopped}.${f.fake_or_misused_codes.length ? ' Latest: ' + f.fake_or_misused_codes.slice(-3).map(x => `${x.code} (${x.kind}, ${x.date})`).join('; ') + '.' : ''}`,
@@ -1917,7 +1993,10 @@ function bhLocal(q, c) {
     sec(`Returns for ${c.last_quarter}`, [...n.map(s => `- ${s.name} (${s.code}) declared nil; receipts showed ${M(s.receipts_last_quarter)}.`), ...u.map(s => `- ${s.name} (${s.code}) declared ${M(s.declared_last_quarter)}; receipts showed ${M(s.receipts_last_quarter)}.`), ...(n.length + u.length ? ['- A nil or low return is a reason to ask, not proof of wrongdoing.'] : ['- No nil or low returns stand out.'])]); }
   if (has(/regist|enrol|tin|sbt|simplified|tax net|not yet/) && !sNamed.length) { const e = sel.filter(s => s.status !== 'registered');
     sec('Widening the tax net', [`- Not yet registered: ${e.map(s => `${s.name} (${s.code}, yearly estimate ${M(s.yearly_estimate)})`).join('; ') || 'none'}.`, `- Registered through Rasiti: ${c.kpis.registered_through_rasiti}.`]); }
-  if (c.customer_requests && has(/request|claim|pending|queue/)) sec('Customer receipt requests', [`- ${c.customer_requests.pending} waiting for the seller to confirm; ${c.customer_requests.queued_offline} saved offline.`]);
+  if (c.cash_claims && has(/cash|claim|pending|confirm|request|reject|refus|ignor/)) { const k = c.cash_claims, l = k.last_30_days;
+    sec('Cash claims', [`- Waiting for the seller now: ${k.waiting_now}.`, `- Last 30 days: ${l.claims} claims; ${l.confirmed} confirmed, ${l.rejected} rejected, ${l.ignored_expired} ignored (expired).`,
+      ...sel.filter(s => s.cash_claims_30d.refusing_buyers_who_also_pay_digitally >= 3).map(s => `- ${s.name} (${s.code}): ${s.cash_claims_30d.rejected_or_ignored} of ${s.cash_claims_30d.claims} cash claims rejected or ignored. A reason for a friendly visit, not proof.`),
+      '- Only the seller\'s confirmation, the seller\'s return or a network or bank payment can create tax. A buyer\'s claim never does.'], 'cash claim records'); }
   if (has(/complain|rating|communit|watch|lead|unlisted|badge|extra/) && c.community_watch && !aNamed.length) { const w = c.community_watch.kpis;
     sec('Community watch (30 days)', [`- ${w.ratings} ratings from ${w.people} people about ${w.shops} shops; ${w.rate}% got a receipt.`, `- ${w.leads} new leads (shops not on Rasiti that several customers reported).`,
       ...c.shops_flagged.slice(0, 4).map(s => `- ${s.shop} (${s.area}): ${s.signal}, ${s.people} people.`)]); }
@@ -1948,11 +2027,12 @@ function bhTemplate(task, ctx, s) {
       `- Last 30 days: ${sel.receipts_30d} receipts worth ${M(sel.sales_30d)} (yearly estimate ${M(sel.yearly_estimate)}).`,
       sel.declared_last_quarter != null ? `- Last quarter: declared ${M(sel.declared_last_quarter)}; receipts showed ${M(sel.receipts_last_quarter)}.` : '- No return on record for last quarter.',
       `- Customer complaints: ${sel.customer_complaints}${sel.complaint_types.length ? ' (' + sel.complaint_types.join(', ') + ')' : ''}.`,
-      `- Receipts held by the Fraud Shield: ${sel.held_receipts}.`, '');
+      `- Receipts held by the Fraud Shield: ${sel.held_receipts}.`,
+      `- Cash claims in 30 days: ${sel.cash_claims_30d.claims} (${sel.cash_claims_30d.confirmed} confirmed by the seller, ${sel.cash_claims_30d.rejected_or_ignored} rejected or ignored).`, '');
     const w = ctx.worklist.find(x => x.code === sel.code);
     L.push(w ? `Suggested first step: **${w.action}**. ${w.reasons.slice(-1)[0] || ''}` : 'No action is suggested for this seller right now.', '', `Based on: seller ${sel.code} receipts, returns and ratings.`);
   } else if (task === 'invite' && sel) {
-    L.push(`**Draft SMS to ${sel.name}**`, '', `Lumela ${sel.name.split(' ').slice(0, 2).join(' ')}. Your Rasiti sales book shows steady trade. Register for Simplified Business Tax on *999# (option 4): it is free, your customers earn double draw entries, and you get a badge banks recognise. Questions? Reply HELP. RSL`, '',
+    L.push(`**Draft SMS to ${sel.name}**`, '', `Lumela ${sel.name.split(' ').slice(0, 2).join(' ')}. Your Rasiti sales book shows steady trade. Register for Simplified Business Tax on *999# (option 3): it is free, your customers earn double draw entries, and you get a badge banks recognise. Questions? Reply HELP. RSL`, '',
       '*A Sesotho version needs AI mode. Please check any Sesotho text with a fluent speaker.*', '', `Based on: seller ${sel.code} sales (${M(sel.sales_30d)} in 30 days).`);
   } else if (task === 'call' && sel) {
     L.push(`**Call script: ${sel.name}** (code ${sel.code})`, '', '1. Greet and introduce yourself: "Lumela, this is [name] from RSL. Is now a good time?"',
@@ -1961,6 +2041,13 @@ function bhTemplate(task, ctx, s) {
       '4. Offer help: explain how to correct a return, and that receipts can prefill the next one.',
       sel.complaint_types.length ? `5. Mention gently that some customers said: ${sel.complaint_types.join(', ').toLowerCase()}.` : '5. Thank them for using Rasiti receipts.',
       '6. Agree a next step and a date, and note it in the worklist.', '', `Based on: seller ${sel.code} return and receipts.`);
+  } else if (task === 'cash') {
+    const bad = ctx.sellers.filter(x => x.cash_claims_30d.refusing_buyers_who_also_pay_digitally >= 3 && x.cash_claims_30d.rejected_or_ignored >= x.cash_claims_30d.claims / 2);
+    L.push('**Cash claims the seller did not confirm** (last 30 days)', '');
+    if (!bad.length) L.push('No seller stands out: most cash claims are confirmed.');
+    bad.forEach(x => L.push(`- **${x.name}** (code ${x.code}): ${x.cash_claims_30d.rejected_or_ignored} of ${x.cash_claims_30d.claims} claims rejected or ignored, from ${x.cash_claims_30d.refusing_buyers_who_also_pay_digitally} different customers who also pay by mobile money or card.`,
+      '  Innocent explanation that could fit: the seller does not understand the SMS, or customers typed the wrong seller code.', '  Friendly first step: a visit by a market tax helper to explain cash confirmations, then look at the sales book and the return together.'));
+    L.push('', 'A claim is what a buyer says, not proof. Only the seller\'s confirmation, the seller\'s return or a network or bank payment can create tax.', '', 'Based on: cash claim records.');
   } else if (task === 'review') {
     L.push('**Held receipts**', '');
     if (!ctx.held_receipt_groups.length) L.push('Nothing is held right now.');
@@ -2198,14 +2285,14 @@ function renderContactsBtn() { const b = $('#phBtn'); if (!b) return; const can 
 // Offline demo: the same filters run over the data in this browser.
 const SX = {rows:[], total:0, sum:null, busy:false, seq:0};
 const SXK = {receipt:'Receipt', return:'Tax return', payment:'Tax payment'};
-const SXP = {cash:'Cash (older record)', momo:'Mobile money', mpesa:'M-Pesa', ecocash:'EcoCash', card:'Card'};
+const SXP = {cash:'Cash (seller confirmed)', momo:'Mobile money', mpesa:'M-Pesa', ecocash:'EcoCash', card:'Card'};
 const SXR = {seller:'Seller', network:'Network', bank:'Bank'};
 const SXF = {reversed:'Payment reversed', payback:'Money sent back to the payer'};
 const SHL = {clear:'Clear', held:'Held for review', blocked:'Blocked', approved:'Approved by an officer', rejected:'Rejected by an officer'};
 function sxParams() { const v = id => ($(id) || {}).value || ''; return {q:v('#sxQ').trim(), kind:v('#sxKind'), paid:v('#sxPaid'), rec:v('#sxRec'), flag:v('#sxFlag'), seller:v('#sxSeller'), market:v('#sxMarket'), from:v('#sxFrom'), to:v('#sxTo'), min:v('#sxMin'), max:v('#sxMax'), sort:v('#sxSort') || 'new'}; }
 const sxPaidOf = r => r.ch === 'cash' ? 'cash' : r.ch === 'card' ? 'card' : r.net || (/^mpesa:/.test(r.note || '') ? 'mpesa' : /^ecocash:/.test(r.note || '') ? 'ecocash' : 'momo');
 function sxLocalRows() { const iso = t => new Date(t).toISOString(); const out = [];
-  for (const r of S.receipts) { const tr = tByNo(r.no) || {}; out.push({kind:'receipt', ref:r.code, seller_no:r.no, seller_name:tr.name, market:tr.market, amount:r.amt, at:iso(r.t), paid:sxPaidOf(r), rec:r.ch === 'momo' ? 'network' : r.ch === 'card' ? 'bank' : 'seller', flag:r.flag || null, card_last4:r.c4 || null, phone:r.ph, period:null, note:r.note && !/^(confirmed|disputed|mpesa:|ecocash:|card:)/.test(r.note) ? r.note : null}); }
+  for (const r of S.receipts) { const tr = tByNo(r.no) || {}; out.push({kind:'receipt', ref:r.code, seller_no:r.no, seller_name:tr.name, market:tr.market, amount:r.amt, at:iso(r.t), paid:sxPaidOf(r), rec:r.ch === 'momo' ? 'network' : r.ch === 'card' ? 'bank' : 'seller', flag:r.flag || null, card_last4:r.c4 || null, phone:r.ph, period:null, note:r.note && !/^(confirmed|disputed|mpesa:|ecocash:|card:|claim:)/.test(r.note) ? r.note : null}); }
   for (const x of S.returns) { const tr = tByNo(x.no) || {}; out.push({kind:'return', ref:x.id, seller_no:x.no, seller_name:tr.name, market:tr.market, amount:x.declared, at:iso(x.t), paid:null, rec:'seller', flag:null, phone:null, period:x.period, note:x.declared ? 'Tax due M' + Math.round(x.tax) : 'Nil return' + (x.nil ? ': ' + x.nil : '')}); }
   for (const x of S.payments) { const tr = tByNo(x.no) || {}; out.push({kind:'payment', ref:x.ref || x.id, seller_no:x.no, seller_name:tr.name, market:tr.market, amount:x.amt, at:iso(x.t), paid:'momo', rec:'seller', flag:null, phone:null, period:x.period, note:'Tax payment by ' + (x.ch === 'wa' ? 'WhatsApp' : x.ch === 'ussd' ? 'USSD' : x.ch || 'mobile money')}); }
   return out; }
@@ -2231,7 +2318,7 @@ async function sxFetch(limit, offset) { const p = sxParams();
 const sxPh = ph => !ph ? '–' : /^\d+$/.test(ph) ? mask(ph) : ph;
 const sxWhen = r => { const d = new Date(r.at); return `${fD(d)} ${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 function sxStatus(r) { if (r.kind !== 'receipt') return r.note || ''; const known = S.receipts.find(x => x.code === r.ref);
-  return [r.flag ? SXF[r.flag] + ': no entries' : '', known ? 'Fraud Shield: ' + SHL[shieldState(known)] : '', r.rec === 'network' ? 'Paid through the network' : r.rec === 'bank' ? `Card ••${r.card_last4 || '????'}${r.phone ? '' : ', not claimed yet'}` : '', r.note && !/^(mpesa|ecocash|card):/.test(r.note) ? r.note : ''].filter(Boolean).join(' · '); }
+  return [r.flag ? SXF[r.flag] + ': no entries' : '', known ? 'Fraud Shield: ' + SHL[shieldState(known)] : '', r.rec === 'network' ? 'Paid through the network' : r.rec === 'bank' ? `Card ••${r.card_last4 || '????'}${r.phone ? '' : ', not claimed yet'}` : r.kind === 'receipt' && r.paid === 'cash' ? 'Confirmed by the seller' : '', r.note && !/^(mpesa|ecocash|card|claim):/.test(r.note) ? r.note : ''].filter(Boolean).join(' · '); }
 function sxWhat(r) { return r.kind === 'receipt' ? `Receipt · ${SXP[r.paid] || ''}` : r.kind === 'return' ? `Tax return · ${r.period ? perName(r.period) : ''}` : `Tax payment · ${r.period ? perName(r.period) : ''}`; }
 function sxFillOptions(j) { const sellers = j.sellers || S.traders.map(t => ({no:t.no, name:t.name})).sort((a, b) => a.name < b.name ? -1 : 1);
   const markets = j.markets || [...new Set(S.traders.map(t => t.market).filter(Boolean))].sort();
@@ -2261,15 +2348,15 @@ function searchPDF() { return withBusy(async () => { const j = await sxFetch(500
   ]); }, 'PDF downloaded'); }
 
 /* ================= shell: nav, auth, routing ================= */
-const NAVICONS = {search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', dash:'<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>', logs:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>', guide:'<circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z"/>', phones:'<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>', shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>', watch:'<circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/>', officer:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>', draw:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>', bohlale:'<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>', agent:'<rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/>', users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>'};
-const TITLES = {guide:'Start here', phones:'Phones', shield:'Fraud Shield', watch:'Community watch', officer:'Officer console · General Clients', draw:'Monthly draw', bohlale:'Bohlale AI · officer assistant', users:'Users and activity', logs:'System log', search:'Transaction search · full history', agent:'Mohlomi AI · test agent', dash:'Dashboard · bird\'s-eye view'};
-const RSL_VIEWS = ['dash', 'shield', 'watch', 'officer', 'search', 'draw', 'bohlale', 'users', 'logs', 'agent'];
+const NAVICONS = {reports:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>', search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', dash:'<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>', logs:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>', guide:'<circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z"/>', phones:'<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>', shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>', watch:'<circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/>', officer:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>', draw:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>', bohlale:'<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>', agent:'<rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/>', users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>'};
+const TITLES = {guide:'Start here', phones:'Phones', shield:'Fraud Shield', watch:'Community watch', officer:'Officer console · General Clients', draw:'Monthly draw', bohlale:'Bohlale AI · officer assistant', users:'Users', logs:'System log', search:'Search · full history', reports:'Reports · every download', agent:'Mohlomi AI · test agent', dash:'Dashboard · bird\'s-eye view'};
+const RSL_VIEWS = ['dash', 'officer', 'shield', 'watch', 'draw', 'search', 'reports', 'bohlale', 'users', 'logs', 'agent'];
 const VIEWS = ['guide', 'phones', ...RSL_VIEWS];
 function renderNav() {
   const ic = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NAVICONS[k]}</svg>`;
   const a = k => `<a href="#${k}">${k === 'bohlale' ? `<img class="nav-img" src="${BH_LOGO}" alt="">` : k === 'agent' ? `<img class="nav-img" src="${MH_LOGO}" alt="">` : ic(k)}${TITLES[k].split(' ·')[0]}</a>`;
   const showUsers = API.online && API.user && ['owner', 'admin'].includes(API.user.role);
-  $('#nav').innerHTML = '<div class="grp">Try it</div>' + a('guide') + a('phones') + '<div class="grp">RSL side' + (API.online && !API.user ? ' · sign in' : '') + '</div>' + a('dash') + a('shield') + a('watch') + a('officer') + a('search') + a('draw') + a('bohlale') + (showUsers ? a('users') + a('logs') + a('agent') : '');
+  $('#nav').innerHTML = '<div class="grp">Try it</div>' + a('guide') + a('phones') + '<div class="grp">RSL daily work' + (API.online && !API.user ? ' · sign in' : '') + '</div>' + a('dash') + a('officer') + a('shield') + a('watch') + a('draw') + '<div class="grp">Find and report</div>' + a('search') + a('reports') + a('bohlale') + (showUsers ? '<div class="grp">Admin</div>' + a('users') + a('logs') + a('agent') : '');
   const f = $('#sideFoot');
   if (!API.online) f.innerHTML = '<b>Offline demo</b>Not connected to the database.<br>Data resets on reload.';
   else if (API.user) f.innerHTML = `<b>${esc(API.user.name)}</b>${esc(API.user.role[0].toUpperCase() + API.user.role.slice(1))} · ${esc(API.user.email)}<br><button type="button" id="logoutBtn">Sign out</button>`;
@@ -2304,7 +2391,7 @@ function route() {
   if (show === 'users') renderUsers();
   if (show === 'logs') renderLogs(true);
   if (show === 'search') renderSearch(true);
-  renderHist(); renderContactsBtn();
+  renderHist(); renderContactsBtn(); $('#repBtn').hidden = !(RSL_VIEWS.includes(show) && show !== 'reports' && !needLogin);
   if (show === 'bohlale') renderBohlale();
   if (show === 'agent' && window.AGENT) AGENT.render();
   window.scrollTo(0, 0);
@@ -2351,7 +2438,7 @@ function wire() {
   const wfSet = () => { WF.days = +$('#wfDays').value; WF.area = $('#wfArea').value; WF.who = $('#wfWho').value; WF.ctype = $('#wfType').value; renderWatch(); };
   ['#wfDays', '#wfArea', '#wfWho', '#wfType'].forEach(id => $(id).addEventListener('change', wfSet));
   $('#wfReset').addEventListener('click', () => { Object.assign(WF, {days:30, area:'all', who:'all', sig:'all', ctype:'all'}); $('#wfDays').value = '30'; $('#wfWho').value = 'all'; $('#wfType').value = 'all'; renderWatch(); });
-  document.querySelector('section[data-view="watch"]').addEventListener('click', e => { const c = e.target.closest('[data-csv]'); if (c) watchCSV(c.dataset.csv); });
+  document.addEventListener('click', e => { const c = e.target.closest('[data-csv]'); if (c) watchCSV(c.dataset.csv); });
   $('#wfPdf').addEventListener('click', watchPDF);
   $('#waTasks').innerHTML = WA_TASKS.map(t => `<button type="button" data-wt="${t.id}">${t.label}</button>`).join('');
   $('#waTasks').addEventListener('click', e => { const b = e.target.closest('[data-wt]'); if (b) { const t = WA_TASKS.find(x => x.id === b.dataset.wt); watchAsk(t.id, t.ask); } });
@@ -2364,10 +2451,9 @@ function wire() {
   $('#sfReset').addEventListener('click', () => { Object.assign(SF, {days:'30', seller:'all', rule:'all'}); S.filter = 'all'; $('#sfDays').value = '30'; renderShield(); });
   onSel('#ofPri', v => { OF.pri = v; renderOfficer(); }); onSel('#ofArea', v => { OF.area = v; renderOfficer(); }); onSel('#ofStatus', v => { OF.status = v; renderOfficer(); });
   $('#ofReset').addEventListener('click', () => { Object.assign(OF, {pri:'all', area:'all', status:'all'}); $('#ofPri').value = 'all'; $('#ofStatus').value = 'all'; renderOfficer(); });
-  onSel('#actWho', () => renderUsers());
   document.addEventListener('click', e => { const b = e.target.closest('[data-dl]'); if (!b) return; const k = b.dataset.dl;
     ({'shield-csv':shieldCSV, 'fakes-csv':fakesCSV, 'shield-pdf':shieldPDF, 'work-csv':() => officerCSV('work'), 'review-csv':() => officerCSV('review'), 'complaints-csv':() => officerCSV('complaints'), 'tax-csv':taxCSV, 'officer-pdf':officerPDF,
-      'entries-csv':() => drawCSV('entries'), 'winners-csv':() => drawCSV('winners'), 'draw-pdf':drawPDF, 'activity-csv':activityCSV})[k](); });
+      'entries-csv':() => drawCSV('entries'), 'winners-csv':() => drawCSV('winners'), 'draw-pdf':drawPDF, 'activity-csv':activityCSV, 'cash-csv':cashCSV})[k](); });
   const tip = $('#vizTip');
   document.addEventListener('mousemove', e => { const t = e.target.closest && e.target.closest('.chart [data-tip]'); if (!t) { tip.hidden = true; return; }
     tip.textContent = t.getAttribute('data-tip'); tip.hidden = false; const w = tip.offsetWidth; tip.style.left = Math.min(window.innerWidth - w - 8, e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 16) + 'px'; });

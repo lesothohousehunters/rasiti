@@ -12,7 +12,8 @@ export default route(async (req, res) => {
   const [sellers, receipts, claims, reports, fakes, reviews, actions, draws, returns, payments] = await Promise.all([
     q('SELECT * FROM sellers ORDER BY created_at'),
     q("SELECT code, seller_no, amount::float AS amount, channel, phone, issued_at, note, source, card_last4, flag FROM receipts WHERE issued_at > now() - interval '120 days' ORDER BY issued_at"),
-    q("SELECT id, seller_no, amount::float AS amount, phone, state, created_at FROM claims WHERE created_at > now() - interval '30 days'"),
+    // cash claims: pending ones older than 3 days are shown as expired (ignored by the seller)
+    q("SELECT id, seller_no, amount::float AS amount, phone, CASE WHEN state='pending' AND created_at < now() - interval '3 days' THEN 'expired' ELSE state END AS state, created_at, decided_at, receipt_code FROM claims WHERE created_at > now() - interval '120 days' ORDER BY created_at"),
     q("SELECT * FROM reports WHERE created_at > now() - interval '75 days' ORDER BY created_at"),
     q('SELECT * FROM fakes ORDER BY created_at DESC LIMIT 200'),
     q('SELECT code, decision FROM reviews'),

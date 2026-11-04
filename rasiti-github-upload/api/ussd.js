@@ -5,6 +5,7 @@
 import { db, audit } from './_lib/db.js';
 import { mkCode, normCode } from './_lib/codes.js';
 import { checkPin, hashPin, pinProblem } from './_lib/pin.js';
+import { CASH, claimCash, pendingCash, decideCash } from './_lib/cash.js';
 import { readFile } from 'node:fs/promises';
 
 // Questions and answers live in public/faq.js, shared with the on-screen phones and the WhatsApp chatbot.
@@ -32,7 +33,10 @@ function parseBody(req) {
   return Object.fromEntries(new URLSearchParams(raw));
 }
 const cleanPhone = p => { const d = String(p || '').replace(/\D/g, ''); return d.length >= 8 && d.length <= 15 ? d : null; };
-const entries = (amt, registered) => Math.max(1, Math.min(5, Math.floor(amt / 10))) * (registered ? 2 : 1);
+// Draw entries: 1 per M10 paid by mobile money or card (up to 5); a cash receipt the seller confirmed is always 1. Double at registered sellers.
+const entries = (amt, registered, ch) => (ch === 'cash' ? 1 : Math.max(1, Math.min(5, Math.floor(amt / 10)))) * (registered ? 2 : 1);
+const hm = d => { const x = new Date(d); const t = x.toLocaleTimeString('en-GB', { timeZone: 'Africa/Maseru', hour: '2-digit', minute: '2-digit' });
+  return new Date().toDateString() === x.toDateString() ? t : x.getDate() + ' ' + MON[x.getMonth()] + ' ' + t; };
 const drawDay = () => { const d = new Date(); const e = new Date(d.getFullYear(), d.getMonth() + 1, 0); return e.getDate() + ' ' + MON[e.getMonth()]; };
 // First return of a newly registered seller: the current quarter, due on the 20th after it ends.
 const dueDate = () => { const d = new Date(); const e = new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3 + 3, 20); return '20 ' + MON[e.getMonth()]; };
@@ -98,16 +102,26 @@ async function respond(q, parts, phone, sessionId, ctx) {
   /* ---------- customer ---------- */
   if (who === '1') {
     const [m, a, b, c] = p;
-    if (m === undefined) return con('Customer\n1. Claim a card payment\n2. Check a receipt\n3. Rate a shop\n4. My draw entries\n5. Shops that give receipts\n6. Questions & answers' + BACK);
+    if (m === undefined) return con('Customer\n1. I paid cash\n2. I paid by card\n3. Check a receipt\n4. Rate a shop\n5. My draw entries\n6. Questions & answers' + BACK);
     if (m === '6') return con((await faq()).ussd('buyer', p.slice(1), ctx.lang) + BACK);
 
     if (m === '1') {
-      // Receipts come only from payments the network or the bank saw: M-Pesa, EcoCash or a card machine. There is no cash receipt,
-      // so nobody can put sales that never happened into a seller's book. A card receipt starts without a phone (banks rarely know it):
-      // the buyer claims it with the seller code, the amount and the last 4 digits of the card, within 3 days.
-      if (a === undefined) return con('Claim a card payment\nSeller code (on the sticker):');
+      // Cash: the buyer's claim waits for the seller. Until the seller confirms it, it is not in the sales book, not taxed and gives no entry.
+      if (a === undefined) return con('I paid cash\nSeller code (on the sticker):');
       const seller = await s(a.replace(/\D/g, ''));
-      if (!seller) return end(`Seller ${a} is not on Rasiti.\nYou can report them: Customer > 3. Rate a shop.`);
+      if (!seller) return end(`Seller ${a} is not on Rasiti.\nYou can report them: Customer > 4. Rate a shop.`);
+      if (b === undefined) return con(`${seller.name}\nAmount you paid in cash (M):`);
+      const r = await claimCash(q, { phone, seller, amount: parseFloat(b) });
+      if (!r.ok) return end(r.msg);
+      return end(`Sent to ${seller.name} to confirm: ${M(r.amount)} cash.\nWhen the seller confirms, you get your receipt and draw entry by SMS.`);
+    }
+
+    if (m === '2') {
+      // Mobile money needs no claim: the network tells Rasiti and the receipt goes to the payer. A card receipt starts without a phone
+      // (banks rarely know it): the buyer claims it with the seller code, the amount and the last 4 digits of the card, within 3 days.
+      if (a === undefined) return con('I paid by card\nSeller code (on the sticker):');
+      const seller = await s(a.replace(/\D/g, ''));
+      if (!seller) return end(`Seller ${a} is not on Rasiti.\nYou can report them: Customer > 4. Rate a shop.`);
       if (!phone) return end('We could not read your phone number. Please try again.');
       const [{ n: miss }] = await q("SELECT count(*)::int AS n FROM fakes WHERE phone=$1 AND kind='cardmiss' AND created_at > now() - interval '1 day'", [phone]);
       if (miss >= 3) return end('Too many card claims that did not match today. Try again tomorrow.');
@@ -128,10 +142,10 @@ async function respond(q, parts, phone, sessionId, ctx) {
       }
       if (!r.phone) await q('UPDATE receipts SET phone=$1 WHERE code=$2 AND phone IS NULL', [phone, r.code]);
       await ulog(q, 'card_receipt_claimed', 'Customer ' + mk(phone), { code:r.code, seller:seller.no, amount:amt });
-      return end(`Receipt ${r.code}\n${seller.name} · ${M(amt)} by card\n+${entries(amt, seller.status === 'registered')} draw entries.`);
+      return end(`Receipt ${r.code}\n${seller.name} · ${M(amt)} by card\n+${entries(amt, seller.status === 'registered', 'card')} draw entries.`);
     }
 
-    if (m === '2') {
+    if (m === '3') {
       if (a === undefined) return con('Check a receipt\nEnter the code, e.g. RS3307ABCDX:');
       const n = normCode(a);
       if (!n) return end('That is not a Rasiti code.\nCodes look like RS-1234-ABCD-X.');
@@ -150,11 +164,18 @@ async function respond(q, parts, phone, sessionId, ctx) {
       return end(`GENUINE\n${r.name}\n${r.market || ''}\n${M(r.amount)} on ${d.getDate()} ${MON[d.getMonth()]}`);
     }
 
-    if (m === '3') {
+    if (m === '4') {
       const types = { 1: 'got', 2: 'none', 3: 'extra', 4: 'unlisted', 5: 'fake' };
-      if (a === undefined) return con('Rate a shop you bought from\n1. I got a receipt\n2. No receipt given\n3. Charged extra for receipt\n4. Shop not on Rasiti\n5. Fake receipt');
+      if (a === undefined) return con('Rate a shop\n1. I got a receipt\n2. No receipt given\n3. Charged extra for receipt\n4. Shop not on Rasiti\n5. Fake receipt\n6. Shops that give receipts');
+      if (a === '6') {
+        const rows = await q(`SELECT COALESCE(s.name || ' · ' || s.trade, r.place_label) AS label
+          FROM reports r LEFT JOIN sellers s ON s.no=r.seller_no WHERE r.created_at > now() - interval '30 days'
+          GROUP BY 1 HAVING count(DISTINCT r.phone) >= 3 AND avg(CASE WHEN r.type='got' THEN 1 ELSE 0 END) >= 0.8
+          ORDER BY count(*) DESC LIMIT 3`);
+        return end('Shops that give receipts:\n' + (rows.length ? rows.map(r => '+ ' + r.label).join('\n') : 'None rated yet.'));
+      }
       const type = types[a];
-      if (!type) return end('Please choose 1 to 5. Start again.');
+      if (!type) return end('Please choose 1 to 6. Start again.');
       if (b === undefined) return con('Seller code, or the shop name and where it is:');
       const txt = b.trim().slice(0, 100);
       const no = txt.replace(/\D/g, '');
@@ -167,21 +188,15 @@ async function respond(q, parts, phone, sessionId, ctx) {
         : 'Thank you.\nYour number is never shown to the seller. RSL acts when several customers report the same shop.');
     }
 
-    if (m === '4') {
-      // Only payments the network or the bank saw. A reversed payment, or one paid back to the buyer, does not count.
-      const rows = await q(`SELECT r.amount::float AS amount, s.status FROM receipts r JOIN sellers s ON s.no=r.seller_no
+    if (m === '5') {
+      // Receipts only: a reversed payment, or one paid back to the buyer, does not count; a cash claim counts once the seller confirms it.
+      const rows = await q(`SELECT r.amount::float AS amount, r.channel, s.status FROM receipts r JOIN sellers s ON s.no=r.seller_no
                             WHERE r.phone=$1 AND r.issued_at >= date_trunc('month', now()) AND r.flag IS NULL`, [phone]);
-      const n = rows.reduce((a, r) => a + entries(r.amount, r.status === 'registered'), 0);
-      return end(`My draw entries this month: ${n}\nNext draw: ${drawDay()}\nPay by M-Pesa, EcoCash or card: every receipt plays for every prize.`);
+      const n = rows.reduce((a, r) => a + entries(r.amount, r.status === 'registered', r.channel), 0);
+      const [{ w }] = await q("SELECT count(*)::int AS w FROM claims WHERE phone=$1 AND state='pending' AND created_at > now() - interval '3 days'", [phone]);
+      return end(`My draw entries this month: ${n}${w ? `\nCash claims waiting for the seller: ${w}` : ''}\nNext draw: ${drawDay()}\nEvery receipt plays for every prize.`);
     }
 
-    if (m === '5') {
-      const rows = await q(`SELECT COALESCE(s.name || ' · ' || s.trade, r.place_label) AS label
-        FROM reports r LEFT JOIN sellers s ON s.no=r.seller_no WHERE r.created_at > now() - interval '30 days'
-        GROUP BY 1 HAVING count(DISTINCT r.phone) >= 3 AND avg(CASE WHEN r.type='got' THEN 1 ELSE 0 END) >= 0.8
-        ORDER BY count(*) DESC LIMIT 3`);
-      return end('Shops that give receipts:\n' + (rows.length ? rows.map(r => '+ ' + r.label).join('\n') : 'None rated yet.'));
-    }
     return end('Please choose a number from the menu.');
   }
 
@@ -206,7 +221,7 @@ async function respond(q, parts, phone, sessionId, ctx) {
       await q("INSERT INTO sellers(no,name,trade,market,status,joined_at,phone,pin_hash) VALUES ($1,$2,$3,$4,'enrolled',now(),$5,$6)",
         [no, name.slice(0, 60), goods.slice(0, 60), place.slice(0, 60), phone, await hashPin(pin1)]);
       await audit(q, null, 'seller_joined', { actor:'Seller ' + no, channel:'USSD', no });
-      return end(`Welcome ${name.slice(0, 40)}!\nYour seller code: ${no}\nKeep your PIN secret. Next: link M-Pesa, EcoCash or a card machine (option 3). No tax number needed yet.`);
+      return end(`Welcome ${name.slice(0, 40)}!\nYour seller code: ${no}\nKeep your PIN secret. Next: link M-Pesa, EcoCash or a card machine (option 4). No tax number needed yet.`);
     }
 
     const seller = await s(code.replace(/\D/g, ''));
@@ -228,9 +243,24 @@ async function respond(q, parts, phone, sessionId, ctx) {
       if (ok.lockedNow) await audit(q, null, 'seller_pin_locked', { actor:'Seller ' + seller.no, channel:'USSD', phone: mk(phone) });
       return end(ok.msg);
     }
-    // The seller has nothing to record: receipts come from M-Pesa, EcoCash and the card machine by themselves.
-    if (m === undefined) return con(`${seller.name}\nCode ${seller.no} · ${seller.status === 'registered' ? 'Registered' : 'Not yet registered'}\n1. My sales book\n2. ${seller.status === 'registered' ? 'My tax & badge' : 'Register for tax'}\n3. Payment codes\n4. Questions & tax help` + BACK);
-    if (m === '3') { // link the seller's own M-Pesa (Vodacom) or EcoCash (Econet) merchant code, or their bank card machine
+    // The seller records nothing: mobile money and card receipts come by themselves; cash sales only need a Yes.
+    if (m === undefined) { const n = (await pendingCash(q, seller.no)).length;
+      return con(`${seller.name}\nCode ${seller.no} · ${seller.status === 'registered' ? 'Registered' : 'Not yet registered'}\n1. Confirm cash sales (${n})\n2. My sales book\n3. ${seller.status === 'registered' ? 'My tax & badge' : 'Register for tax'}\n4. Payment codes\n5. Questions & tax help` + BACK); }
+    if (m === '1') { // confirm cash sales the buyers claimed: one by one, or all at once
+      const open = await pendingCash(q, seller.no);
+      if (!open.length) return end('No cash sales to confirm.\nWhen a customer claims a cash sale, you get an SMS.');
+      const show = open.slice(-5).reverse();
+      if (a === undefined) return con(`Cash sales to confirm: ${open.length}\n` + show.map((c, i) => `${i + 1}. ${M(c.amount)} ${mask(c.phone)} ${hm(c.created_at)}`).join('\n') + `\n9. Confirm all ${open.length}` + BACK);
+      if (a === '9') { const d = await decideCash(q, seller, 'all', 'confirm');
+        return end(`Confirmed ${d.length} cash sale${d.length === 1 ? '' : 's'}: ${M(d.reduce((x, c) => x + c.amount, 0))}.\nYour customers got their receipts. The sales are in your sales book.`); }
+      const c = show[Number(a) - 1]; if (!c) return end('Please choose a number from the list.');
+      if (b === undefined) return con(`${M(c.amount)} cash from ${mask(c.phone)}\n${hm(c.created_at)}\n1. Yes, I sold this\n2. No, reject`);
+      if (b !== '1' && b !== '2') return end('Please choose 1 or 2.');
+      const [d] = await decideCash(q, seller, [c.id], b === '1' ? 'confirm' : 'reject');
+      if (!d) return end('This claim was already answered.');
+      return end(b === '1' ? `Confirmed. Receipt ${d.code}\nsent to the customer.\nIn your sales book: ${M(d.amount)}.` : 'Rejected. It is not in your sales book and not taxed.');
+    }
+    if (m === '4') { // link the seller's own M-Pesa (Vodacom) or EcoCash (Econet) merchant code, or their bank card machine
       if (a === undefined) return con(`Payment codes\nM-Pesa: ${seller.mpesa_code || 'not linked'}\nEcoCash: ${seller.ecocash_code || 'not linked'}\nCard: ${seller.card_terminal || 'not linked'}\n1. Link M-Pesa\n2. Link EcoCash\n3. Link card machine` + BACK);
       if (a === '3') {
         const BK = { 1: 'slb', 2: 'fnb', 3: 'nedbank', 4: 'postbank' }, BN = { slb: 'Standard Lesotho Bank', fnb: 'FNB Lesotho', nedbank: 'Nedbank Lesotho', postbank: 'Lesotho PostBank' };
@@ -260,26 +290,27 @@ async function respond(q, parts, phone, sessionId, ctx) {
       await audit(q, null, 'merchant_code_linked', { actor:'Seller ' + seller.no, channel:'USSD', network: net, merchant_code: mc, check: opr + ' confirmed (simulated)' });
       return end(`${net} code ${mc} linked.\n${opr} confirmed it is yours (simulated).\nPayments to this code now give your customers receipts by themselves.`);
     }
-    if (m === '4') return con((await faq()).ussd('seller', p.slice(3), ctx.lang) + BACK);
+    if (m === '5') return con((await faq()).ussd('seller', p.slice(3), ctx.lang) + BACK);
 
-    if (m === '1') {
+    if (m === '2') {
       const [t] = await q(`SELECT
           count(*) FILTER (WHERE issued_at >= date_trunc('day', now()))::int AS dn, COALESCE(sum(amount) FILTER (WHERE issued_at >= date_trunc('day', now())),0)::float AS ds,
           count(*) FILTER (WHERE issued_at > now() - interval '7 days')::int AS wn, COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '7 days'),0)::float AS ws,
           count(*) FILTER (WHERE issued_at > now() - interval '30 days')::int AS mn, COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '30 days'),0)::float AS ms,
-          COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '30 days' AND channel='card'),0)::float AS mc
+          COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '30 days' AND channel='card'),0)::float AS mc,
+          COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '30 days' AND channel='cash'),0)::float AS mk
         FROM receipts WHERE seller_no=$1 AND flag IS NULL`, [seller.no]);
-      return end(`My sales book\nToday: ${t.dn} sales, ${M(t.ds)}\n7 days: ${t.wn} sales, ${M(t.ws)}\n30 days: ${t.mn} sales, ${M(t.ms)}\nMobile money ${M(t.ms - t.mc)} · card ${M(t.mc)}`);
+      return end(`My sales book\nToday: ${t.dn} sales, ${M(t.ds)}\n7 days: ${t.wn} sales, ${M(t.ws)}\n30 days: ${t.mn} sales, ${M(t.ms)}\nCash ${M(t.mk)} · mobile ${M(t.ms - t.mc - t.mk)} · card ${M(t.mc)}`);
     }
 
-    if (m === '2') {
+    if (m === '3') {
       const [t] = await q("SELECT COALESCE(sum(amount),0)::float AS s FROM receipts WHERE seller_no=$1 AND flag IS NULL AND issued_at > now() - interval '30 days'", [seller.no]);
       if (seller.status === 'registered') {
         const st = await taxState(q, seller.no); const pn = perName(st.per);
         if (a === undefined) return con(`My tax · TIN ${seller.tin || '-'}\n1. File ${pn} return${st.ret ? ' (done)' : ''}\n2. Pay tax (${M(st.owed)} due)\n3. My tax record\n4. Reminders: ${seller.reminders === false ? 'OFF' : 'ON'}` + BACK);
         if (a === '1') {
-          if (st.ret) return end(`${pn} return filed: ${M(st.ret.declared)}${st.ret.nil_reason ? ' (nil)' : ''}.\nTax due ${M(st.ret.tax_due)} by ${perDue(st.per)}.\nPay: My tax > 2.`);
-          if (b === undefined) return con(`${pn} return\nCard & mobile money: ${M(st.sales)}\n1. File this amount\n2. Enter total (add cash sales)\n3. I did not trade (nil)`);
+          if (st.ret) return end(`${pn} return filed: ${M(st.ret.declared)}${st.ret.nil_reason ? ' (nil)' : ''}.\nTax due ${M(st.ret.tax_due)} by ${perDue(st.per)}.\nPay: option 3 > 2.`);
+          if (b === undefined) return con(`${pn} return\nSales book: ${M(st.sales)}\n1. File this amount\n2. Enter a different total\n3. I did not trade (nil)`);
           let declared, reason = null;
           if (b === '1') declared = Math.round(st.sales);
           else if (b === '2') { if (c === undefined) return con(`Your sales for ${pn} (M):`); declared = Math.round(parseFloat(c)); if (!(declared >= 0 && declared < 2000000)) return end('Amount not valid. Please start again.'); }
@@ -300,7 +331,7 @@ async function respond(q, parts, phone, sessionId, ctx) {
           return end(`Mobile money request for ${M(amt)} sent. Approve it on your phone.\nRSL receipt ${rcpt}\n${st.owed - amt > 0 ? 'Still due: ' + M(st.owed - amt) + '.' : 'All paid. Thank you!'}`);
         }
         if (a === '3') {
-          if (!st.rets.length) return end('No returns yet. File your first return under My tax > 1.');
+          if (!st.rets.length) return end('No returns yet. File your first return: option 3 > 1.');
           return end('My tax record\n' + st.rets.slice(-4).map(r => `${perShort(r.period)}: ${M(r.declared)} · ${r.tax_due - st.paid(r.period) <= 0.5 ? 'paid' : 'owes ' + M(r.tax_due - st.paid(r.period))}`).join('\n'));
         }
         if (a === '4') { const on = seller.reminders === false; await q('UPDATE sellers SET reminders=$1 WHERE no=$2', [on, seller.no]); await audit(q, null, on ? 'reminders_on' : 'reminders_off', { actor:'Seller ' + seller.no, channel:'USSD' });

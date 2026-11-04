@@ -417,6 +417,10 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 #sxTbl td{vertical-align:top}#sxTbl .mono{white-space:nowrap}
 @media (max-width:640px){.wf label{flex:1 1 140px}.wf select,.wf input{min-width:0;width:100%}}
 .dl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.rp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px;align-items:stretch}
+.rp-card{display:flex;flex-direction:column;gap:10px}.rp-card h3{margin:0}.rp-card p{margin:0}
+.rp-btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
+.rp-head{display:flex;gap:10px;align-items:center}.rp-head svg{width:22px;height:22px;flex:none;color:var(--accent,#e8793a)}
 .dl span{font-size:.78rem;font-weight:600;color:var(--muted);margin-right:4px}
 .chart svg{width:100%;height:auto;display:block}
 .chart [data-tip]{cursor:default}
@@ -575,58 +579,56 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
   <div class="side-foot" id="sideFoot"></div>
 </aside>
 <div style="min-width:0">
-<header class="topbar"><h1 id="pageTitle">Start here</h1><span class="chip" id="modeChip">Mock data</span><button class="btn small" id="phBtn" type="button" hidden aria-pressed="false">Show contacts</button><button class="btn small hist" id="undoBtn" type="button" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>Undo</button><button class="btn small hist" id="redoBtn" type="button" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>Redo</button><button class="btn small" id="refreshBtn" hidden>Refresh</button><span class="avatar" id="avatar" aria-hidden="true">RSL</span></header>
+<header class="topbar"><h1 id="pageTitle">Start here</h1><span class="chip" id="modeChip">Mock data</span><button class="btn small" id="phBtn" type="button" hidden aria-pressed="false">Show contacts</button><button class="btn small hist" id="undoBtn" type="button" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>Undo</button><button class="btn small hist" id="redoBtn" type="button" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>Redo</button><a class="btn small" id="repBtn" href="#reports" hidden>Reports</a><button class="btn small" id="refreshBtn" hidden>Refresh</button><span class="avatar" id="avatar" aria-hidden="true">RSL</span></header>
 <main>
 
 <p class="fict-note" id="fictNote">All names, phone numbers, ID numbers and amounts in this demo are fictional. No real taxpayer data is used.</p>
 <div class="banner" id="dbBanner" hidden><p id="dbBannerText"></p><button class="btn primary small" id="seedBtn" hidden>Load demo dataset</button></div>
 
 <section data-view="guide">
-  <p class="lede"><b>Rasiti (Receipt) Lottery</b> is a prototype for the RSL Taxathon 2026, Challenge 1. Customers get receipts and prize-draw entries, sellers get a free sales book, and RSL gets a live picture of where trade happens. All data is mock. Anyone can try the phones; the RSL screens need an officer account.</p>
+  <p class="lede"><b>Rasiti (Receipt) Lottery</b> turns every purchase into a receipt and a prize-draw entry. Sellers get a free sales book that fills itself, and RSL sees where trade happens. All data here is mock. Anyone can try the phones; the RSL pages need an officer account.</p>
   <div class="guide">
     <div class="panel">
-      <h3>Steps</h3>
+      <h3>Try it in 5 steps</h3>
       <ol class="steps">
-        <li><b>Open Rasiti like a real user</b><a href="#phones">Phones</a>: on the <b>keypad phone</b>, press <span class="codebox">*999#</span> with the keys, then the green key. On the <b>smartphone</b>, tap <b>WhatsApp</b>, the green new-chat button, then <b>Rasiti</b>, and register.<div class="note">With the database connected, the keypad phone talks to the real USSD server, exactly as a mobile network would.</div></li>
-        <li><b>Run the guided cases</b>Click the eight cases on the right of the Phones page, top to bottom. After each one, a note says what happened and what to press next.</li>
-        <li><b>Check a receipt as a customer</b>Customer phone: 2, then the genuine code <span class="codebox" id="sampleCode">…</span>. Then try the fake one <span class="codebox" id="sampleFake">…</span>.</li>
-        <li><b>Pay by card and claim the receipt</b>In the payment panel choose <b>Card (speed point)</b> and Mme Lineo, then pay. On the customer phone choose 1 to claim it, or later dial *999#, 1, seller code <span class="codebox">6018</span>, the amount and the card's last 4 digits <span class="codebox">4471</span>. There are no cash receipts: Rasiti only gives receipts for payments a network or bank saw.</li>
-        <li><b>Join as a new seller</b>In the seller list choose "Someone not on Rasiti yet". Dial <span class="codebox">*999#</span>, choose 2 (seller), then 0 to join, give a name, a place and what you sell, and choose a 4-digit PIN.</li>
-        <li><b>Rate a shop</b>Customer phone: 3. On WhatsApp you can share your location, and the rating lands on the map in <a href="#watch">Community watch</a>.</li>
-        <li><b>Look at the RSL side</b>Sign in, then try <a href="#shield">Fraud Shield</a>, <a href="#watch">Community watch</a>, <a href="#officer">Officer console</a> and <a href="#draw">Draw</a>.</li>
+        <li><b>Open the phones</b><a href="#phones">Phones</a>: on the keypad phone type <span class="codebox">*999#</span> and press the green key. On the smartphone, open WhatsApp and chat with Rasiti.</li>
+        <li><b>Pay cash and claim the receipt</b>Customer phone: *999#, 1 (customer), 1 <i>I paid cash</i>, seller code <span class="codebox">3307</span>, an amount. Seller phone: *999#, 2, code 3307, PIN <span class="codebox">2580</span>, then 1 <i>Confirm cash sales</i>. Nothing counts until the seller says yes.</li>
+        <li><b>Pay by mobile money or card</b>Use the payment panel on the Phones page. M-Pesa and EcoCash receipts arrive by themselves; a card buyer claims with the last 4 digits of the card (try seller <span class="codebox">6018</span>, card <span class="codebox">4471</span>).</li>
+        <li><b>Run the guided cases</b>Eight one-click cases on the Phones page: ordinary sales, an exception, a case for human review, a new taxpayer and a catch-up payment.</li>
+        <li><b>See the RSL side</b>Sign in, then open the <a href="#dash">Dashboard</a>, the <a href="#officer">Officer console</a> and <a href="#reports">Reports</a>.</li>
       </ol>
+      <p class="note" style="margin-bottom:0">Check a receipt: customer phone *999#, 1, 3, then <span class="codebox" id="sampleCode">…</span> (genuine) or <span class="codebox" id="sampleFake">…</span> (fake).</p>
     </div>
     <div class="stack">
       <div class="panel">
         <h3>Test sellers</h3>
         <div class="tbl-wrap"><table>
-          <tr><th>Code</th><th>Seller</th><th>M-Pesa / EcoCash / card</th><th>Why it is interesting</th></tr>
-          <tr><td class="mono">3307</td><td>Ntate Thabo · snacks and drinks, Sefika rank</td><td class="mono">584112 / 20931</td><td>Registered, ordinary. Customers earn double entries.</td></tr>
-          <tr><td class="mono">4821</td><td>Mme Palesa · fruit and veg</td><td class="mono">584297 / 20456</td><td>Not registered (option 2 registers her). A buyer's payments were paid back or reversed: voided.</td></tr>
-          <tr><td class="mono">5140</td><td>Mme 'Mathabo · cooked food</td><td class="mono">585021 / 21468</td><td>Filed a nil return while her receipts show sales.</td></tr>
-          <tr><td class="mono">2264</td><td>Ntate Lebohang · shoe repair</td><td class="mono">584765 / 21190</td><td>Nil return that matches real inactivity. No action.</td></tr>
-          <tr><td class="mono">6018</td><td>Mme Lineo · hair salon</td><td class="mono">585530 / 22075 / SLB60181</td><td>Card machine. New phones buying heavily, and one phone claiming many cards: held.</td></tr>
-          <tr><td class="mono">7735</td><td>Ntate Teboho · phone repairs</td><td class="mono">586004 / 22389 / FNB77350</td><td>Bought from himself, which the Shield blocks.</td></tr>
-          <tr><td class="mono">3902</td><td>Mme Nthabiseng · clothes</td><td class="mono">586371 / 22713 / NED39021</td><td>One M2,400 sale to check, and 6 brand-new phones paying exactly M100 (SIM farm).</td></tr>
+          <tr><th>Code</th><th>Seller</th><th>What to look for</th></tr>
+          <tr><td class="mono">3307</td><td>Ntate Thabo · snacks, Sefika rank</td><td>Registered. Has cash sales waiting for him to confirm.</td></tr>
+          <tr><td class="mono">4821</td><td>Mme Palesa · fruit and veg</td><td>Not registered yet. A buyer's payments were sent back: voided.</td></tr>
+          <tr><td class="mono">5140</td><td>Mme 'Mathabo · cooked food</td><td>Nil return, and rejects most cash claims: a visit, not a bill.</td></tr>
+          <tr><td class="mono">2264</td><td>Ntate Lebohang · shoe repair</td><td>Nil return that matches real inactivity. No action.</td></tr>
+          <tr><td class="mono">6018</td><td>Mme Lineo · hair salon</td><td>Card machine. One phone claiming many cards: held.</td></tr>
+          <tr><td class="mono">7735</td><td>Ntate Teboho · phone repairs</td><td>Bought from himself: blocked.</td></tr>
+          <tr><td class="mono">3902</td><td>Mme Nthabiseng · clothes</td><td>Overdue tax, and 6 new phones paying exactly M100.</td></tr>
         </table></div>
-        <p class="note" style="margin-bottom:0">Seller PIN for every test seller: <span class="codebox">2580</span>. Sellers sign in with their seller code and PIN, never with a merchant code. Every seller already has M-Pesa (Vodacom) and EcoCash (Econet) merchant accounts; three also have a bank card machine. Buyers pay them as usual; the receipt follows by itself. Demo codes are fictional.</p>
+        <p class="note" style="margin-bottom:0">PIN for every test seller: <span class="codebox">2580</span>. Sellers sign in with seller code and PIN. All codes and numbers are fictional.</p>
       </div>
       <div class="panel">
         <h3>Questions for testers</h3>
         <ul class="steps" style="list-style:disc">
           <li>Would you use USSD or WhatsApp, and why?</li>
+          <li>As a seller, is one tap to confirm a cash sale easy enough?</li>
           <li>Would double draw entries make you choose a registered seller?</li>
-          <li>As a seller, what would make you join Rasiti, or stop you?</li>
           <li>Was any screen confusing or too long for a basic phone?</li>
         </ul>
-        <p class="note">Send your answers to the person who shared this link.</p>
       </div>
     </div>
   </div>
 </section>
 
 <section data-view="phones" hidden>
-  <p class="lede">The same service runs on USSD, for any handset, and on WhatsApp, for people who prefer chat. Switch channel above each phone. On the keypad phone dial *999# and press the green key; on the smartphone open WhatsApp and start a chat with Rasiti. Everything you do here is saved and shows up on the RSL screens.</p>
+  <p class="lede">The same service on USSD (any handset) and WhatsApp. Switch channel above each phone. Everything you do here is saved and shows on the RSL pages.</p>
   <div class="grid-phones">
     <div class="phone-col" id="col-t"></div>
     <div class="phone-col" id="col-c"></div>
@@ -634,7 +636,7 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
       <div class="panel"><h3>Guided cases</h3><div class="cases" id="cases"></div></div>
       <div class="narr" id="narr"></div>
       <div class="panel"><h3>Customer pays with M-Pesa, EcoCash or card</h3>
-        <p class="note" style="margin-top:0">Receipts come only from payments a network or bank saw, so nobody can record sales that never happened. Sellers have M-Pesa (Vodacom) and EcoCash (Econet) merchant accounts; some, mostly registered shops, also have a bank card machine. The buyer pays exactly as usual. Once the seller has linked the code or machine, the network or bank tells Rasiti. Mobile money receipts reach the buyer by SMS; a card buyer claims the receipt with the last 4 digits of the card.</p>
+        <p class="note" style="margin-top:0">The buyer pays as usual. The network or bank tells Rasiti, and the receipt follows by itself. For cash, use the customer phone: 1 <i>I paid cash</i>.</p>
         <form class="qr-pay mm-pay" id="mmForm">
           <label for="mmNet">Pay with<select id="mmNet"><option value="mpesa">M-Pesa</option><option value="ecocash">EcoCash</option><option value="card">Card (speed point)</option></select></label>
           <label for="mmSeller">Seller<select id="mmSeller"></select></label>
@@ -650,8 +652,8 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 </section>
 
 <section data-view="dash" hidden>
-  <div class="dash-top"><p class="lede" style="margin:0">Everything on one page: receipts, sellers, what customers report, the Fraud Shield, the draw and what needs attention. Click any figure to open its page.</p>
-    <div class="dash-tools"><div class="filters" id="dashFilters" style="margin:0"></div><button class="btn small" type="button" id="dashBrief">Ask Bohlale for today's briefing</button><button class="btn small primary" type="button" id="dashPdf">Download PDF</button></div></div>
+  <div class="dash-top"><p class="lede" style="margin:0">Everything on one page. Click any figure to open its page. All downloads are under <a href="#reports">Reports</a>.</p>
+    <div class="dash-tools"><div class="filters" id="dashFilters" style="margin:0"></div><button class="btn small" type="button" id="dashBrief">Ask Bohlale for today's briefing</button></div></div>
   <div class="kpis dash-kpis" id="dashKpis"></div>
   <div class="dash-grid">
     <div class="panel"><h3>Receipts per day</h3><div class="chart" id="dashChart"></div><p class="note" id="dashChartNote"></p></div>
@@ -671,7 +673,7 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 </section>
 
 <section data-view="shield" hidden>
-  <p class="lede">Every receipt is scored against plain-language rules. A score of 30 or more holds its draw entries for an officer; 60 or more blocks them. The sale always stays in the seller's sales book. The Shield only decides who can win.</p>
+  <p class="lede">Every receipt is scored against plain rules. 30 points or more holds its draw entries for an officer; 60 or more blocks them. The sale always stays in the seller's sales book: the Shield only decides who can win.</p>
   <div class="panel wf-bar">
     <div class="wf">
       <label>Period<select id="sfDays"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="60">Last 60 days</option><option value="all">All dates</option></select></label>
@@ -679,7 +681,6 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
       <label>Rule<select id="sfRule"></select></label>
       <button class="btn small" id="sfReset" type="button">Reset filters</button>
     </div>
-    <div class="dl"><span>Download</span><button class="btn small" type="button" data-dl="shield-csv">Receipts CSV</button><button class="btn small" type="button" data-dl="fakes-csv">Fake codes CSV</button><button class="btn small primary" type="button" data-dl="shield-pdf">PDF report</button></div>
     <p class="note" id="sfNote" style="margin:10px 0 0"></p>
   </div>
   <div class="kpis" id="shieldKpis"></div>
@@ -699,7 +700,7 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 </section>
 
 <section data-view="watch" hidden>
-  <p class="lede">Every customer who rates a shop adds to a live picture of where trade happens and which retailers give receipts, including formal shops and sellers not on Rasiti. RSL looks at areas and patterns. No single customer's word triggers action, and shops that give receipts earn a public badge.</p>
+  <p class="lede">Customer ratings show where trade happens and which shops give receipts, including shops not on Rasiti. RSL looks at areas and patterns: no single customer's word triggers action.</p>
   <div class="panel wf-bar">
     <div class="wf">
       <label>Period<select id="wfDays"><option value="7">Last 7 days</option><option value="14">Last 14 days</option><option value="30" selected>Last 30 days</option></select></label>
@@ -707,12 +708,11 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
       <label>Shops<select id="wfWho"><option value="all">All shops</option><option value="on">Rasiti sellers</option><option value="off">Not on Rasiti</option></select></label>
       <button class="btn small" id="wfReset" type="button">Reset filters</button>
     </div>
-    <div class="dl"><span>Download</span><button class="btn small" type="button" data-csv="ratings">Ratings CSV</button><button class="btn small" type="button" data-csv="shops">Shops CSV</button><button class="btn small" type="button" data-csv="areas">Areas CSV</button><button class="btn small primary" type="button" id="wfPdf">PDF report</button></div>
     <p class="note" id="wfNote" style="margin:10px 0 0"></p>
   </div>
   <div class="kpis" id="watchKpis"></div>
   <div class="panel bh-analyst">
-    <div class="bh-ahead"><img class="bh-logo" src="img/bohlale-96.png" alt=""><div><b>Ask Bohlale about this view</b><small>Bohlale reads the filtered data on this page and answers like a data analyst. Its latest answer goes into the PDF report.</small></div></div>
+    <div class="bh-ahead"><img class="bh-logo" src="img/bohlale-96.png" alt=""><div><b>Ask Bohlale about this view</b><small>Bohlale reads the filtered data on this page and answers like a data analyst. Its latest answer goes into the Community watch PDF (Reports).</small></div></div>
     <div class="filters" id="waTasks"></div>
     <form class="bh-form" id="waForm"><input id="waIn" type="text" autocomplete="off" placeholder="e.g. Which area got worse in the last two weeks?" aria-label="Question about this data"><button class="btn primary" type="submit">Ask</button></form>
     <div id="waOut" class="wa-out" aria-live="polite"></div>
@@ -742,7 +742,7 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 </section>
 
 <section data-view="officer" hidden>
-  <p class="lede">Rasiti turns customer receipts and ratings into a short, ranked worklist. Each item says why it is there. A nil return is never treated as non-compliance on its own, and no item triggers a penalty without an officer's decision.</p>
+  <p class="lede">A short, ranked worklist. Each item says why it is there. A nil return or a refused cash claim is never treated as non-compliance on its own, and nothing becomes a penalty without an officer's decision.</p>
   <div class="panel wf-bar">
     <div class="wf">
       <label>Priority<select id="ofPri"><option value="all">All priorities</option><option value="3">High</option><option value="2">Medium</option><option value="1">Low</option><option value="0">Watching</option><option value="-1">No action</option></select></label>
@@ -750,19 +750,18 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
       <label>Seller type<select id="ofStatus"><option value="all">All</option><option value="registered">Registered for tax</option><option value="enrolled">On Rasiti, not registered</option><option value="off">Not on Rasiti</option><option value="system">System alerts</option></select></label>
       <button class="btn small" id="ofReset" type="button">Reset filters</button>
     </div>
-    <div class="dl"><span>Download</span><button class="btn small" type="button" data-dl="work-csv">Worklist CSV</button><button class="btn small" type="button" data-dl="review-csv">Review queue CSV</button><button class="btn small" type="button" data-dl="complaints-csv">Complaints CSV</button><button class="btn small" type="button" data-dl="tax-csv">Filing &amp; payments CSV</button><button class="btn small primary" type="button" data-dl="officer-pdf">PDF report</button></div>
     <p class="note" id="ofNote" style="margin:10px 0 0"></p>
   </div>
   <div class="kpis" id="offKpis"></div>
-  <div class="two">
+  <div class="panel"><h3>Worklist</h3><div class="tbl-wrap"><table id="workTbl"></table></div></div>
+  <div class="panel mt"><h3>Review queue: held draw entries</h3><div class="tbl-wrap"><table id="reviewTbl"></table></div></div>
+  <div class="two mt">
     <div class="panel"><h3>Leads on the map</h3><div class="map small" id="leadMap"></div>
       <div class="legend"><span><i style="background:#d93025"></i>High priority</span><span><i style="background:#f0a020"></i>Medium</span><span><i style="background:#9aa0ad"></i>Watching</span></div></div>
     <div class="stack">
-      <div class="panel"><h3>Widening the tax net</h3><div class="funnel" id="funnel"></div><p class="note">Each step is a separate group of sellers today. In the pilot this becomes a monthly cohort chart.</p></div>
       <div class="panel"><h3>Complaints from customers</h3><div class="tbl-wrap"><table id="reportsTbl"></table></div><p class="note">Action starts at 3 independent customers. Reporters are never shown to sellers.</p></div>
     </div>
   </div>
-  <div class="panel mt"><h3>Worklist</h3><div class="tbl-wrap"><table id="workTbl"></table></div></div>
   <div class="panel mt"><h3 class="h-row">Filing and payments <button class="btn small primary" type="button" id="remBtn">Send reminders</button></h3>
     <p class="note" style="margin-top:0">Registered sellers file from their sales book and pay by mobile money on USSD or WhatsApp, in full or in small parts before the due date. Tax uses a demo rate of 3% of declared sales; RSL sets the real SBT rate and schedule.</p>
     <div class="tbl-wrap"><table id="taxTbl"></table></div></div>
@@ -770,12 +769,11 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
     <p class="note" style="margin-top:0">How Rasiti would talk to RSL's own systems. Each registration is checked against RSL's taxpayer register (TIN check), each return is sent to RSL and gets an acknowledgement number, and each payment gets an official RSL receipt number. RSL does not give outside teams access to live systems, so these answers are simulated. In a pilot they are replaced by RSL's real e-services connection. Demo rule: ID numbers ending in 00 are already on RSL's register.</p>
     <div class="kpis small-kpis" id="rslKpis"></div>
     <div class="tbl-wrap"><table id="rslTbl"></table></div></div>
-  <div class="panel mt"><h3>Review queue: held draw entries</h3><div class="tbl-wrap"><table id="reviewTbl"></table></div></div>
 </section>
 
 <section data-view="draw" hidden>
-  <p class="lede">Customers earn 1 entry per M10 spent, up to 5 per receipt, at any Rasiti seller. Entries double at sellers who have registered for tax. Nobody is shut out: registering simply earns more. The draw runs once a month. Prizes come from sponsors first, then from a capped share of the extra tax the draw brings in.</p>
-  <div class="panel wf-bar"><div class="dl" style="margin:0;padding:0;border:0"><span>Download</span><button class="btn small" type="button" data-dl="entries-csv">Entries CSV</button><button class="btn small" type="button" data-dl="winners-csv">Winners CSV</button><button class="btn small primary" type="button" data-dl="draw-pdf">PDF draw report</button></div><p class="note" style="margin:10px 0 0">The entries list shows every customer in the draw with masked numbers, so the result can be checked.</p></div>
+  <p class="lede">1 entry per M10 paid by mobile money or card (up to 5 a receipt), and 1 entry for each cash sale the seller confirmed. Entries double at registered sellers. The draw runs once a month; prizes come from sponsors first, then from a capped share of the extra tax the draw brings in.</p>
+  
   <div class="kpis" id="drawKpis"></div>
   <div class="panel">
     <h3 id="drawTitle">This month's draw</h3>
@@ -789,6 +787,19 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
     <p class="note" style="margin-top:0">Every entry counts in its month, and again in the quarter, half-year and year draws. Every receipt is a payment that M-Pesa, EcoCash or a bank confirmed, so every receipt plays for every prize; a reversed payment, or money sent back to the buyer, gets no entries. Winners show their ID and the SIM registered to them before any payout. Prize amounts and sponsors are to be agreed with RSL.</p>
     <div class="tbl-wrap"><table id="ladderTbl"></table></div></div>
   <div class="panel mt" id="pastDrawsPanel" hidden><h3>Recent draws</h3><div class="tbl-wrap"><table id="pastDraws"></table></div></div>
+</section>
+
+<section data-view="reports" hidden>
+  <p class="lede">Every report in one place. CSV files open in Excel; PDFs are ready to print or email. Each report uses the filters last set on its own page. Phone numbers stay masked unless an admin shows contacts.</p>
+  <div class="rp-grid">
+    <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><h3>Dashboard</h3></div><p class="note">One-page overview: receipts, sellers, Fraud Shield, draw, filing and what needs attention.</p><div class="rp-btns"><button class="btn small primary" type="button" id="dashPdf">Dashboard PDF</button></div></div>
+    <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5h6M9 3h6v4H9z"/><rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 12h6M9 16h4"/></svg><h3>Officer console</h3></div><p class="note">The worklist, held draw entries, customer complaints, filing and payments.</p><div class="rp-btns"><button class="btn small" type="button" data-dl="work-csv">Worklist CSV</button><button class="btn small" type="button" data-dl="review-csv">Review queue CSV</button><button class="btn small" type="button" data-dl="complaints-csv">Complaints CSV</button><button class="btn small" type="button" data-dl="tax-csv">Filing &amp; payments CSV</button><button class="btn small primary" type="button" data-dl="officer-pdf">Officer PDF</button></div></div>
+    <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg><h3>Cash claims</h3></div><p class="note">Every cash sale a buyer claimed, and what the seller did: confirmed, rejected, ignored or still waiting.</p><div class="rp-btns"><button class="btn small primary" type="button" data-dl="cash-csv">Cash claims CSV</button></div></div>
+    <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg><h3>Fraud Shield</h3></div><p class="note">Every receipt with its score and reasons, and the fake or misused codes that were stopped.</p><div class="rp-btns"><button class="btn small" type="button" data-dl="shield-csv">Fraud Shield receipts CSV</button><button class="btn small" type="button" data-dl="fakes-csv">Fake codes CSV</button><button class="btn small primary" type="button" data-dl="shield-pdf">Fraud Shield PDF</button></div></div>
+    <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg><h3>Community watch</h3></div><p class="note">Customer ratings by shop and area, with Bohlale's latest analysis in the PDF.</p><div class="rp-btns"><button class="btn small" type="button" data-csv="ratings">Ratings CSV</button><button class="btn small" type="button" data-csv="shops">Shops CSV</button><button class="btn small" type="button" data-csv="areas">Areas CSV</button><button class="btn small primary" type="button" id="wfPdf">Community watch PDF</button></div></div>
+    <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="5"/><path d="M8.5 12.5L7 21l5-3 5 3-1.5-8.5"/></svg><h3>Monthly draw</h3></div><p class="note">Every entry in the draw with masked numbers, so the result can be checked, and the winners.</p><div class="rp-btns"><button class="btn small" type="button" data-dl="entries-csv">Draw entries CSV</button><button class="btn small" type="button" data-dl="winners-csv">Winners CSV</button><button class="btn small primary" type="button" data-dl="draw-pdf">Draw PDF</button></div></div>
+  </div>
+  <p class="note">Need one transaction, or a custom list? Use <a href="#search">Search</a> (results CSV and PDF). The full audit trail is in the <a href="#logs">System log</a>.</p>
 </section>
 
 <section data-view="bohlale" hidden>
@@ -855,8 +866,8 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
     <div class="wf">
       <label class="sx-q">Search<input id="sxQ" type="search" placeholder="e.g. RS-3307, Thabo, 118, PY4K2" autocomplete="off"></label>
       <label>Type<select id="sxKind"><option value="">Everything</option><option value="receipt">Receipts</option><option value="return">Tax returns</option><option value="payment">Tax payments</option></select></label>
-      <label>Paid by<select id="sxPaid"><option value="">Any way</option><option value="momo">Mobile money (any)</option><option value="mpesa">M-Pesa</option><option value="ecocash">EcoCash</option><option value="card">Card</option><option value="cash">Cash (older records)</option></select></label>
-      <label>Reported by<select id="sxRec"><option value="">Anyone</option><option value="network">Network (M-Pesa or EcoCash)</option><option value="bank">Bank (card machine)</option><option value="seller">Seller (returns, payments)</option></select></label>
+      <label>Paid by<select id="sxPaid"><option value="">Any way</option><option value="momo">Mobile money (any)</option><option value="mpesa">M-Pesa</option><option value="ecocash">EcoCash</option><option value="card">Card</option><option value="cash">Cash (confirmed by the seller)</option></select></label>
+      <label>Reported by<select id="sxRec"><option value="">Anyone</option><option value="network">Network (M-Pesa or EcoCash)</option><option value="bank">Bank (card machine)</option><option value="seller">Seller (cash confirmed, returns, payments)</option></select></label>
       <label>Network notice<select id="sxFlag"><option value="">Any</option><option value="any">Reversed or paid back</option><option value="reversed">Payment reversed</option><option value="payback">Money sent back to the payer</option></select></label>
       <label>Seller<select id="sxSeller"><option value="">All sellers</option></select></label>
       <label>Market or area<select id="sxMarket"><option value="">All areas</option></select></label>
@@ -890,7 +901,7 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 </section>
 
 <section data-view="users" hidden>
-  <p class="lede">Add officers and choose what they can do. Owners manage everyone; admins manage officers and viewers. Every sign-in and decision is written to the activity log.</p>
+  <p class="lede">Add officers and choose what they can do. Owners manage everyone; admins manage officers and viewers. Every sign-in and decision is written to the <a href="#logs">system log</a>.</p>
   <div class="panel">
     <h3>Add a user</h3>
     <form id="userForm" class="form-grid">
@@ -904,8 +915,6 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
   </div>
   <div class="panel mt"><h3>Users</h3><div class="tbl-wrap"><table id="usersTbl"></table></div></div>
   <div class="two mt">
-    <div class="panel"><h3 class="h-row">Activity log <span class="act-tools"><select id="actWho" aria-label="Filter by person"><option value="all">Everyone</option></select><button class="btn small" type="button" data-dl="activity-csv">CSV</button><a class="btn small" href="#logs">Full log</a></span></h3><div class="tbl-wrap" style="max-height:420px;overflow:auto"><table id="activityTbl"></table></div></div>
-    <div class="stack">
       <div class="panel"><h3>My password</h3>
         <form id="pwForm" class="form-grid">
           <label for="pwCur">Current<input id="pwCur" type="password" required autocomplete="current-password"></label>
@@ -919,7 +928,6 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
           <p class="note">Deletes everything: sellers, receipts, ratings, reviews, draws, the activity log and every user except you. This cannot be undone.</p>
           <form id="clearForm" class="clear-form"><input id="clearIn" type="text" autocomplete="off" placeholder="Type CLEAR" aria-label="Type CLEAR to confirm"><button class="btn danger" type="submit">Clear entire data</button></form>
           <p class="err" id="clearErr"></p></div></div>
-    </div>
   </div>
 </section>
 
@@ -942,11 +950,11 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 
 <div class="toast" id="toast" hidden></div>
 <script src="vendor/leaflet.js"></script>
-<script src="i18n.js?v=20261104b"></script>
-<script src="faq.js?v=20261104b"></script>
-<script src="rsl-mock.js?v=20261104b"></script>
-<script src="tips.js?v=20261104b"></script>
-<script src="app.js?v=20261104b"></script>
-<script src="agent.js?v=20261104b"></script>
+<script src="i18n.js?v=20261104c"></script>
+<script src="faq.js?v=20261104c"></script>
+<script src="rsl-mock.js?v=20261104c"></script>
+<script src="tips.js?v=20261104c"></script>
+<script src="app.js?v=20261104c"></script>
+<script src="agent.js?v=20261104c"></script>
 </body>
 </html>

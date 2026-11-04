@@ -4,6 +4,7 @@ import { db, audit } from './_lib/db.js';
 import { route, body, bad } from './_lib/http.js';
 import { validCode, PHONE, inLesotho } from './_lib/codes.js';
 import { checkPin, hashPin, pinProblem } from './_lib/pin.js';
+import { claimCash, decideCash, pendingCash } from './_lib/cash.js';
 
 const ID = /^[a-z0-9-]{6,40}$/i;
 const txt = (v, n) => String(v ?? '').trim().slice(0, n);
@@ -22,9 +23,9 @@ export default route(async (req, res) => {
     case 'receipt': {
       if (!validCode(b.code)) throw bad('Invalid receipt code.');
       await seller(b.seller_no);
-      // Receipts come only from payments the network or a bank saw. Cash receipts are no longer accepted, so nobody can record
-      // sales that never happened in a seller's book.
-      if (!['momo', 'card'].includes(b.channel)) throw bad('Channel must be momo or card. Rasiti does not issue cash receipts.');
+      // Receipts come from payments a network or a bank saw, or from cash claims the seller confirmed (cash_decide).
+      // Nobody can post a cash receipt directly, so nobody can put a sale into a seller's book without the seller saying yes.
+      if (!['momo', 'card'].includes(b.channel)) throw bad('Channel must be momo or card. Cash receipts come only from cash claims the seller confirms.');
       const l4 = b.channel === 'card' && /^\d{4}$/.test(String(b.card_last4 || '')) ? String(b.card_last4) : null;
       await q("INSERT INTO receipts(code,seller_no,amount,channel,phone,issued_at,source,card_last4) VALUES ($1,$2,$3,$4,$5,now(),'tester',$6) ON CONFLICT DO NOTHING",
         [b.code, b.seller_no, amount(b.amount), b.channel, phoneOrNull(b.phone), l4]);
@@ -36,18 +37,24 @@ export default route(async (req, res) => {
       if (!rows.length) return res.status(409).json({ error: 'This receipt already belongs to another phone.' });
       break;
     }
-    case 'claim': {
-      if (!ID.test(b.id || '')) throw bad('Bad id.');
-      await seller(b.seller_no);
-      if (!['pending', 'queued'].includes(b.state)) throw bad('Bad state.');
-      await q('INSERT INTO claims(id,seller_no,amount,phone,state) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',
-        [b.id, b.seller_no, amount(b.amount), phoneOrNull(b.phone), b.state]);
-      break;
+    case 'cash_claim': { // the buyer says "I paid cash": a pending claim, nothing counts until the seller confirms
+      const ph = phoneOrNull(b.phone); if (!ph) throw bad('Phone required.');
+      const [sl] = await q('SELECT no, name, phone FROM sellers WHERE no=$1', [String(b.seller_no || '')]); if (!sl) throw bad('Unknown seller code.');
+      const r = await claimCash(q, { phone: ph, seller: sl, amount: b.amount, channel: 'WhatsApp' });
+      return res.status(200).json(r.ok ? { ok: true, id: r.id, amount: r.amount } : { ok: false, msg: r.msg });
     }
-    case 'claim_state': {
-      if (!['pending', 'confirmed', 'rejected'].includes(b.state)) throw bad('Bad state.');
-      await q('UPDATE claims SET state=$1 WHERE id=$2', [b.state, txt(b.id, 40)]);
-      break;
+    case 'cash_pending': { // the seller's list of cash claims to answer; needs their PIN
+      const [sl] = await q('SELECT * FROM sellers WHERE no=$1', [String(b.no || '')]); if (!sl) throw bad('Unknown seller code.');
+      const r = await checkPin(q, sl, String(b.pin || '')); if (!r.ok) return res.status(403).json({ error: r.msg });
+      return res.status(200).json({ ok: true, claims: (await pendingCash(q, sl.no)).map(c => ({ ...c, phone: mkp(c.phone) })) });
+    }
+    case 'cash_decide': { // the seller confirms or rejects cash claims (ids, or "all"); needs their PIN
+      const [sl] = await q('SELECT * FROM sellers WHERE no=$1', [String(b.no || '')]); if (!sl) throw bad('Unknown seller code.');
+      const r = await checkPin(q, sl, String(b.pin || '')); if (!r.ok) return res.status(403).json({ error: r.msg });
+      if (!['confirm', 'reject'].includes(b.decision)) throw bad('Decision must be confirm or reject.');
+      const ids = b.ids === 'all' ? 'all' : Array.isArray(b.ids) ? b.ids.map(x => txt(x, 40)).slice(0, 200) : null; if (!ids) throw bad('ids must be a list or "all".');
+      const done = await decideCash(q, sl, ids, b.decision, 'WhatsApp');
+      return res.status(200).json({ ok: true, done: done.map(d => ({ id: d.id, code: d.code, amount: d.amount })) });
     }
     case 'report': {
       if (!ID.test(b.id || '')) throw bad('Bad id.');
@@ -174,12 +181,11 @@ export default route(async (req, res) => {
   const who = b.phone ? `Customer ${mk(b.phone)}` : b.seller_no || b.no ? `Seller ${b.seller_no || b.no}` : 'Phone user';
   const amt = Math.round(Number(b.amount)) || null; // already validated above for the kinds that carry an amount
   const LOG = { receipt:['receipt_issued', {code:b.code, seller:b.seller_no, amount:amt, paid_by:b.channel === 'card' ? 'card' : 'mobile money'}], receipt_phone:['receipt_claimed', {code:b.code}],
-    claim:['receipt_requested', {seller:b.seller_no, amount:amt, state:b.state}], claim_state:['receipt_request_' + b.state, {id:txt(b.id, 40)}],
     report:['shop_rated', {rating:b.type, seller:b.seller_no || null, shop:b.seller_no ? null : txt(b.place_label, 60), area:txt(b.area, 60) || null}],
     fake:['fake_code_caught', {code:txt(b.code, 20), kind:b.fkind}], seller_join:['seller_joined', {no:b.no, name:txt(b.name, 60), market:txt(b.market, 60)}],
     seller_register:['seller_registered_for_tax', {no:b.no, tin:b.tin}], seller_helper:['seller_asked_for_help', {no:b.no}],
     return_filed:[Number(b.declared) ? 'return_filed' : 'nil_return_filed', {period:b.period, declared:Math.round(Number(b.declared)), sales_book:Math.round(Number(b.sales) || 0), reason:txt(b.nil_reason, 40) || null, rsl_ack:txt(b.ack, 20) || null}],
     tax_paid:['tax_paid', {period:b.period, amount:amt, ref:txt(b.ref, 20), rsl_receipt:txt(b.rcpt, 20) || null}], lang:['language_changed', {lang:b.lang === 'st' ? 'Sesotho' : 'English'}], tip_sub:[b.on ? 'tip_subscribed' : 'tip_unsubscribed', {price:'M2.00 a day'}], reminders:[b.on ? 'reminders_on' : 'reminders_off', {}] }[b.kind];
-  if (LOG) await audit(q, null, LOG[0], { actor:['seller_join', 'seller_register', 'seller_helper', 'claim_state', 'return_filed', 'tax_paid', 'reminders'].includes(b.kind) ? `Seller ${b.no || b.seller_no || ''}`.trim() : who, channel:'phone', ...LOG[1] }).catch(() => {});
+  if (LOG) await audit(q, null, LOG[0], { actor:['seller_join', 'seller_register', 'seller_helper', 'return_filed', 'tax_paid', 'reminders'].includes(b.kind) ? `Seller ${b.no || b.seller_no || ''}`.trim() : who, channel:'phone', ...LOG[1] }).catch(() => {});
   res.status(200).json({ ok: true });
 });
