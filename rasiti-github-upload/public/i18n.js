@@ -7,6 +7,9 @@
   const LINES = [
     // main menus
     // seller sign-in with PIN, and mobile-money merchant codes
+    ['Customer receipts ({})', 'Lirasiti tsa bareki ({})'], ['Customer receipts (optional)', 'Lirasiti tsa bareki (ha ho qobelloe)'], ['No new customer receipts.', 'Ha ho lirasiti tse ncha tsa bareki.'], ['Nothing to do.', 'Ha ho letho leo u lokelang ho le etsa.'],
+    ['Yes, my sale', 'E, ke thekiso ea ka'], ['Thank you. Confirmed.', 'Kea leboha. E netefalitsoe.'], ['Noted. This receipt will not count in the draw.', 'Re hlokometse. Rasiti ena e ke ke ea bala lothong.'],
+    ['Pay by M-Pesa or EcoCash next time: the receipt comes by itself.', "Nako e tlang lefa ka M-Pesa kapa EcoCash: rasiti e tla ka bo eona."], ['+{} draw entries.', '+{} menyetla ea lotho.'],
     ['Enter your 4-digit PIN:', 'Kenya PIN ea hau ea linomoro tse 4:'], ['Seller code {}', 'Khoutu ea morekisi {}'], ['Seller {}', 'Morekisi {}'],
     ['Choose a 4-digit PIN.', 'Khetha PIN ea linomoro tse 4.'], ['Choose a 4-digit PIN:', 'Khetha PIN ea linomoro tse 4:'],
     ['You need it every time you open your seller menu. Do not share it.', 'U e hloka nako le nako ha u bula lenane la morekisi. U se ke ua e arolelana le motho.'],
@@ -14,10 +17,11 @@
     ['The PIN has 4 digits.', 'PIN e na le linomoro tse 4.'], ['That PIN is too easy to guess. Choose another.', "PIN eo e bonolo ho e nahana. Khetha e 'ngoe."],
     ['Wrong PIN. {} tries left.', 'PIN e fosahetse. Ho setse menyetla e {}.'], ['Wrong PIN. {} try left.', 'PIN e fosahetse. Ho setse monyetla o le {}.'],
     ['Wrong PIN 3 times. The seller menu is locked for 15 minutes.', 'PIN e fosahetse ka makhetlo a 3. Lenane la morekisi le notletsoe metsotso e 15.'],
-    ['Too many wrong PINs. Try again after {}, or call RSL on 8002 2009.', 'Li-PIN tse fosahetseng li ngata. Leka hape ka mor\'a {}, kapa letsetsa RSL ho 8002 2009.'],
-    ['Call RSL on 8002 2009 if you forgot it.', 'Letsetsa RSL ho 8002 2009 haeba u e lebetse.'], ['Keep your PIN secret.', 'Boloka PIN ea hau e le lekunutu.'],
+    ['Too many wrong PINs. Try again after {}, or call the Rasiti help line 6808 8101.', 'Li-PIN tse fosahetseng li ngata. Leka hape ka mor\'a {}, kapa letsetsa mohala oa thuso oa Rasiti 6808 8101.'],
+    ['Call the Rasiti help line 6808 8101 if you forgot it.', 'Letsetsa mohala oa thuso oa Rasiti 6808 8101 haeba u e lebetse.'], ['Keep your PIN secret.', 'Boloka PIN ea hau e le lekunutu.'],
+    ['Keep your PIN secret. Next: link M-Pesa, EcoCash or a card machine (option 3). No tax number needed yet.', 'Boloka PIN ea hau e le lekunutu. E latelang: hokela M-Pesa, EcoCash kapa mochine oa karete (khetho 3). Ha u hloke nomoro ea lekhetho hajoale.'],
     ['Keep your PIN secret. You can give receipts now. No tax number needed yet.', 'Boloka PIN ea hau e le lekunutu. Joale u ka fana ka lirasiti. Ha u hloke nomoro ea lekhetho hajoale.'],
-    ['Mobile money codes', 'Likhoutu tsa chelete ea mohala'], ['Link M-Pesa merchant code', 'Hokela khoutu ea mohoebi ea M-Pesa'], ['Link EcoCash merchant code', 'Hokela khoutu ea mohoebi ea EcoCash'],
+    ['Mobile money codes', 'Likhoutu tsa chelete ea mohala'], ['Link M-Pesa merchant code', 'Hokela khoutu ea mohoebi ea M-Pesa'], ['Link EcoCash merchant code', 'Hokela khoutu ea mohoebi ea EcoCash'], ['Link M-Pesa code', 'Hokela khoutu ea M-Pesa'], ['Link EcoCash code', 'Hokela khoutu ea EcoCash'], ['Payments to this code now give your customers receipts by themselves.', 'Litefo khoutung ena joale li fa bareki ba hau lirasiti ka bo tsona.'],
     ['Your {} merchant code', 'Khoutu ea hau ea mohoebi ea {}'], ['(5 to 7 digits, from {}):', '(linomoro tse 5 ho isa ho 7, ho tsoa ho {}):'],
     ['{} code {} linked.', 'Khoutu ea {} {} e hoketsoe.'], ['{} confirmed it is yours (simulated).', '{} e netefalitse hore ke ea hau (ketsiso).'],
     ['Payments to this code now give your customers receipts by themselves.', 'Litefo khoutung ena joale li fa bareki ba hau lirasiti ka bo tsona.'],
@@ -72,7 +76,7 @@
     ['You can report them: Customer > 3. Rate a shop.', 'U ka ba tlaleha: Moreki > 3. Lekanya lebenkele.'],
     ['My draw entries (this month)', 'Menyetla ea ka ea lotho (khoeling ena)'], ['My draw entries this month: {}', 'Menyetla ea ka khoeling ena: {}'], ['Live: {}', 'E sebetsang: {}'], ['Being checked: {}', 'E ntse e hlahlojoa: {}'],
     ['Next draw: {}', 'Lotho e latelang: {}'], ['Next draw: {} {}', 'Lotho e latelang: {} {}'],
-    ['Tip: registered sellers give double entries.', 'Keletso: barekisi ba ngolisitseng ba fana ka menyetla e habeli.'], ['Registered sellers give double entries.', 'Barekisi ba ngolisitseng ba fana ka menyetla e habeli.'],
+    ['Tip: registered sellers give double entries.', 'Keletso: barekisi ba ngolisitseng ba fana ka menyetla e habeli.'], ['Registered sellers give double entries.', 'Barekisi ba ngolisitseng ba fana ka menyetla e habeli.'], ['Big prizes: pay by M-Pesa or EcoCash.', 'Meputso e meholo: lefa ka M-Pesa kapa EcoCash.'], ['Cash over the monthly cap: {}', 'Chelete e fetang moeli oa khoeli: {}'],
     ['Shops that give receipts (rated by customers)', 'Mabenkele a fanang ka lirasiti (ho ea ka bareki)'], ['Shops that give receipts:', 'Mabenkele a fanang ka lirasiti:'], ['None rated yet.', 'Ha ho le leng le lekantsoeng hajoale.'],
     ['Added. +{} entries.', 'Ho kentsoe. +{} menyetla.'], ['{} · +{} draw entries{}', '{} · +{} menyetla ea lotho{}'],
     // seller flows
@@ -81,6 +85,8 @@
     ['- a record banks can see', '- rekoto eo libanka li ka e bonang'], ['- simple tax, no queues', '- lekhetho le bonolo, ntle le mela'],
     ['Join Rasiti', 'Kena Rasiti'], ['Your name:', 'Lebitso la hau:'], ['Where do you trade? (e.g. Sefika rank)', 'U rekisetsa kae? (mohlala, Sefika rank)'], ['What do you sell?', 'U rekisa eng?'],
     ['Welcome {}!', 'Rea u amohela {}!'], ['Your seller code: {}', 'Khoutu ea hau ea morekisi: {}'], ['You can give receipts now. No tax number needed yet.', 'U ka fana ka lirasiti hona joale. Ha ho hlokehe nomoro ea lekhetho hajoale.'],
+    ['No tax number needed yet.', 'Ha ho hlokehe nomoro ea lekhetho hajoale.'],
+    ['Put the Rasiti sticker where customers can see it. Then link your payment codes: option 3.', 'Beha setikara sa Rasiti moo bareki ba ka se bonang. Ebe u hokela likhoutu tsa hau tsa tefo: khetho 3.'],
     ['Put the Rasiti sticker where customers can see it. You can give receipts now.', 'Beha setikara sa Rasiti moo bareki ba ka se bonang. U ka fana ka lirasiti hona joale.'],
     ['Enter your 4-digit seller code (or 0 to join Rasiti):', 'Kenya khoutu ea hau ea morekisi ea linomoro tse 4 (kapa 0 ho kena Rasiti):'],
     ['Seller code {} not found.', 'Khoutu ea morekisi {} ha e fumanehe.'], ['Dial again and choose 0 to join.', 'Letsetsa hape u khethe 0 ho kena.'],
@@ -117,7 +123,7 @@
     ['Mobile money: approve payment of {} to RSL on your phone (M-Pesa or EcoCash).', 'Chelete ea mohala: amohela tefo ea {} ho RSL mohaleng oa hau (M-Pesa kapa EcoCash).'], ['I approved it', 'Ke e amohetse'],
     ['Mobile money request for {} sent. Approve it on your phone.', 'Kopo ea chelete ea mohala ea {} e rometsoe. E amohele mohaleng oa hau.'],
     ['Paid {} ✅', 'E lefiloe {} ✅'], ['Still due: {}', 'E ntse e lokela: {}'], ['Still due: {} by {}', 'E ntse e lokela: {} ka {}'], ['({} overdue: pay it first to restart your streak)', '({} e fetile nako: e lefe pele ho qala letoto hape)'],
-    ['All paid. Thank you!', 'Tsohle li lefiloe. Kea leboha!'], ['Ref {}. Still due: {}.', 'Ref {}. E ntse e lokela: {}.'], ['Ref {}. All paid. Thank you!', 'Ref {}. Tsohle li lefiloe. Kea leboha!'], ['On-time months in a row: {}', 'Likhoeli tse latellanang ka nako: {}'], ['No returns yet.', 'Ha ho litlaleho hajoale.'],
+    ['All paid. Thank you!', 'Tsohle li lefiloe. Kea leboha!'], ['Ref {}. Still due: {}.', 'Ref {}. E ntse e lokela: {}.'], ['Ref {}. All paid. Thank you!', 'Ref {}. Tsohle li lefiloe. Kea leboha!'], ['On-time months in a row: {}', 'Likhoeli tse latellanang ka nako: {}'], ['On-time quarters in a row: {}', 'Likotara tse latellanang ka nako: {}'], ['No returns yet.', 'Ha ho litlaleho hajoale.'],
     ['No returns yet. File your first return under My tax > 1.', 'Ha ho litlaleho hajoale. Romela tlaleho ea pele ho Lekhetho la ka > 1.'],
     ['Reminders ON. We will SMS you 3 days before each due date.', 'Likhopotso LI BULETSOE. Re tla u romella SMS matsatsi a 3 pele ho letsatsi le leng le le leng la tefo.'],
     ['Reminders OFF. You can turn them on again here.', 'Likhopotso LI KOETSOE. U ka li bulela hape mona.'],
@@ -129,10 +135,44 @@
     ['Please choose 1 or 2. Dial again to start.', 'Ka kopo khetha 1 kapa 2. Letsetsa hape ho qala.'], ['Please choose 1, 2 or 3. Dial again to start.', 'Ka kopo khetha 1, 2 kapa 3. Letsetsa hape ho qala.'],
     ['Sorry, Rasiti is busy. Please try again.', 'Tšoarelo, Rasiti e phathahane. Ka kopo leka hape.'], ['USSD code not recognised.', 'Khoutu ea USSD ha e tsebahale.'], ['Dial *999# for Rasiti.', 'Letsetsa *999# bakeng sa Rasiti.'],
     ['Language: Sesotho', 'Puo: Sesotho'],
+    // card payments (speed points) and payment codes; Rasiti no longer gives cash receipts
+    ['Claim a card payment', 'Kopa tefo ea karete'], ['Paid by card at a Rasiti seller?', 'U lefile ka karete ho morekisi oa Rasiti?'],
+    ['Amount paid by card (M):', 'Chelete e lefuoeng ka karete (M):'], ['Last 4 digits of your card:', 'Linomoro tse 4 tsa ho qetela tsa karete ea hau:'],
+    ['Last 4 digits of your card (on the card and the slip):', 'Linomoro tse 4 tsa ho qetela tsa karete ea hau (kareteng le slip-ing):'],
+    ['The last 4 digits of the card number, e.g. 4471:', 'Linomoro tse 4 tsa ho qetela tsa nomoro ea karete, mohlala 4471:'],
+    ['{} · {} by card', '{} · {} ka karete'], ['{} · {} by card.', '{} · {} ka karete.'],
+    ['No card payment of {} with card ••{} at {} in the last 3 days.', 'Ha ho tefo ea karete ea {} ka karete ••{} ho {} matsatsing a 3 a fetileng.'],
+    ['No card payment of {} with card ••{} at {} in the last 3 days. Check the slip and try again.', 'Ha ho tefo ea karete ea {} ka karete ••{} ho {} matsatsing a 3 a fetileng. Hlahloba slip \'me u leke hape.'],
+    ['Check the slip and try again.', 'Hlahloba slip \'me u leke hape.'],
+    ['Too many card claims that did not match today. Try again tomorrow.', 'Likopo tse ngata tsa karete tse sa tšoaneleng kajeno. Leka hape hosane.'],
+    ['This card payment already belongs to another phone. It cannot be claimed twice.', 'Tefo ena ea karete e se e le ea mohala o mong. E ke ke ea kopuoa habeli.'],
+    ['Enter the 4 digits printed at the end of your card number. Start again.', 'Kenya linomoro tse 4 tse qetellang nomoro ea karete ea hau. Qala hape.'],
+    ['Pay by M-Pesa, EcoCash or card: every receipt plays for every prize.', 'Lefa ka M-Pesa, EcoCash kapa karete: rasiti e \'ngoe le e \'ngoe e kena lothong tsohle.'],
+    ['Pay by M-Pesa, EcoCash or card:', 'Lefa ka M-Pesa, EcoCash kapa karete:'], ['every receipt plays for', 'rasiti e \'ngoe le e \'ngoe e kena'], ['every prize.', 'lothong tsohle.'],
+    ['(mobile money {}, card {})', '(chelete ea mohala {}, karete {})'], ['Mobile money {} · card {}', 'Chelete ea mohala {} · karete {}'],
+    ['Receipts come by themselves: nothing to record.', 'Lirasiti li tla ka bo tsona: ha ho letho leo u lokelang ho le ngola.'],
+    ['Card & mobile money: {}', 'Karete le chelete ea mohala: {}'], ['Enter total (add cash sales)', 'Kenya kakaretso (eketsa thekiso ea kheshe)'],
+    ['Card & mobile money receipts:', 'Lirasiti tsa karete le chelete ea mohala:'], ['Add your cash sales: choose 2.', 'Eketsa thekiso ea hau ea kheshe: khetha 2.'],
+    ['Your total sales for {}, cash included (M):', 'Kakaretso ea thekiso ea hau bakeng sa {}, le kheshe (M):'],
+    ['Payment codes', 'Likhoutu tsa tefo'], ['Link M-Pesa', 'Hokela M-Pesa'], ['Link EcoCash', 'Hokela EcoCash'], ['Link card machine', 'Hokela mochine oa karete'],
+    ['Card: {}', 'Karete: {}'], ['Card machine: {}', 'Mochine oa karete: {}'], ['Your card machine bank', 'Banka ea mochine oa hau oa karete'],
+    ['Terminal ID', 'ID ea mochine'], ['Terminal ID (6 to 12 letters or digits, on the {} slip):', 'ID ea mochine (litlhaku kapa linomoro tse 6 ho isa ho 12, slip-ing ea {}):'], ['{}, cash included (M):', '{}, le kheshe (M):'], ['(6 to 12 letters or digits, on the {} slip):', '(litlhaku kapa linomoro tse 6 ho isa ho 12, slip-ing ea {}):'], ['Terminal ID:', 'ID ea mochine:'],
+    ['Card machine {} linked.', 'Mochine oa karete {} o hoketsoe.'], ['Card payments now give receipts.', 'Joale litefo tsa karete li fana ka lirasiti.'],
+    ['{} confirmed it is yours (simulated).', '{} e netefalitse hore ke oa hau (ketsiso).'],
+    ['Card payments now give your customers receipts.', 'Joale litefo tsa karete li fa bareki ba hau lirasiti.'],
+    ['This card machine is already linked to another Rasiti seller. RSL will check it. Call the Rasiti help line 6808 8101 if it is yours.', 'Mochine ona oa karete o se o hoketsoe ho morekisi e mong oa Rasiti. RSL e tla o hlahloba. Letsetsa mohala oa thuso oa Rasiti 6808 8101 haeba ke oa hau.'],
+    ['This card machine is already linked to another Rasiti seller. RSL will check it.', 'Mochine ona oa karete o se o hoketsoe ho morekisi e mong oa Rasiti. RSL e tla o hlahloba.'],
+    ['A terminal ID has 6 to 12 letters or digits. Dial again to start.', 'ID ea mochine e na le litlhaku kapa linomoro tse 6 ho isa ho 12. Letsetsa hape ho qala.'],
+    ['A terminal ID has 6 to 12 letters or digits.', 'ID ea mochine e na le litlhaku kapa linomoro tse 6 ho isa ho 12.'],
+    ['💳 Card payment approved', '💳 Tefo ea karete e amohetsoe'], ['{}.00 · card ••{}', '{}.00 · karete ••{}'], ['Terminal {}', 'Mochine {}'],
+    ['Get your Rasiti receipt:', 'Fumana rasiti ea hau ea Rasiti:'], ['*999# > 1 > seller code {}', '*999# > 1 > khoutu ea morekisi {}'], ['> amount > last 4 digits.', '> chelete > linomoro tse 4 tsa ho qetela.'],
+    ['Claim it now', 'E kope joale'], ['This card machine is not on Rasiti, so no receipt or draw entries.', 'Mochine ona oa karete ha o ho Rasiti, kahoo ha ho rasiti kapa menyetla ea lotho.'],
+    ['Please choose 1 to 4. Dial again to start.', 'Ka kopo khetha 1 ho isa 4. Letsetsa hape ho qala.'], ['Choose 1, 2 or 3, or 0 for the menu.', 'Khetha 1, 2 kapa 3, kapa 0 bakeng sa lenane.'], ['Choose 1 to 4, or 0 for the menu.', 'Khetha 1 ho isa 4, kapa 0 bakeng sa lenane.'],
+    ['Link M-Pesa merchant code', 'Hokela khoutu ea mohoebi ea M-Pesa'],
     // values that appear inside lines
     ['Registered seller', 'Morekisi ea ngolisitseng'],
   ];
-  const WORDS = [['(done)', '(ho phethiloe)'], ['Rasiti Gold', 'Rasiti ea Khauta'], ['Rasiti Silver', 'Rasiti ea Silevera'], ['Reliable taxpayer', 'Molefi oa lekhetho ea tšepahalang'], ['months on time', 'likhoeli ka nako'], ['ON', 'LI BULETSOE'], ['OFF', 'LI KOETSOE'],
+  const WORDS = [['(done)', '(ho phethiloe)'], ['Rasiti Gold', 'Rasiti ea Khauta'], ['Rasiti Silver', 'Rasiti ea Silevera'], ['Reliable taxpayer', 'Molefi oa lekhetho ea tšepahalang'], ['months on time', 'likhoeli ka nako'], ['quarters on time', 'likotara ka nako'], ['ON', 'LI BULETSOE'], ['OFF', 'LI KOETSOE'],
     ['stall closed', 'setala se koetsoe'], ['ill or away', 'ke ne ke kula kapa ke le sieo'], [' · paid ✓', ' · e lefiloe ✓'], [' · paid', ' · e lefiloe'], [' · owes ', ' · e kolota '], [' · no tax', ' · ha ho lekhetho'], [' · late', ' · e liehile'], ['nil', 'lefeela'], ['(nil)', '(lefeela)']];
   const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   LINES.push(['M{} on {}', 'M{} ka {}']);
@@ -147,7 +187,10 @@
   const WRX = WORDS.map(([en, st]) => [/^\w.*\w$/.test(en) ? new RegExp('\\b' + esc(en) + '\\b', 'g') : new RegExp(esc(en), 'g'), st]);
   // Short month names that stay different from each other (Phuptjane/Phupu and Hlakola/Hlakubele share their first letters).
   const SHORT = {January:'Phe', February:'Hlk', March:'Hlb', April:'Mme', May:'Mot', June:'Phj', July:'Phu', August:'Pha', September:'Loe', October:'Mph', November:'Pul', December:'Tši'};
-  function words(s) { for (const [rx, st] of WRX) s = s.replace(rx, st); for (const [en, st] of MONTHS) s = s.replace(new RegExp('\\b' + en + '\\b', 'g'), st).replace(new RegExp('\\b(\\d{1,2}) ' + en.slice(0, 3) + '\\b', 'g'), '$1 ' + st).replace(new RegExp('^' + en.slice(0, 3) + ':', 'g'), (SHORT[en] || st.slice(0, 3)) + ':'); return s; }
+  const Q3 = Object.fromEntries(MONTHS.map(([en, st]) => [en.slice(0, 3), SHORT[en] || st.slice(0, 3)]));
+  // Quarter names such as "Jul–Sep" (tax returns are quarterly).
+  const quarters = s => s.replace(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)–(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/g, (m, a, b) => Q3[a] + '–' + Q3[b]);
+  function words(s) { s = quarters(s); for (const [rx, st] of WRX) s = s.replace(rx, st); for (const [en, st] of MONTHS) s = s.replace(new RegExp('\\b' + en + '\\b', 'g'), st).replace(new RegExp('\\b(\\d{1,2}) ' + en.slice(0, 3) + '\\b', 'g'), '$1 ' + st).replace(new RegExp('^' + en.slice(0, 3) + ':', 'g'), (SHORT[en] || st.slice(0, 3)) + ':'); return s; }
   // Screens wrap long sentences over short lines for small phones; join them back before translating.
   function unwrap(text) { const out = [];
     for (const l of text.split('\n')) { const p = out[out.length - 1];

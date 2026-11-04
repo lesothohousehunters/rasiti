@@ -11,7 +11,7 @@ export default route(async (req, res) => {
   if (n === 0) return res.status(200).json({ empty: true, now: new Date().toISOString() });
   const [sellers, receipts, claims, reports, fakes, reviews, actions, draws, returns, payments] = await Promise.all([
     q('SELECT * FROM sellers ORDER BY created_at'),
-    q("SELECT code, seller_no, amount::float AS amount, channel, phone, issued_at, note, source FROM receipts WHERE issued_at > now() - interval '75 days' ORDER BY issued_at"),
+    q("SELECT code, seller_no, amount::float AS amount, channel, phone, issued_at, note, source, card_last4, flag FROM receipts WHERE issued_at > now() - interval '120 days' ORDER BY issued_at"),
     q("SELECT id, seller_no, amount::float AS amount, phone, state, created_at FROM claims WHERE created_at > now() - interval '30 days'"),
     q("SELECT * FROM reports WHERE created_at > now() - interval '75 days' ORDER BY created_at"),
     q('SELECT * FROM fakes ORDER BY created_at DESC LIMIT 200'),

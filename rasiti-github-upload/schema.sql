@@ -65,3 +65,9 @@ ALTER TABLE sellers ADD COLUMN IF NOT EXISTS mpesa_code TEXT;
 ALTER TABLE sellers ADD COLUMN IF NOT EXISTS ecocash_code TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS sellers_mpesa_code ON sellers(mpesa_code) WHERE mpesa_code IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS sellers_ecocash_code ON sellers(ecocash_code) WHERE ecocash_code IS NOT NULL;
+-- Card payments (speed points) and network notices on a payment ('reversed', 'payback')
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS card_last4 TEXT;
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS flag TEXT;
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS card_terminal TEXT;
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS card_bank TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS sellers_card_terminal ON sellers(card_terminal) WHERE card_terminal IS NOT NULL;

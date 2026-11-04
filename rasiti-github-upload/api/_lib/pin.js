@@ -11,7 +11,7 @@ export const hashPin = (p) => bcrypt.hash(String(p), 8);
 export async function checkPin(q, seller, pin) {
   if (seller.pin_lock_until && new Date(seller.pin_lock_until) > new Date()) {
     const t = new Date(seller.pin_lock_until).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Maseru' });
-    return { ok: false, locked: true, msg: `Too many wrong PINs. Try again after ${t}, or call RSL on 8002 2009.` };
+    return { ok: false, locked: true, msg: `Too many wrong PINs. Try again after ${t}, or call the Rasiti help line 6808 8101.` };
   }
   if (!seller.pin_hash) return { ok: false, msg: 'No PIN set yet.' };
   if (/^\d{4}$/.test(String(pin)) && await bcrypt.compare(String(pin), seller.pin_hash)) {

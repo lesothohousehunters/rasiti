@@ -52,6 +52,12 @@ export const SCHEMA = [
   `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS ecocash_code TEXT`,
   `CREATE UNIQUE INDEX IF NOT EXISTS sellers_mpesa_code ON sellers(mpesa_code) WHERE mpesa_code IS NOT NULL`,
   `CREATE UNIQUE INDEX IF NOT EXISTS sellers_ecocash_code ON sellers(ecocash_code) WHERE ecocash_code IS NOT NULL`,
+  // Card payments (speed points at the seller's bank) and network notices on a payment: 'reversed' or 'payback' (money sent back to the payer).
+  `ALTER TABLE receipts ADD COLUMN IF NOT EXISTS card_last4 TEXT`,
+  `ALTER TABLE receipts ADD COLUMN IF NOT EXISTS flag TEXT`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS card_terminal TEXT`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS card_bank TEXT`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS sellers_card_terminal ON sellers(card_terminal) WHERE card_terminal IS NOT NULL`,
   `CREATE TABLE IF NOT EXISTS audit_log(
      id SERIAL PRIMARY KEY, user_id INT, user_email TEXT, action TEXT NOT NULL,
      detail JSONB, at TIMESTAMPTZ NOT NULL DEFAULT now())`

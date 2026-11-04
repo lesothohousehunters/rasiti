@@ -1,8 +1,12 @@
 // POST /api/momo: payment notification from M-Pesa (Vodacom Lesotho) or EcoCash (Econet Telecom Lesotho).
-// When a customer pays a seller's merchant code, the network tells Rasiti: network, merchant code, amount, payer's number, transaction id.
-// Rasiti finds the seller who linked that merchant code and issues the receipt (and draw entries) to the payer by itself.
+// The buyer pays the seller's merchant code exactly as usual: nothing extra to type. When a seller links a merchant code to Rasiti,
+// the seller agrees that payments to that code get a Rasiti receipt, so the network forwards those payments to Rasiti:
+// network, merchant code, amount, payer's number, transaction id. Rasiti finds the seller and sends the receipt and draw entries to the payer.
 //   {network:'mpesa'|'ecocash', merchant_code:'584112', amount:30, msisdn:'26658123301', txn:'QK72...'}
 // A merchant code is only an address for payments; it never signs anyone in.
+// Notices on a payment already sent: {type:'reversal', network, txn} (the payment was reversed or refunded) or
+// {type:'payback', network, txn} (the merchant's wallet sent the same amount back to the payer within 24 hours: a round trip).
+// Either one takes the receipt out of the draw and out of the seller's sales book.
 // Optional: set MOMO_KEY and give the networks .../api/momo?key=MOMO_KEY. The demo panel on the Phones page is allowed without the key.
 import { db, audit } from './_lib/db.js';
 import { mkCode } from './_lib/codes.js';
@@ -32,6 +36,13 @@ export default async function handler(req, res) {
     const b = await readBody(req);
     const net = String(b.network || '').toLowerCase().replace(/[^a-z]/g, '');
     if (!NET[net]) return json(res, 400, { error: 'network must be mpesa or ecocash' });
+    if (b.type === 'reversal' || b.type === 'payback') {
+      const txn = String(b.txn || '').replace(/[^\w-]/g, '').slice(0, 40); if (!txn) return json(res, 400, { error: 'txn is required' });
+      const q = await db(); const flag = b.type === 'reversal' ? 'reversed' : 'payback';
+      const rows = await q('UPDATE receipts SET flag=$1 WHERE note=$2 RETURNING code, seller_no, amount::float AS amount', [flag, `${net}:${txn}`]);
+      if (rows[0]) await audit(q, null, flag === 'reversed' ? 'payment_reversed' : 'payment_paid_back', { actor: NET[net], channel: NET[net], code: rows[0].code, seller: rows[0].seller_no, amount: rows[0].amount });
+      return json(res, 200, { ok: true, voided: rows.length ? rows[0].code : null });
+    }
     const code = String(b.merchant_code || '').replace(/\D/g, '');
     if (!/^\d{5,7}$/.test(code)) return json(res, 400, { error: 'merchant_code must be 5 to 7 digits' });
     const amt = Math.round(Number(b.amount));

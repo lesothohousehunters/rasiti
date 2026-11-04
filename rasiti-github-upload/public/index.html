@@ -90,7 +90,7 @@ h3{font-size:1.05rem;color:var(--ink);margin:0 0 14px;font-weight:700}
 .btn.primary:hover:not(:disabled){filter:brightness(1.15);color:var(--on-navy)}
 .btn.danger{color:var(--bad);border-color:var(--bad-soft)}
 .btn.small{padding:4px 11px;font-size:.8rem}
-select,input[type=text],input[type=number],input[type=email],input[type=password]{font:inherit;color:var(--ink);background:var(--surface);border:1px solid #c9cbd4;border-radius:99px;padding:8px 14px;min-width:0}
+select,input[type=text],input[type=search],input[type=date],input[type=number],input[type=email],input[type=password]{font:inherit;color:var(--ink);background:var(--surface);border:1px solid #c9cbd4;border-radius:99px;padding:8px 14px;min-width:0}
 select:focus,input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--blue-soft);outline:none}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:20px}
 .kpi{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:16px 18px}
@@ -326,7 +326,7 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 .qr-pay{display:grid;grid-template-columns:1fr 100px;gap:8px;align-items:end}
 .qr-pay label{display:flex;flex-direction:column;gap:3px;font-size:.8rem;color:var(--muted);min-width:0}
 .qr-pay button{grid-column:span 2}
-.mm-pay{grid-template-columns:1fr 1fr}
+.mm-pay{grid-template-columns:1fr 1fr 1fr}.mm-pay button{grid-column:1/-1}
 .cases{display:flex;flex-direction:column;gap:8px}
 .case{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;padding:11px 13px}
 .case:hover{border-color:var(--accent)}
@@ -411,6 +411,11 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 .wf label,.wf-inline{display:flex;flex-direction:column;gap:4px;font-size:.78rem;font-weight:600;color:var(--muted)}
 .wf-inline{flex-direction:row;align-items:center;gap:8px;margin-bottom:10px}
 .wf select{min-width:150px}
+.sx-q{flex:1 1 260px}.sx-q input{width:100%}
+#sxTbl td:first-child{white-space:nowrap}
+.wf input[type=number]{width:96px}
+#sxTbl td{vertical-align:top}#sxTbl .mono{white-space:nowrap}
+@media (max-width:640px){.wf label{flex:1 1 140px}.wf select,.wf input{min-width:0;width:100%}}
 .dl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 .dl span{font-size:.78rem;font-weight:600;color:var(--muted);margin-right:4px}
 .chart svg{width:100%;height:auto;display:block}
@@ -583,9 +588,9 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
       <h3>Steps</h3>
       <ol class="steps">
         <li><b>Open Rasiti like a real user</b><a href="#phones">Phones</a>: on the <b>keypad phone</b>, press <span class="codebox">*999#</span> with the keys, then the green key. On the <b>smartphone</b>, tap <b>WhatsApp</b>, the green new-chat button, then <b>Rasiti</b>, and register.<div class="note">With the database connected, the keypad phone talks to the real USSD server, exactly as a mobile network would.</div></li>
-        <li><b>Run the guided cases</b>Click the six cases on the right of the Phones page, top to bottom. After each one, a note says what happened and what to press next.</li>
+        <li><b>Run the guided cases</b>Click the eight cases on the right of the Phones page, top to bottom. After each one, a note says what happened and what to press next.</li>
         <li><b>Check a receipt as a customer</b>Customer phone: 2, then the genuine code <span class="codebox" id="sampleCode">…</span>. Then try the fake one <span class="codebox" id="sampleFake">…</span>.</li>
-        <li><b>Ask for a receipt after paying cash</b>Customer phone: 1, seller code <span class="codebox">3307</span>, any amount. Then on the seller phone (Ntate Thabo): sign in with PIN <span class="codebox">2580</span>, choose 2, pick the request, 1 to confirm.</li>
+        <li><b>Pay by card and claim the receipt</b>In the payment panel choose <b>Card (speed point)</b> and Mme Lineo, then pay. On the customer phone choose 1 to claim it, or later dial *999#, 1, seller code <span class="codebox">6018</span>, the amount and the card's last 4 digits <span class="codebox">4471</span>. There are no cash receipts: Rasiti only gives receipts for payments a network or bank saw.</li>
         <li><b>Join as a new seller</b>In the seller list choose "Someone not on Rasiti yet". Dial <span class="codebox">*999#</span>, choose 2 (seller), then 0 to join, give a name, a place and what you sell, and choose a 4-digit PIN.</li>
         <li><b>Rate a shop</b>Customer phone: 3. On WhatsApp you can share your location, and the rating lands on the map in <a href="#watch">Community watch</a>.</li>
         <li><b>Look at the RSL side</b>Sign in, then try <a href="#shield">Fraud Shield</a>, <a href="#watch">Community watch</a>, <a href="#officer">Officer console</a> and <a href="#draw">Draw</a>.</li>
@@ -595,16 +600,16 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
       <div class="panel">
         <h3>Test sellers</h3>
         <div class="tbl-wrap"><table>
-          <tr><th>Code</th><th>Seller</th><th>M-Pesa / EcoCash</th><th>Why it is interesting</th></tr>
+          <tr><th>Code</th><th>Seller</th><th>M-Pesa / EcoCash / card</th><th>Why it is interesting</th></tr>
           <tr><td class="mono">3307</td><td>Ntate Thabo · snacks and drinks, Sefika rank</td><td class="mono">584112 / 20931</td><td>Registered, ordinary. Customers earn double entries.</td></tr>
-          <tr><td class="mono">4821</td><td>Mme Palesa · fruit and veg</td><td class="mono">584297 / –</td><td>On Rasiti but not registered. Option 4 registers her.</td></tr>
-          <tr><td class="mono">5140</td><td>Mme 'Mathabo · cooked food</td><td class="mono">– / 21468</td><td>Filed a nil return while her receipts show sales.</td></tr>
-          <tr><td class="mono">2264</td><td>Ntate Lebohang · shoe repair</td><td class="mono">– / – (cash only)</td><td>Nil return that matches real inactivity. No action.</td></tr>
-          <tr><td class="mono">6018</td><td>Mme Lineo · hair salon</td><td class="mono">585530 / 22075</td><td>A group of new phones buying heavily. Held for review.</td></tr>
-          <tr><td class="mono">7735</td><td>Ntate Teboho · phone repairs</td><td class="mono">586004 / –</td><td>Bought from himself, which the Shield blocks.</td></tr>
-          <tr><td class="mono">3902</td><td>Mme Nthabiseng · clothes</td><td class="mono">– / 22713</td><td>One M2,400 sale that an officer should check.</td></tr>
+          <tr><td class="mono">4821</td><td>Mme Palesa · fruit and veg</td><td class="mono">584297 / 20456</td><td>Not registered (option 2 registers her). A buyer's payments were paid back or reversed: voided.</td></tr>
+          <tr><td class="mono">5140</td><td>Mme 'Mathabo · cooked food</td><td class="mono">585021 / 21468</td><td>Filed a nil return while her receipts show sales.</td></tr>
+          <tr><td class="mono">2264</td><td>Ntate Lebohang · shoe repair</td><td class="mono">584765 / 21190</td><td>Nil return that matches real inactivity. No action.</td></tr>
+          <tr><td class="mono">6018</td><td>Mme Lineo · hair salon</td><td class="mono">585530 / 22075 / SLB60181</td><td>Card machine. New phones buying heavily, and one phone claiming many cards: held.</td></tr>
+          <tr><td class="mono">7735</td><td>Ntate Teboho · phone repairs</td><td class="mono">586004 / 22389 / FNB77350</td><td>Bought from himself, which the Shield blocks.</td></tr>
+          <tr><td class="mono">3902</td><td>Mme Nthabiseng · clothes</td><td class="mono">586371 / 22713 / NED39021</td><td>One M2,400 sale to check, and 6 brand-new phones paying exactly M100 (SIM farm).</td></tr>
         </table></div>
-        <p class="note" style="margin-bottom:0">Seller PIN for every test seller: <span class="codebox">2580</span>. Sellers sign in with their seller code and PIN, never with a merchant code. M-Pesa (Vodacom) and EcoCash (Econet) merchant codes only tell Rasiti which seller was paid. Demo codes are fictional.</p>
+        <p class="note" style="margin-bottom:0">Seller PIN for every test seller: <span class="codebox">2580</span>. Sellers sign in with their seller code and PIN, never with a merchant code. Every seller already has M-Pesa (Vodacom) and EcoCash (Econet) merchant accounts; three also have a bank card machine. Buyers pay them as usual; the receipt follows by itself. Demo codes are fictional.</p>
       </div>
       <div class="panel">
         <h3>Questions for testers</h3>
@@ -628,12 +633,13 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
     <div class="phone-col">
       <div class="panel"><h3>Guided cases</h3><div class="cases" id="cases"></div></div>
       <div class="narr" id="narr"></div>
-      <div class="panel"><h3>Customer pays with M-Pesa or EcoCash</h3>
-        <p class="note" style="margin-top:0">Sellers keep their own M-Pesa (Vodacom) or EcoCash (Econet) merchant code. The customer pays it as usual; the network tells Rasiti, and the receipt and draw entries come to the customer by themselves.</p>
+      <div class="panel"><h3>Customer pays with M-Pesa, EcoCash or card</h3>
+        <p class="note" style="margin-top:0">Receipts come only from payments a network or bank saw, so nobody can record sales that never happened. Sellers have M-Pesa (Vodacom) and EcoCash (Econet) merchant accounts; some, mostly registered shops, also have a bank card machine. The buyer pays exactly as usual. Once the seller has linked the code or machine, the network or bank tells Rasiti. Mobile money receipts reach the buyer by SMS; a card buyer claims the receipt with the last 4 digits of the card.</p>
         <form class="qr-pay mm-pay" id="mmForm">
-          <label for="mmNet">Pay with<select id="mmNet"><option value="mpesa">M-Pesa</option><option value="ecocash">EcoCash</option></select></label>
+          <label for="mmNet">Pay with<select id="mmNet"><option value="mpesa">M-Pesa</option><option value="ecocash">EcoCash</option><option value="card">Card (speed point)</option></select></label>
           <label for="mmSeller">Seller<select id="mmSeller"></select></label>
-          <label for="mmCode">Merchant code<input id="mmCode" inputmode="numeric" autocomplete="off" maxlength="7"></label>
+          <label for="mmCode" id="mmCodeLbl">Merchant code<input id="mmCode" inputmode="numeric" autocomplete="off" maxlength="7"></label>
+          <label for="mmL4" id="mmL4Lbl" hidden>Card, last 4 digits<input id="mmL4" inputmode="numeric" autocomplete="off" maxlength="4"></label>
           <label for="mmAmt">Amount (M)<input id="mmAmt" type="number" min="1" value="30"></label>
           <button class="btn primary" type="submit">Pay as the customer</button>
         </form><p class="note" id="mmNote" style="margin-bottom:0"></p></div>
@@ -773,11 +779,15 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
   <div class="kpis" id="drawKpis"></div>
   <div class="panel">
     <h3 id="drawTitle">This month's draw</h3>
-    <p><button class="btn primary" id="runDraw">Draw 3 winners</button></p>
+    <p><button class="btn primary" id="runDraw">Run the monthly draw</button></p>
     <div class="winners" id="winners"></div>
+    <div id="phonePanel" class="air-panel" hidden><h4 id="phoneTitle">Smartphone winners</h4><div class="airs" id="phonesWin"></div></div>
     <div id="airtimePanel" class="air-panel" hidden><h4 id="airtimeTitle">Airtime winners</h4><div class="airs" id="airtime"></div></div>
     <p class="note" id="drawAudit"></p>
   </div>
+  <div class="panel mt"><h3>Prize calendar</h3>
+    <p class="note" style="margin-top:0">Every entry counts in its month, and again in the quarter, half-year and year draws. Every receipt is a payment that M-Pesa, EcoCash or a bank confirmed, so every receipt plays for every prize; a reversed payment, or money sent back to the buyer, gets no entries. Winners show their ID and the SIM registered to them before any payout. Prize amounts and sponsors are to be agreed with RSL.</p>
+    <div class="tbl-wrap"><table id="ladderTbl"></table></div></div>
   <div class="panel mt" id="pastDrawsPanel" hidden><h3>Recent draws</h3><div class="tbl-wrap"><table id="pastDraws"></table></div></div>
 </section>
 
@@ -837,6 +847,31 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
       <div class="panel"><h3>Recent runs</h3><div class="tbl-wrap"><table class="ag-hist" id="agHist"></table></div></div>
     </div>
   </div>
+</section>
+
+<section data-view="search" hidden>
+  <p class="lede">Search every transaction Rasiti has ever recorded: receipts paid by M-Pesa, EcoCash or card (and older cash records), tax returns and tax payments. Type a receipt code, seller code or name, market, payment reference or the last digits of a phone, then narrow it down with the filters. Phone numbers stay masked unless an admin shows contacts.</p>
+  <div class="panel wf-bar">
+    <div class="wf">
+      <label class="sx-q">Search<input id="sxQ" type="search" placeholder="e.g. RS-3307, Thabo, 118, PY4K2" autocomplete="off"></label>
+      <label>Type<select id="sxKind"><option value="">Everything</option><option value="receipt">Receipts</option><option value="return">Tax returns</option><option value="payment">Tax payments</option></select></label>
+      <label>Paid by<select id="sxPaid"><option value="">Any way</option><option value="momo">Mobile money (any)</option><option value="mpesa">M-Pesa</option><option value="ecocash">EcoCash</option><option value="card">Card</option><option value="cash">Cash (older records)</option></select></label>
+      <label>Reported by<select id="sxRec"><option value="">Anyone</option><option value="network">Network (M-Pesa or EcoCash)</option><option value="bank">Bank (card machine)</option><option value="seller">Seller (returns, payments)</option></select></label>
+      <label>Network notice<select id="sxFlag"><option value="">Any</option><option value="any">Reversed or paid back</option><option value="reversed">Payment reversed</option><option value="payback">Money sent back to the payer</option></select></label>
+      <label>Seller<select id="sxSeller"><option value="">All sellers</option></select></label>
+      <label>Market or area<select id="sxMarket"><option value="">All areas</option></select></label>
+      <label>From<input id="sxFrom" type="date"></label>
+      <label>To<input id="sxTo" type="date"></label>
+      <label>Min (M)<input id="sxMin" type="number" min="0" inputmode="numeric" placeholder="0"></label>
+      <label>Max (M)<input id="sxMax" type="number" min="0" inputmode="numeric" placeholder="any"></label>
+      <label>Sort<select id="sxSort"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="big">Largest amount</option><option value="small">Smallest amount</option></select></label>
+      <button class="btn small" id="sxReset" type="button">Reset filters</button>
+    </div>
+    <div class="dl"><span>Download</span><button class="btn small" type="button" id="sxCsv">Results CSV</button><button class="btn small primary" type="button" id="sxPdf">Results PDF</button></div>
+  </div>
+  <div class="kpis" id="sxKpis"></div>
+  <div class="panel"><p class="note" id="sxCount" style="margin-top:0"></p><div class="tbl-wrap"><table id="sxTbl"></table></div>
+    <p style="margin:14px 0 0"><button class="btn" type="button" id="sxMore" hidden>Show more</button></p></div>
 </section>
 
 <section data-view="logs" hidden>
@@ -907,11 +942,11 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 
 <div class="toast" id="toast" hidden></div>
 <script src="vendor/leaflet.js"></script>
-<script src="i18n.js?v=20261102d"></script>
-<script src="faq.js?v=20261102d"></script>
-<script src="rsl-mock.js?v=20261102d"></script>
-<script src="tips.js?v=20261102d"></script>
-<script src="app.js?v=20261102d"></script>
-<script src="agent.js?v=20261102d"></script>
+<script src="i18n.js?v=20261104b"></script>
+<script src="faq.js?v=20261104b"></script>
+<script src="rsl-mock.js?v=20261104b"></script>
+<script src="tips.js?v=20261104b"></script>
+<script src="app.js?v=20261104b"></script>
+<script src="agent.js?v=20261104b"></script>
 </body>
 </html>

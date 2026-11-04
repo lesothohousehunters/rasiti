@@ -34,19 +34,24 @@ function parseBody(req) {
 const cleanPhone = p => { const d = String(p || '').replace(/\D/g, ''); return d.length >= 8 && d.length <= 15 ? d : null; };
 const entries = (amt, registered) => Math.max(1, Math.min(5, Math.floor(amt / 10))) * (registered ? 2 : 1);
 const drawDay = () => { const d = new Date(); const e = new Date(d.getFullYear(), d.getMonth() + 1, 0); return e.getDate() + ' ' + MON[e.getMonth()]; };
-const dueDate = () => { const d = new Date(); return '20 ' + MON[(d.getMonth() + 1) % 12]; };
+// First return of a newly registered seller: the current quarter, due on the 20th after it ends.
+const dueDate = () => { const d = new Date(); const e = new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3 + 3, 20); return '20 ' + MON[e.getMonth()]; };
 
 
-/* Filing and paying (demo schedule: monthly return for last month, due on the 20th; demo tax rate 3% of declared sales,
-   clearly labelled; RSL sets the real SBT rate and schedule). */
+/* Filing and paying (demo schedule: one return a quarter, for the quarter that just ended, due on the 20th of the
+   following month: Jan–Mar by 20 Apr, Apr–Jun by 20 Jul, Jul–Sep by 20 Oct, Oct–Dec by 20 Jan.
+   Demo tax rate 3% of declared sales, clearly labelled; RSL sets the real SBT rate and schedule). */
 const DEMO_RATE = Number(process.env.SBT_DEMO_RATE || 0.03);
-const MONF = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const lastPeriod = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
-const perName = p => MONF[+p.slice(5) - 1];
-const perDue = p => { const [y, m] = p.split('-').map(Number); const d = new Date(y, m, 20); return '20 ' + MON[d.getMonth()]; };
+const qOf = d => d.getFullYear() + '-Q' + (Math.floor(d.getMonth() / 3) + 1);
+const lastPeriod = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 3); return qOf(d); };
+const perYQ = p => { const [y, q] = p.split('-Q').map(Number); return [y, q]; };
+const perShort = p => { if (!/-Q[1-4]$/.test(p)) return MON[+String(p).slice(5) - 1] || String(p); const [, q] = perYQ(p); return `${MON[(q - 1) * 3]}–${MON[(q - 1) * 3 + 2]}`; };
+const perName = p => perShort(p) + ' ' + String(p).slice(0, 4);
+const perDue = p => { const [y, q] = perYQ(p); const d = new Date(y, q * 3, 20); return '20 ' + MON[d.getMonth()]; };
+const perRange = p => { const [y, q] = perYQ(p); return [new Date(y, (q - 1) * 3, 1), new Date(y, q * 3, 1)]; };
 async function taxState(q, no) {
-  const per = lastPeriod(); const [y, m] = per.split('-').map(Number);
-  const [{ s }] = await q('SELECT COALESCE(sum(amount),0)::float AS s FROM receipts WHERE seller_no=$1 AND issued_at >= $2 AND issued_at < $3', [no, new Date(y, m - 1, 1), new Date(y, m, 1)]);
+  const per = lastPeriod(); const [from, to] = perRange(per);
+  const [{ s }] = await q('SELECT COALESCE(sum(amount),0)::float AS s FROM receipts WHERE seller_no=$1 AND flag IS NULL AND issued_at >= $2 AND issued_at < $3', [no, from, to]);
   const rets = await q('SELECT period, declared::float AS declared, tax_due::float AS tax_due, nil_reason FROM returns WHERE seller_no=$1 ORDER BY period', [no]);
   const pays = await q('SELECT period, amount::float AS amount FROM payments WHERE seller_no=$1', [no]);
   const paid = p => pays.filter(x => x.period === p).reduce((a, x) => a + x.amount, 0);
@@ -93,19 +98,37 @@ async function respond(q, parts, phone, sessionId, ctx) {
   /* ---------- customer ---------- */
   if (who === '1') {
     const [m, a, b, c] = p;
-    if (m === undefined) return con('Customer\n1. Get receipt for cash\n2. Check a receipt\n3. Rate a shop\n4. My draw entries\n5. Shops that give receipts\n6. Questions & answers' + BACK);
+    if (m === undefined) return con('Customer\n1. Claim a card payment\n2. Check a receipt\n3. Rate a shop\n4. My draw entries\n5. Shops that give receipts\n6. Questions & answers' + BACK);
     if (m === '6') return con((await faq()).ussd('buyer', p.slice(1), ctx.lang) + BACK);
 
     if (m === '1') {
-      if (a === undefined) return con('Seller code (on the sticker):');
+      // Receipts come only from payments the network or the bank saw: M-Pesa, EcoCash or a card machine. There is no cash receipt,
+      // so nobody can put sales that never happened into a seller's book. A card receipt starts without a phone (banks rarely know it):
+      // the buyer claims it with the seller code, the amount and the last 4 digits of the card, within 3 days.
+      if (a === undefined) return con('Claim a card payment\nSeller code (on the sticker):');
       const seller = await s(a.replace(/\D/g, ''));
       if (!seller) return end(`Seller ${a} is not on Rasiti.\nYou can report them: Customer > 3. Rate a shop.`);
-      if (b === undefined) return con(`${seller.name}\n${seller.market || ''}\nAmount you paid (M):`);
+      if (!phone) return end('We could not read your phone number. Please try again.');
+      const [{ n: miss }] = await q("SELECT count(*)::int AS n FROM fakes WHERE phone=$1 AND kind='cardmiss' AND created_at > now() - interval '1 day'", [phone]);
+      if (miss >= 3) return end('Too many card claims that did not match today. Try again tomorrow.');
+      if (b === undefined) return con(`${seller.name}\nAmount paid by card (M):`);
       const amt = Math.round(parseFloat(b));
       if (!(amt > 0 && amt <= 100000)) return end('Amount not valid. Please start again.');
-      await q("INSERT INTO claims(id,seller_no,amount,phone,state) VALUES ($1,$2,$3,$4,'pending')", [rid(), seller.no, amt, phone]);
-      await ulog(q, 'receipt_requested', 'Customer ' + mk(phone), { seller:seller.no, amount:amt });
-      return end(`Sent to ${seller.name.replace(/\.$/, '')}.\nYou get your receipt by SMS when they confirm.`);
+      if (c === undefined) return con('Last 4 digits of your card:');
+      const l4 = c.replace(/\D/g, ''); if (!/^\d{4}$/.test(l4)) return end('Enter the 4 digits printed at the end of your card number. Start again.');
+      const [r] = await q("SELECT code, phone FROM receipts WHERE seller_no=$1 AND channel='card' AND amount=$2 AND card_last4=$3 AND flag IS NULL AND issued_at > now() - interval '3 days' ORDER BY (phone IS NULL) DESC, issued_at DESC LIMIT 1", [seller.no, amt, l4]);
+      if (!r) {
+        await q('INSERT INTO fakes(id,code,kind,phone,detail) VALUES ($1,$2,$3,$4,$5)', [rid(), null, 'cardmiss', phone, `Card claim at seller ${seller.no}: ${M(amt)}, card ending ${l4}. No card payment matched.`]);
+        await ulog(q, 'card_claim_failed', 'Customer ' + mk(phone), { seller:seller.no, amount:amt });
+        return end(`No card payment of ${M(amt)} with card ••${l4} at ${seller.name} in the last 3 days.\nCheck the slip and try again.`);
+      }
+      if (r.phone && r.phone !== phone) {
+        await q('INSERT INTO fakes(id,code,kind,phone,detail) VALUES ($1,$2,$3,$4,$5)', [rid(), r.code, 'duplicate', phone, 'Card payment already claimed by another phone. Second claim refused.']);
+        return end('This card payment already belongs to another phone. It cannot be claimed twice.');
+      }
+      if (!r.phone) await q('UPDATE receipts SET phone=$1 WHERE code=$2 AND phone IS NULL', [phone, r.code]);
+      await ulog(q, 'card_receipt_claimed', 'Customer ' + mk(phone), { code:r.code, seller:seller.no, amount:amt });
+      return end(`Receipt ${r.code}\n${seller.name} · ${M(amt)} by card\n+${entries(amt, seller.status === 'registered')} draw entries.`);
     }
 
     if (m === '2') {
@@ -145,10 +168,11 @@ async function respond(q, parts, phone, sessionId, ctx) {
     }
 
     if (m === '4') {
+      // Only payments the network or the bank saw. A reversed payment, or one paid back to the buyer, does not count.
       const rows = await q(`SELECT r.amount::float AS amount, s.status FROM receipts r JOIN sellers s ON s.no=r.seller_no
-                            WHERE r.phone=$1 AND r.issued_at >= date_trunc('month', now())`, [phone]);
-      const n = rows.reduce((t, r) => t + entries(r.amount, r.status === 'registered'), 0);
-      return end(`My draw entries this month: ${n}\nNext draw: ${drawDay()}\nRegistered sellers give double entries.`);
+                            WHERE r.phone=$1 AND r.issued_at >= date_trunc('month', now()) AND r.flag IS NULL`, [phone]);
+      const n = rows.reduce((a, r) => a + entries(r.amount, r.status === 'registered'), 0);
+      return end(`My draw entries this month: ${n}\nNext draw: ${drawDay()}\nPay by M-Pesa, EcoCash or card: every receipt plays for every prize.`);
     }
 
     if (m === '5') {
@@ -182,14 +206,14 @@ async function respond(q, parts, phone, sessionId, ctx) {
       await q("INSERT INTO sellers(no,name,trade,market,status,joined_at,phone,pin_hash) VALUES ($1,$2,$3,$4,'enrolled',now(),$5,$6)",
         [no, name.slice(0, 60), goods.slice(0, 60), place.slice(0, 60), phone, await hashPin(pin1)]);
       await audit(q, null, 'seller_joined', { actor:'Seller ' + no, channel:'USSD', no });
-      return end(`Welcome ${name.slice(0, 40)}!\nYour seller code: ${no}\nKeep your PIN secret. You can give receipts now. No tax number needed yet.`);
+      return end(`Welcome ${name.slice(0, 40)}!\nYour seller code: ${no}\nKeep your PIN secret. Next: link M-Pesa, EcoCash or a card machine (option 3). No tax number needed yet.`);
     }
 
     const seller = await s(code.replace(/\D/g, ''));
     if (!seller) return end(`Seller code ${code} not found.\nDial again and choose 0 to join.`);
 
     if (!seller.pin_hash) { // older accounts: create a PIN once, only from the seller's own registered phone
-      if (!phone || phone !== seller.phone) return end('No PIN yet for this seller code.\nDial from your registered phone to create one, or call RSL on 8002 2009.');
+      if (!phone || phone !== seller.phone) return end('No PIN yet for this seller code.\nDial from your registered phone to create one, or call the Rasiti help line 6808 8101.');
       if (pin === undefined) return con(`${seller.name}\nCreate a 4-digit PIN for your seller menu:`);
       const bad1 = pinProblem(pin); if (bad1) return end(bad1 + '\nDial again to start.');
       if (m === undefined) return con('Enter the PIN again:');
@@ -204,73 +228,58 @@ async function respond(q, parts, phone, sessionId, ctx) {
       if (ok.lockedNow) await audit(q, null, 'seller_pin_locked', { actor:'Seller ' + seller.no, channel:'USSD', phone: mk(phone) });
       return end(ok.msg);
     }
-    const pending = await q("SELECT * FROM claims WHERE seller_no=$1 AND state='pending' ORDER BY created_at, id LIMIT 3", [seller.no]);
-
-    if (m === undefined) return con(`${seller.name}\nCode ${seller.no} · ${seller.status === 'registered' ? 'Registered' : 'Not yet registered'}\n1. Record cash sale\n2. Confirm receipts (${pending.length})\n3. My sales book\n4. ${seller.status === 'registered' ? 'My tax & badge' : 'Register for tax'}\n5. Questions & tax help\n6. Mobile money codes` + BACK);
-    if (m === '6') { // link the seller's own M-Pesa (Vodacom) or EcoCash (Econet) merchant code
-      if (a === undefined) return con(`Mobile money codes\nM-Pesa: ${seller.mpesa_code || 'not linked'}\nEcoCash: ${seller.ecocash_code || 'not linked'}\n1. Link M-Pesa merchant code\n2. Link EcoCash merchant code` + BACK);
-      if (a !== '1' && a !== '2') return end('Please choose 1 or 2. Dial again to start.');
+    // The seller has nothing to record: receipts come from M-Pesa, EcoCash and the card machine by themselves.
+    if (m === undefined) return con(`${seller.name}\nCode ${seller.no} · ${seller.status === 'registered' ? 'Registered' : 'Not yet registered'}\n1. My sales book\n2. ${seller.status === 'registered' ? 'My tax & badge' : 'Register for tax'}\n3. Payment codes\n4. Questions & tax help` + BACK);
+    if (m === '3') { // link the seller's own M-Pesa (Vodacom) or EcoCash (Econet) merchant code, or their bank card machine
+      if (a === undefined) return con(`Payment codes\nM-Pesa: ${seller.mpesa_code || 'not linked'}\nEcoCash: ${seller.ecocash_code || 'not linked'}\nCard: ${seller.card_terminal || 'not linked'}\n1. Link M-Pesa\n2. Link EcoCash\n3. Link card machine` + BACK);
+      if (a === '3') {
+        const BK = { 1: 'slb', 2: 'fnb', 3: 'nedbank', 4: 'postbank' }, BN = { slb: 'Standard Lesotho Bank', fnb: 'FNB Lesotho', nedbank: 'Nedbank Lesotho', postbank: 'Lesotho PostBank' };
+        if (b === undefined) return con('Your card machine bank\n1. Standard Lesotho Bank\n2. FNB Lesotho\n3. Nedbank Lesotho\n4. Lesotho PostBank');
+        const bank = BK[b]; if (!bank) return end('Please choose 1 to 4. Dial again to start.');
+        if (c === undefined) return con(`Terminal ID\n(6 to 12 letters or digits, on the ${BN[bank]} slip):`);
+        const term = c.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (!/^[A-Z0-9]{6,12}$/.test(term)) return end('A terminal ID has 6 to 12 letters or digits. Dial again to start.');
+        const [other] = await q('SELECT no FROM sellers WHERE card_terminal=$1 AND no<>$2', [term, seller.no]);
+        if (other) { await audit(q, null, 'card_terminal_conflict', { actor:'Seller ' + seller.no, channel:'USSD', bank: BN[bank], terminal: term, linked_to: other.no });
+          return end('This card machine is already linked to another Rasiti seller. RSL will check it. Call the Rasiti help line 6808 8101 if it is yours.'); }
+        // Pilot: Rasiti asks the bank that this terminal belongs to this seller (same name or TIN on the merchant account). Simulated here.
+        await q('UPDATE sellers SET card_terminal=$1, card_bank=$2 WHERE no=$3', [term, bank, seller.no]);
+        await audit(q, null, 'card_terminal_linked', { actor:'Seller ' + seller.no, channel:'USSD', bank: BN[bank], terminal: term, check: BN[bank] + ' confirmed (simulated)' });
+        return end(`Card machine ${term} linked.\n${BN[bank]} confirmed it is yours (simulated).\nCard payments now give receipts.`);
+      }
+      if (a !== '1' && a !== '2') return end('Please choose 1, 2 or 3. Dial again to start.');
       const col = a === '1' ? 'mpesa_code' : 'ecocash_code', net = a === '1' ? 'M-Pesa' : 'EcoCash', opr = a === '1' ? 'Vodacom' : 'Econet';
       if (b === undefined) return con(`Your ${net} merchant code\n(5 to 7 digits, from ${opr}):`);
       const mc = b.replace(/\D/g, '');
       if (!/^\d{5,7}$/.test(mc)) return end('A merchant code has 5 to 7 digits. Dial again to start.');
       const [other] = await q(`SELECT no FROM sellers WHERE ${col}=$1 AND no<>$2`, [mc, seller.no]);
       if (other) { await audit(q, null, 'merchant_code_conflict', { actor:'Seller ' + seller.no, channel:'USSD', network: net, merchant_code: mc, linked_to: other.no });
-        return end(`This ${net} code is already linked to another Rasiti seller. RSL will check it. Call 8002 2009 if it is yours.`); }
+        return end(`This ${net} code is already linked to another Rasiti seller. RSL will check it. Call the Rasiti help line 6808 8101 if it is yours.`); }
       // Pilot: Rasiti asks the network that this merchant code belongs to this seller's phone or ID before linking. Simulated here.
       await q(`UPDATE sellers SET ${col}=$1 WHERE no=$2`, [mc, seller.no]);
       await audit(q, null, 'merchant_code_linked', { actor:'Seller ' + seller.no, channel:'USSD', network: net, merchant_code: mc, check: opr + ' confirmed (simulated)' });
       return end(`${net} code ${mc} linked.\n${opr} confirmed it is yours (simulated).\nPayments to this code now give your customers receipts by themselves.`);
     }
-    if (m === '5') return con((await faq()).ussd('seller', p.slice(3), ctx.lang) + BACK);
+    if (m === '4') return con((await faq()).ussd('seller', p.slice(3), ctx.lang) + BACK);
 
     if (m === '1') {
-      if (a === undefined) return con('Record cash sale\nAmount (M):');
-      const amt = Math.round(parseFloat(a));
-      if (!(amt > 0 && amt <= 100000)) return end('Amount not valid. Please start again.');
-      if (b === undefined) return con(`Sale ${M(amt)}\nCustomer phone for their receipt SMS (or 0 to skip):`);
-      const ph = b === '0' ? null : cleanPhone(b.length === 8 ? '266' + b : b);
-      const rc = mkCode(seller.no);
-      await q("INSERT INTO receipts(code,seller_no,amount,channel,phone,issued_at,source) VALUES ($1,$2,$3,'cash',$4,now(),'ussd')", [rc, seller.no, amt, ph]);
-      await ulog(q, 'receipt_issued', 'Seller ' + seller.no, { code:rc, amount:amt, paid_by:'cash' });
-      return end(`Recorded ${M(amt)}\nReceipt ${rc}\n${ph ? 'Customer gets it by SMS.' : 'Give the code to the customer.'}`);
-    }
-
-    if (m === '2') {
-      if (!pending.length) return end('No receipts waiting.');
-      if (a === undefined) return con('Customers asking for receipts\n' + pending.map((x, i) => `${i + 1}. ${M(x.amount)} from ${mask(x.phone)}`).join('\n'));
-      const cl = pending[parseInt(a) - 1];
-      if (!cl) return end('Please choose a number from the list.');
-      if (b === undefined) return con(`${M(cl.amount)} from ${mask(cl.phone)}\n1. Yes, this was my sale\n2. Not my sale`);
-      if (b === '1') {
-        const rc = mkCode(seller.no);
-        await q("INSERT INTO receipts(code,seller_no,amount,channel,phone,issued_at,source) VALUES ($1,$2,$3,'cash',$4,now(),'ussd')", [rc, seller.no, cl.amount, cl.phone]);
-        await q("UPDATE claims SET state='confirmed' WHERE id=$1", [cl.id]);
-        await ulog(q, 'receipt_request_confirmed', 'Seller ' + seller.no, { code:rc, amount:Number(cl.amount) });
-        return end(`Confirmed.\nReceipt ${rc} sent to the customer.`);
-      }
-      await q("UPDATE claims SET state='rejected' WHERE id=$1", [cl.id]);
-      await ulog(q, 'receipt_request_rejected', 'Seller ' + seller.no, { amount:Number(cl.amount) });
-      return end('Noted. The customer is told you did not confirm.');
-    }
-
-    if (m === '3') {
       const [t] = await q(`SELECT
           count(*) FILTER (WHERE issued_at >= date_trunc('day', now()))::int AS dn, COALESCE(sum(amount) FILTER (WHERE issued_at >= date_trunc('day', now())),0)::float AS ds,
           count(*) FILTER (WHERE issued_at > now() - interval '7 days')::int AS wn, COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '7 days'),0)::float AS ws,
-          count(*) FILTER (WHERE issued_at > now() - interval '30 days')::int AS mn, COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '30 days'),0)::float AS ms
-        FROM receipts WHERE seller_no=$1`, [seller.no]);
-      return end(`My sales book\nToday: ${t.dn} sales, ${M(t.ds)}\n7 days: ${t.wn} sales, ${M(t.ws)}\n30 days: ${t.mn} sales, ${M(t.ms)}`);
+          count(*) FILTER (WHERE issued_at > now() - interval '30 days')::int AS mn, COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '30 days'),0)::float AS ms,
+          COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '30 days' AND channel='card'),0)::float AS mc
+        FROM receipts WHERE seller_no=$1 AND flag IS NULL`, [seller.no]);
+      return end(`My sales book\nToday: ${t.dn} sales, ${M(t.ds)}\n7 days: ${t.wn} sales, ${M(t.ws)}\n30 days: ${t.mn} sales, ${M(t.ms)}\nMobile money ${M(t.ms - t.mc)} · card ${M(t.mc)}`);
     }
 
-    if (m === '4') {
-      const [t] = await q("SELECT COALESCE(sum(amount),0)::float AS s FROM receipts WHERE seller_no=$1 AND issued_at > now() - interval '30 days'", [seller.no]);
+    if (m === '2') {
+      const [t] = await q("SELECT COALESCE(sum(amount),0)::float AS s FROM receipts WHERE seller_no=$1 AND flag IS NULL AND issued_at > now() - interval '30 days'", [seller.no]);
       if (seller.status === 'registered') {
         const st = await taxState(q, seller.no); const pn = perName(st.per);
         if (a === undefined) return con(`My tax · TIN ${seller.tin || '-'}\n1. File ${pn} return${st.ret ? ' (done)' : ''}\n2. Pay tax (${M(st.owed)} due)\n3. My tax record\n4. Reminders: ${seller.reminders === false ? 'OFF' : 'ON'}` + BACK);
         if (a === '1') {
           if (st.ret) return end(`${pn} return filed: ${M(st.ret.declared)}${st.ret.nil_reason ? ' (nil)' : ''}.\nTax due ${M(st.ret.tax_due)} by ${perDue(st.per)}.\nPay: My tax > 2.`);
-          if (b === undefined) return con(`${pn} return\nYour sales book: ${M(st.sales)}\n1. File this amount\n2. Enter a different amount\n3. I did not trade (nil)`);
+          if (b === undefined) return con(`${pn} return\nCard & mobile money: ${M(st.sales)}\n1. File this amount\n2. Enter total (add cash sales)\n3. I did not trade (nil)`);
           let declared, reason = null;
           if (b === '1') declared = Math.round(st.sales);
           else if (b === '2') { if (c === undefined) return con(`Your sales for ${pn} (M):`); declared = Math.round(parseFloat(c)); if (!(declared >= 0 && declared < 2000000)) return end('Amount not valid. Please start again.'); }
@@ -292,7 +301,7 @@ async function respond(q, parts, phone, sessionId, ctx) {
         }
         if (a === '3') {
           if (!st.rets.length) return end('No returns yet. File your first return under My tax > 1.');
-          return end('My tax record\n' + st.rets.slice(-4).map(r => `${perName(r.period).slice(0, 3)}: ${M(r.declared)} · ${r.tax_due - st.paid(r.period) <= 0.5 ? 'paid' : 'owes ' + M(r.tax_due - st.paid(r.period))}`).join('\n'));
+          return end('My tax record\n' + st.rets.slice(-4).map(r => `${perShort(r.period)}: ${M(r.declared)} · ${r.tax_due - st.paid(r.period) <= 0.5 ? 'paid' : 'owes ' + M(r.tax_due - st.paid(r.period))}`).join('\n'));
         }
         if (a === '4') { const on = seller.reminders === false; await q('UPDATE sellers SET reminders=$1 WHERE no=$2', [on, seller.no]); await audit(q, null, on ? 'reminders_on' : 'reminders_off', { actor:'Seller ' + seller.no, channel:'USSD' });
           return end(on ? 'Reminders ON. We will SMS you 3 days before each due date.' : 'Reminders OFF. You can turn them on again here.'); }

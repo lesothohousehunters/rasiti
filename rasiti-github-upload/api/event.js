@@ -9,6 +9,7 @@ const ID = /^[a-z0-9-]{6,40}$/i;
 const txt = (v, n) => String(v ?? '').trim().slice(0, n);
 const phoneOrNull = (p) => { if (p == null || p === '') return null; if (!PHONE.test(p)) throw bad('Phone must be 266 followed by 8 digits.'); return p; };
 const amount = (a) => { const v = Number(a); if (!(v > 0 && v <= 100000)) throw bad('Amount must be between M1 and M100,000.'); return Math.round(v); };
+const mkp = p => `+266 ${String(p)[3]}*** *${String(p).slice(-3)}`;
 const coords = (b) => (b.lat != null && b.lng != null && inLesotho(+b.lat, +b.lng)) ? [+b.lat, +b.lng] : [null, null];
 
 export default route(async (req, res) => {
@@ -21,9 +22,12 @@ export default route(async (req, res) => {
     case 'receipt': {
       if (!validCode(b.code)) throw bad('Invalid receipt code.');
       await seller(b.seller_no);
-      if (!['momo', 'cash'].includes(b.channel)) throw bad('Channel must be momo or cash.');
-      await q("INSERT INTO receipts(code,seller_no,amount,channel,phone,issued_at,source) VALUES ($1,$2,$3,$4,$5,now(),'tester') ON CONFLICT DO NOTHING",
-        [b.code, b.seller_no, amount(b.amount), b.channel, phoneOrNull(b.phone)]);
+      // Receipts come only from payments the network or a bank saw. Cash receipts are no longer accepted, so nobody can record
+      // sales that never happened in a seller's book.
+      if (!['momo', 'card'].includes(b.channel)) throw bad('Channel must be momo or card. Rasiti does not issue cash receipts.');
+      const l4 = b.channel === 'card' && /^\d{4}$/.test(String(b.card_last4 || '')) ? String(b.card_last4) : null;
+      await q("INSERT INTO receipts(code,seller_no,amount,channel,phone,issued_at,source,card_last4) VALUES ($1,$2,$3,$4,$5,now(),'tester',$6) ON CONFLICT DO NOTHING",
+        [b.code, b.seller_no, amount(b.amount), b.channel, phoneOrNull(b.phone), l4]);
       break;
     }
     case 'receipt_phone': {
@@ -87,7 +91,7 @@ export default route(async (req, res) => {
     case 'return_filed': {
       if (!ID.test(b.id || '')) throw bad('Bad id.');
       const s = await seller(b.no); if (s.status !== 'registered') throw bad('Only registered sellers file returns.');
-      if (!/^\d{4}-\d{2}$/.test(b.period || '')) throw bad('Bad period.');
+      if (!/^\d{4}-Q[1-4]$/.test(b.period || '')) throw bad('Bad period.');
       const declared = Math.round(Number(b.declared)); if (!(declared >= 0 && declared < 2000000)) throw bad('Bad amount.');
       const tax = Math.round(Number(b.tax_due)); if (!(tax >= 0 && tax <= declared)) throw bad('Bad tax.');
       await q(`INSERT INTO returns(id,seller_no,period,sales,declared,nil_reason,tax_due,channel) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
@@ -98,7 +102,7 @@ export default route(async (req, res) => {
     }
     case 'tax_paid': {
       if (!ID.test(b.id || '')) throw bad('Bad id.');
-      await seller(b.no); if (!/^\d{4}-\d{2}$/.test(b.period || '')) throw bad('Bad period.');
+      await seller(b.no); if (!/^\d{4}-Q[1-4]$/.test(b.period || '')) throw bad('Bad period.');
       await q('INSERT INTO payments(id,seller_no,period,amount,ref,channel) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING', [b.id, b.no, b.period, amount(b.amount), txt(b.ref, 20), b.channel === 'wa' ? 'WhatsApp' : 'USSD']);
       break;
     }
@@ -115,6 +119,33 @@ export default route(async (req, res) => {
     case 'lang': {
       const ph = phoneOrNull(b.phone); if (!ph) throw bad('Phone required.'); if (!['en', 'st'].includes(b.lang)) throw bad('Language must be en or st.');
       await q('INSERT INTO phone_prefs(phone, lang) VALUES ($1,$2) ON CONFLICT (phone) DO UPDATE SET lang=EXCLUDED.lang, updated_at=now()', [ph, b.lang]);
+      break;
+    }
+    case 'card_claim': { // the buyer claims a card payment: seller code + amount + last 4 digits of the card, within 3 days
+      const ph = phoneOrNull(b.phone); if (!ph) throw bad('Phone required.');
+      await seller(b.seller_no); const amt = amount(b.amount); const l4 = String(b.last4 || ''); if (!/^\d{4}$/.test(l4)) throw bad('Enter the last 4 digits of the card.');
+      const [{ n: miss }] = await q("SELECT count(*)::int AS n FROM fakes WHERE phone=$1 AND kind='cardmiss' AND created_at > now() - interval '1 day'", [ph]);
+      if (miss >= 3) return res.status(429).json({ error: 'Too many card claims that did not match today. Try again tomorrow.' });
+      const [r] = await q("SELECT code, phone FROM receipts WHERE seller_no=$1 AND channel='card' AND amount=$2 AND card_last4=$3 AND flag IS NULL AND issued_at > now() - interval '3 days' ORDER BY (phone IS NULL) DESC, issued_at DESC LIMIT 1", [b.seller_no, amt, l4]);
+      if (!r) { await q('INSERT INTO fakes(id,code,kind,phone,detail) VALUES ($1,NULL,$2,$3,$4)', [Math.random().toString(36).slice(2, 12), 'cardmiss', ph, `Card claim at seller ${b.seller_no}: M${amt}, card ending ${l4}. No card payment matched.`]);
+        await audit(q, null, 'card_claim_failed', { actor: 'Customer ' + mkp(ph), channel: 'phone', seller: b.seller_no, amount: amt }).catch(() => {});
+        return res.status(200).json({ ok: false, reason: 'nomatch' }); }
+      if (r.phone && r.phone !== ph) return res.status(200).json({ ok: false, reason: 'taken', code: r.code });
+      if (!r.phone) await q('UPDATE receipts SET phone=$1 WHERE code=$2 AND phone IS NULL', [ph, r.code]);
+      await audit(q, null, 'card_receipt_claimed', { actor: 'Customer ' + mkp(ph), channel: 'phone', code: r.code, seller: b.seller_no, amount: amt }).catch(() => {});
+      return res.status(200).json({ ok: true, code: r.code });
+    }
+    case 'card_link': { // the seller links their bank card machine (speed point); needs their PIN
+      const [sl] = await q('SELECT * FROM sellers WHERE no=$1', [String(b.no || '')]); if (!sl) throw bad('Unknown seller code.');
+      const r = await checkPin(q, sl, String(b.pin || '')); if (!r.ok) return res.status(403).json({ error: r.msg });
+      const BN = { slb: 'Standard Lesotho Bank', fnb: 'FNB Lesotho', nedbank: 'Nedbank Lesotho', postbank: 'Lesotho PostBank' };
+      if (!BN[b.bank]) throw bad('Unknown bank.');
+      const term = String(b.terminal || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); if (!/^[A-Z0-9]{6,12}$/.test(term)) throw bad('A terminal ID has 6 to 12 letters or digits.');
+      const [other] = await q('SELECT no FROM sellers WHERE card_terminal=$1 AND no<>$2', [term, sl.no]);
+      if (other) { await audit(q, null, 'card_terminal_conflict', { actor: 'Seller ' + sl.no, channel: 'WhatsApp', bank: BN[b.bank], terminal: term, linked_to: other.no });
+        return res.status(409).json({ error: 'This card machine is already linked to another Rasiti seller. RSL will check it.' }); }
+      await q('UPDATE sellers SET card_terminal=$1, card_bank=$2 WHERE no=$3', [term, b.bank, sl.no]);
+      await audit(q, null, 'card_terminal_linked', { actor: 'Seller ' + sl.no, channel: 'WhatsApp', bank: BN[b.bank], terminal: term, check: BN[b.bank] + ' confirmed (simulated)' });
       break;
     }
     case 'seller_pin': { // WhatsApp seller sign-in: seller code + PIN, 3 wrong PINs lock it for 15 minutes
@@ -142,7 +173,7 @@ export default route(async (req, res) => {
   const mk = p => { const d = String(p || '').replace(/\D/g, ''); return d.length === 11 ? `+266 ${d[3]}*** *${d.slice(-3)}` : null; };
   const who = b.phone ? `Customer ${mk(b.phone)}` : b.seller_no || b.no ? `Seller ${b.seller_no || b.no}` : 'Phone user';
   const amt = Math.round(Number(b.amount)) || null; // already validated above for the kinds that carry an amount
-  const LOG = { receipt:['receipt_issued', {code:b.code, seller:b.seller_no, amount:amt, paid_by:b.channel}], receipt_phone:['receipt_claimed', {code:b.code}],
+  const LOG = { receipt:['receipt_issued', {code:b.code, seller:b.seller_no, amount:amt, paid_by:b.channel === 'card' ? 'card' : 'mobile money'}], receipt_phone:['receipt_claimed', {code:b.code}],
     claim:['receipt_requested', {seller:b.seller_no, amount:amt, state:b.state}], claim_state:['receipt_request_' + b.state, {id:txt(b.id, 40)}],
     report:['shop_rated', {rating:b.type, seller:b.seller_no || null, shop:b.seller_no ? null : txt(b.place_label, 60), area:txt(b.area, 60) || null}],
     fake:['fake_code_caught', {code:txt(b.code, 20), kind:b.fkind}], seller_join:['seller_joined', {no:b.no, name:txt(b.name, 60), market:txt(b.market, 60)}],

@@ -103,25 +103,89 @@ Sellers sign in to their menu with their **4-digit seller code and a 4-digit PIN
 - Demo sellers loaded with the demo dataset all use PIN **2580** (shown on the Start here page).
 - On WhatsApp the PIN is shown as •••• in the chat.
 
-## Mobile money: M-Pesa and EcoCash merchant codes (no QR codes)
+## No cash receipts: only payments a network or bank saw
 
-M-Pesa (Vodacom Lesotho) and EcoCash (Econet Telecom Lesotho) already give sellers **merchant codes**. Customers pay them as usual. Three codes work together:
+Rasiti gives receipts only for **M-Pesa, EcoCash and card** payments. There is no cash receipt. If buyers could record cash sales, anyone could type in sales that never happened (from home, one a day at many different shops) and those shops would be asked to pay tax on sales they never made. With digital payments nobody can add a sale to a shop's book without really paying the shop. Sellers still declare their cash sales themselves when they file the quarterly return (the return screen asks them to add cash to the card and mobile-money total).
+
+## Mobile money: M-Pesa and EcoCash merchant codes (no QR codes, nothing extra to type)
+
+Every seller already has M-Pesa (Vodacom Lesotho) and EcoCash (Econet Telecom Lesotho) merchant accounts. Buyers pay them exactly as they do today.
+
+1. The seller links their own merchant code once: `*999#` > 2 > seller code > PIN > **3. Payment codes** (or the same menu on WhatsApp). By linking, the seller agrees that payments to that code get Rasiti receipts. One merchant code can belong to only one seller; a clash is refused and logged. In a pilot, the network confirms the code belongs to the seller before linking (simulated here).
+2. The buyer pays the merchant code as usual.
+3. The network (or its payment aggregator) sends each payment to a linked code to Rasiti at **`/api/momo`**: network, merchant code, amount, payer's number, transaction id.
+4. Rasiti issues the receipt and draw entries to the payer by SMS and records the sale in the seller's book. Repeats of the same transaction are ignored; a code that is not linked gets no receipt.
 
 | Code | Who gives it | What it is for |
 | --- | --- | --- |
-| Rasiti seller code (4 digits) | Rasiti, when the seller joins | The seller's identity in Rasiti: sticker, cash receipts, officer records, sign-in with the PIN |
+| Rasiti seller code (4 digits) | Rasiti, when the seller joins | The seller's identity: sticker, card claims, officer records, sign-in with the PIN |
 | M-Pesa merchant code | Vodacom | Where M-Pesa payments go. Linked to one Rasiti seller |
 | EcoCash merchant code | Econet | Where EcoCash payments go. Linked to one Rasiti seller |
+| Card machine terminal ID | The seller's bank | Where card payments go (mostly registered shops). Linked to one Rasiti seller |
 
-- The seller links their own merchant codes: `*999#` > 2 > seller code > PIN > **6. Mobile money codes** (or the same menu on WhatsApp). One merchant code can belong to only one seller; a clash is refused and logged for RSL to check. In a pilot, Rasiti asks the network to confirm the code belongs to the seller before linking (simulated here).
-- When a customer pays a linked merchant code, the network sends a payment notification to **`/api/momo`**. Rasiti finds the seller, issues the receipt and draw entries to the payer's number, and ignores repeats of the same transaction. A code that is not linked gets no receipt.
-- Settings: optional `MOMO_KEY`. Give the networks (or the payment aggregator) the callback `https://your-subdomain/api/momo?key=THAT-WORD`. The demo panel on the Phones page works without the key.
+- Settings: optional `MOMO_KEY`. Give the networks the callback `https://your-subdomain/api/momo?key=THAT-WORD`. The demo panel on the Phones page works without the key.
 
 Example notification (JSON or form-encoded):
 ```
 POST /api/momo?key=MOMO_KEY
 {"network":"mpesa","merchant_code":"584112","amount":30,"msisdn":"26658123301","txn":"QK7XYZ123"}
 ```
+
+## Card payments (speed points)
+
+Most informal sellers have no card machine; registered shops often do. Card payments work like mobile money, except that a bank rarely knows the buyer's phone:
+
+1. The seller links the card machine once: `*999#` > 2 > seller code > PIN > **3. Payment codes > 3. Link card machine**, then the bank (Standard Lesotho Bank, FNB Lesotho, Nedbank Lesotho or Lesotho PostBank) and the terminal ID. In a pilot the bank confirms the machine belongs to the seller (simulated here).
+2. The buyer taps or swipes as usual. The bank sends each payment to **`/api/card`**: bank, terminal ID, amount, last 4 digits of the card, transaction id (and the phone, if the bank has it).
+3. The receipt is issued at once. The buyer claims it on `*999#` > 1 > **1. Claim a card payment**: seller code, amount, last 4 digits of the card, within 3 days. No reference number to type. A payment can be claimed by one phone only; 3 claims that do not match in a day block that phone until tomorrow, and each miss is shown to officers.
+4. A reversal from the bank (`{"type":"reversal","bank":"slb","txn":"..."}`) cancels the receipt.
+
+- Settings: optional `CARD_KEY`. Give the banks `https://your-subdomain/api/card?key=THAT-WORD`.
+
+```
+POST /api/card?key=CARD_KEY
+{"bank":"slb","terminal_id":"SLB60181","amount":250,"card_last4":"4471","txn":"A91XYZ"}
+```
+
+## Sellers do nothing after joining; buyers pay as usual
+
+- **Seller's only tasks:** join once (2 minutes, with a PIN) and link their payment codes once. Receipts then issue themselves; there is nothing to record or check.
+- **Fraud-proof payouts:** every receipt is a payment confirmed by a network or bank. The Fraud Shield scores every receipt, and every winner shows ID and the SIM registered to them before payout.
+
+## Prize calendar (amounts to be agreed with RSL)
+
+| Draw | Prizes | Who can win |
+| --- | --- | --- |
+| Monthly | M5,000, M2,000, M1,000 cash; 5 smartphones; 20 x M100 airtime | Every receipt with the buyer's phone |
+| Quarterly | 3 motorbikes: 2 for buyers, 1 for a registered seller who filed and paid the quarter on time | Every receipt in the quarter |
+| Every 6 months | M100,000 cash | Every receipt in the 6 months |
+| Every year | A car | Every receipt in the year |
+
+Every entry counts in its month and again in the quarter, half-year and year draws. Winners show their ID and the SIM registered to them before payout.
+
+### Digital payment fraud: what the Fraud Shield looks for
+
+With cash gone, a fake sale means really paying the seller. The rules look for money that did not stay paid, phones made only to farm entries, and people claiming other people's card payments:
+
+1. **Payment reversed or paid back** (60 points, blocked): the network or bank reports a reversal or refund (`{"type":"reversal",...}`), or that the seller's wallet sent the same amount back to the payer within 24 hours (`{"type":"payback",...}` on `/api/momo`). The receipt leaves the draw and the seller's sales book.
+2. **New phones paying the same amount** (40 points): 5 or more phones that never paid anyone before each pay one seller the same amount within an hour (a SIM-card farm).
+3. **One phone claims many cards** (30 points): one phone claims card payments made with 3 or more different cards in 7 days.
+4. The existing rules still run: seller buying from their own phone, one phone with many receipts in a day, a purchase split into small payments, a burst of new heavy buyers, and a sale far larger than usual.
+
+Faking digital sales also costs the network fee every time and raises the seller's taxable sales. Confirmed collusion: the prize is lost and both are barred from draws for 12 months. The demo data includes each pattern (sellers 4821, 3902 and 6018), so they show on the Fraud Shield page. The prototype runs the monthly draw (3 cash, 5 smartphones, 20 airtime) and shows the other draws with their live entry counts on the Monthly draw page.
+
+## Working with Lekuka (RSL's e-invoicing system)
+
+Lekuka is RSL's national e-invoicing platform: VAT-registered businesses issue invoices through an RSL-accredited billing system (EBS), which sends them to RSL's Invoice Data Management System (IDMS); buyers can check an invoice by scanning its QR code. It is compulsory for VAT-registered businesses from 1 November 2026 (VAT (E-Invoicing) Regulations 2026, Legal Notice 25 of 2026). Rasiti covers the traders Lekuka does not reach: small, mostly informal sellers below the VAT threshold who are paid by M-Pesa and EcoCash. Proposed links, to agree with RSL:
+
+- **One taxpayer record:** a Rasiti seller's TIN is the same TIN used in RSL's systems, so a seller who grows past the VAT threshold moves onto Lekuka with their sales history.
+- **Rasiti receipts as simple e-receipts:** Rasiti could be accredited as a light EBS for small sellers, sending each receipt (seller TIN, amount, time, receipt code) to the IDMS, so RSL holds one record of all sales.
+- **Lekuka invoices in the draw (phase 2):** a buyer at a VAT-registered shop types the Lekuka invoice number (or scans the QR) on Rasiti; Rasiti checks it with the IDMS and adds draw entries. This gives buyers a reason to ask for e-invoices, which RSL needs Lekuka to succeed. Card payments at formal shops are already on Lekuka invoices, so this also covers most card buying.
+- **Shared fraud checks:** a cancelled invoice or credit note in Lekuka cancels the matching draw entries, and a seller whose Lekuka sales jump while their Rasiti sales do not is flagged for an officer.
+
+## Transaction search (whole history)
+
+Menu **Transaction search**, for every signed-in RSL role. One list holds every receipt (M-Pesa, EcoCash, card; older cash records still show), every tax return and every tax payment since the start, searched on the server (`/api/search`). Type a receipt code, seller code or name, market, tax period, payment reference or the last digits of a phone, and filter by type, paid by, reported by (network, bank or seller), network notice (reversed or paid back), seller, market, dates and amount. Results download as CSV or PDF (up to 5,000 rows). Phone numbers stay masked unless an admin has switched on *Show contacts*, which is logged.
 
 ## Mohlomi AI (test agent)
 
@@ -141,9 +205,9 @@ POST /api/momo?key=MOMO_KEY
 
 ## Filing and paying (sustained compliance)
 
-- Registered sellers choose **4. My tax** on USSD or WhatsApp to **file** last month's return (prefilled from the sales book, a different amount, or nil with a reason), **pay** by mobile money in full or in small parts, see their **tax record** and on-time streak, and turn **reminders** on or off.
+- Registered sellers choose **4. My tax** on USSD or WhatsApp to **file** the return for the quarter that just ended (prefilled from the sales book, a different amount, or nil with a reason), **pay** by mobile money in full or in small parts, see their **tax record** and on-time streak, and turn **reminders** on or off.
 - Officers see a **Filing and payments** panel (on-time filing and payment, overdue tax, streaks), worklist items that suggest a **payment plan** rather than a penalty, and a **Send reminders** button. All of it is in the officer CSV/PDF downloads, the dashboard and Bohlale.
-- Demo schedule: a monthly return for last month, due on the 20th. Tax uses a **demo rate of 3% of declared sales** (`SBT_DEMO_RATE` on the server); RSL sets the real SBT rate and schedule.
+- Demo schedule: one return a quarter (Jan–Mar by 20 April, Apr–Jun by 20 July, Jul–Sep by 20 October, Oct–Dec by 20 January). Tax uses a **demo rate of 3% of declared sales** (`SBT_DEMO_RATE` on the server); RSL sets the real SBT rate and schedule.
 - After deploying, use **Reset demo data** then **Load demo dataset** so the 6-month filing history is created.
 
 ## Languages: English and Sesotho
@@ -175,14 +239,32 @@ The Officer console shows every exchange under **RSL e-services link**. In a pil
 
 ## Daily education messages
 
-`public/tips.js` holds 30 short tips in English and Sesotho, each with its source (RSL's public guides).
+`public/tips.js` holds 31 short tips in English and Sesotho, each with its source (RSL's public guides).
 
 - **Free to read every day:** a post on a Rasiti WhatsApp Channel, "Tip of the day" in the USSD Q&A menu (`*999#` → 3 → 3), and on WhatsApp (type `TIP`; the first chat of the day shows it).
 - **Optional daily SMS for M2.00 a day:** people subscribe on USSD (`*999#` → 3 → 4 → 1) or by sending `SUBSCRIBE` on WhatsApp, and stop with `STOP` or option 2. The subscriber pays from airtime, so the SMS costs the project nothing. The Dashboard shows subscribers, income, the network's billing share and SMS cost (all assumptions to agree with the networks), and has a button to send today's SMS (simulated).
 
-To use RSL's own education material, replace or add tips in `public/tips.js`; the list repeats every 30 days.
+To use RSL's own education material, replace or add tips in `public/tips.js`; the list repeats every 31 days.
 
-## Running on RSL's own servers (lowest cost)
+## Who pays, and the laws to settle (to be agreed with RSL and the Ministry of Finance)
+
+Running costs are about M71,000 a year; the full prize calendar is about M1.1 million a year at list prices. Funding options: **RSL's own budget** (running costs, officers' time), **development partners** (a domestic revenue grant for set-up, evaluation, training and first-year prizes), **sponsors** (networks, dealers and banks give phones, airtime, motorbikes and the car for publicity, with no say in the draw), and from year 2 **a capped share of the extra tax** (a yearly prize vote of, say, at most 15% of the extra tax from Rasiti sellers; all tax still goes to the Consolidated Fund).
+
+Before the first real draw, RSL Legal and the Ministry of Finance confirm: the **Lotteries and Betting Act 1984** (is a free draw run by RSL a lottery; exemption, licence or Minister's notice), the **Revenue Services Lesotho Act 2001** (RSL's mandate to pay compliance rewards), the **Public Financial Management and Accountability Act 2011** and **Income Tax Act 1993** (prize money as public money; whether prizes are taxed), the **Data Protection Act 2011**, published **draw rules** (18+, staff excluded, an observer at each draw, complaints), and telecom and payment agreements. This is a checklist, not legal advice.
+
+## Where Rasiti can be hosted (to be agreed with RSL)
+
+Rasiti is plain Node.js and one PostgreSQL database, with no vendor lock-in, so it runs on any ordinary Linux server. The hosting arrangement will be agreed with RSL; the options are:
+
+1. **RSL's own servers** in Maseru (lowest cost; RSL ICT has full control).
+2. **Any data centre in Lesotho** chosen by RSL (government or private), if RSL prefers not to use its own machines.
+3. **Outside Lesotho, at a Lesotho embassy or high commission** (for example in Pretoria), on servers on embassy premises, so the data stays under the Government of Lesotho's control.
+
+The same steps work on all three: install Node.js 20+ and PostgreSQL, copy the code, set the environment variables from `.env.example`, run `node dev-server.mjs` behind HTTPS (nginx or Caddy), and keep nightly encrypted backups at a second site. Render (section 3B) is used only for the public prototype with mock data.
+
+**Who runs it:** Samuel Mefane sets up Rasiti at the chosen site and manages it for at least 12 months (the 6-month pilot and at least 6 months after), then hands over to RSL ICT or a team RSL names, with a runbook and two handover sessions. RSL ICT works alongside if RSL confirms they are available.
+
+### Running on RSL's own servers (lowest cost)
 
 Rasiti is plain Node.js and Postgres, so it can run on RSL's servers and domain at no hosting cost. Free, open-source tools can replace paid services there:
 
@@ -237,7 +319,8 @@ api/users.js        Add and manage users, activity log
 api/admin.js        Reviews, worklist actions, draws, load/reset demo data
 api/health.js       Health check for uptime monitors (no database)
 api/ussd.js         Real USSD menus for a gateway (Africa's Talking format); seller code + PIN
-api/momo.js         M-Pesa / EcoCash payment notifications: merchant code -> seller -> receipt
+api/momo.js         M-Pesa / EcoCash payment notifications: merchant code -> seller -> receipt; reversals and pay-backs
+api/card.js         Card machine (speed point) notifications from banks: terminal -> seller -> receipt; reversals
 api/agent.js        Mohlomi AI: plans tests from plain words, logs each run
 api/bohlale.js      Bohlale AI: sends masked data to an OpenAI-compatible model
 api/logs.js         Full system log (who, what, when) for owners and admins
