@@ -117,12 +117,6 @@ export default route(async (req, res) => {
       await seller(b.no); await q('UPDATE sellers SET reminders=$1 WHERE no=$2', [!!b.on, b.no]);
       break;
     }
-    case 'tip_sub': {
-      // Optional daily tip by SMS for M2.00 a day (charged to airtime by the network in a pilot).
-      const ph = phoneOrNull(b.phone); if (!ph) throw bad('Phone required.');
-      await q('INSERT INTO phone_prefs(phone, tips_sub) VALUES ($1,$2) ON CONFLICT (phone) DO UPDATE SET tips_sub=EXCLUDED.tips_sub, updated_at=now()', [ph, !!b.on]);
-      break;
-    }
     case 'lang': {
       const ph = phoneOrNull(b.phone); if (!ph) throw bad('Phone required.'); if (!['en', 'st'].includes(b.lang)) throw bad('Language must be en or st.');
       await q('INSERT INTO phone_prefs(phone, lang) VALUES ($1,$2) ON CONFLICT (phone) DO UPDATE SET lang=EXCLUDED.lang, updated_at=now()', [ph, b.lang]);
@@ -185,7 +179,7 @@ export default route(async (req, res) => {
     fake:['fake_code_caught', {code:txt(b.code, 20), kind:b.fkind}], seller_join:['seller_joined', {no:b.no, name:txt(b.name, 60), market:txt(b.market, 60)}],
     seller_register:['seller_registered_for_tax', {no:b.no, tin:b.tin}], seller_helper:['seller_asked_for_help', {no:b.no}],
     return_filed:[Number(b.declared) ? 'return_filed' : 'nil_return_filed', {period:b.period, declared:Math.round(Number(b.declared)), sales_book:Math.round(Number(b.sales) || 0), reason:txt(b.nil_reason, 40) || null, rsl_ack:txt(b.ack, 20) || null}],
-    tax_paid:['tax_paid', {period:b.period, amount:amt, ref:txt(b.ref, 20), rsl_receipt:txt(b.rcpt, 20) || null}], lang:['language_changed', {lang:b.lang === 'st' ? 'Sesotho' : 'English'}], tip_sub:[b.on ? 'tip_subscribed' : 'tip_unsubscribed', {price:'M2.00 a day'}], reminders:[b.on ? 'reminders_on' : 'reminders_off', {}] }[b.kind];
+    tax_paid:['tax_paid', {period:b.period, amount:amt, ref:txt(b.ref, 20), rsl_receipt:txt(b.rcpt, 20) || null}], lang:['language_changed', {lang:b.lang === 'st' ? 'Sesotho' : 'English'}], reminders:[b.on ? 'reminders_on' : 'reminders_off', {}] }[b.kind];
   if (LOG) await audit(q, null, LOG[0], { actor:['seller_join', 'seller_register', 'seller_helper', 'return_filed', 'tax_paid', 'reminders'].includes(b.kind) ? `Seller ${b.no || b.seller_no || ''}`.trim() : who, channel:'phone', ...LOG[1] }).catch(() => {});
   res.status(200).json({ ok: true });
 });

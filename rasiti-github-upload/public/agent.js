@@ -20,14 +20,15 @@
   const dl = (text, say) => ({do:'download', text, say:say || `Download "${text}"`});
   const BUILTIN = {
     health: {title:'Quick health check of every page', changes:false, steps:[
-      go('dash'), see('Needs attention', 'Dashboard shows the "Needs attention" list'),
+      go('dash'), see('Needs attention', 'Overview shows the "Needs attention" list'),
+      go('forecast'), see('Weekly pattern the model learned', 'Forecasts page shows what the model learned'),
       go('officer'), see('Worklist', 'Officer console shows the worklist'), see('RSL e-services link', 'The simulated RSL e-services link is there'),
       go('shield'), see('Rules', 'Fraud Shield shows its rules'),
       go('watch'), see('Map of shop ratings', 'Community watch shows the ratings map'),
       go('draw'), see('Prize calendar', 'Monthly draw page shows the prize calendar'),
       go('search'), see('Transactions found', 'Transaction search lists the history'),
       {do:'type', field:'sxQ', value:'3307', say:'Search for seller 3307'}, {do:'wait', seconds:1}, see('Ntate Thabo', 'Results show only that seller'), {do:'click', text:'Reset filters', say:'Clear the search'},
-      go('reports'), see('Officer console', 'Reports page lists the officer reports'),
+      go('reports'), see('Email reports and alerts', 'Reports & alerts lists the downloads and the emails'),
       go('bohlale'), see('Rules Bohlale follows', 'Bohlale AI page opens'),
       go('users'), see('Add a user', 'Users page opens'),
       go('logs'), see('Download', 'System log opens'),

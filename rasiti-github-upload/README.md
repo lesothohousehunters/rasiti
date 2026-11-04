@@ -30,6 +30,10 @@ RSL Taxathon 2026, Challenge 1 prototype. Customers get receipts and prize-draw 
 | `ADMIN_EMAIL` | The email for the first owner account |
 | `ADMIN_PASSWORD` | A strong password for that account (10+ characters) |
 | `ADMIN_NAME` | Optional. The owner's display name (default: Katleho Tlale) |
+| `SMTP_URL` | Optional, to send email reports and alerts. Any SMTP account, e.g. `smtps://you%40gmail.com:APP-PASSWORD@smtp.gmail.com:465` (Gmail needs an app password). Or use `RESEND_API_KEY` instead |
+| `MAIL_FROM` | Optional. Sender shown on emails, e.g. `Rasiti <rasiti@yourdomain.co.ls>` |
+| `CRON_KEY` | Optional. A random word; an outside scheduler calls `/api/notify?cron=1&key=THAT-WORD` to send scheduled emails (see below) |
+| `SITE_URL` | Optional. The site's address, used for the "Open Rasiti" links in emails, e.g. `https://rasiti.statspack.africa` |
 
 ## 3A. Deploy on Vercel (recommended)
 
@@ -51,10 +55,10 @@ RSL Taxathon 2026, Challenge 1 prototype. Customers get receipts and prize-draw 
 Free Render services go to sleep when nobody visits for a while, and the next visitor waits while it wakes up. To keep it awake for demos, use a free uptime monitor such as UptimeRobot or cron-job.org:
 
 1. Create a monitor of type **HTTP(s)**.
-2. URL: `https://your-subdomain/api/health`
+2. URL: `https://your-subdomain/api/notify?cron=1&key=YOUR-CRON_KEY` (or `https://your-subdomain/api/health` if you do not use email)
 3. Interval: every **10 minutes**.
 
-This page does not touch the database, so it costs nothing to check. Check Render's current free-plan limits on monthly hours before relying on this long term.
+The first URL keeps the server awake and sends any email report or alert that is due. `/api/health` does not touch the database, so it costs nothing to check. Check Render's current free-plan limits on monthly hours before relying on this long term.
 
 ## Test on a real USSD connection (free sandbox)
 
@@ -212,7 +216,7 @@ Menu **Search**, for every signed-in RSL role. One list holds every receipt (cas
 
 ## Reports (every download in one place)
 
-Menu **Reports** (also a button in the top bar of every RSL page): the dashboard PDF; officer worklist, review queue, complaints, and filing & payments as CSV, plus the officer PDF; the **cash claims CSV** (every claim and what the seller did); Fraud Shield receipts and fake codes CSV and PDF; community watch ratings, shops and areas CSV and PDF (with Bohlale's latest analysis); draw entries and winners CSV and the draw PDF. Each report uses the filters last set on its own page. Search results and the system log keep their own downloads. Customer phone numbers are masked in every download.
+Menu **Reports & alerts** (also a button in the top bar of every RSL page): the dashboard PDF; officer worklist, review queue, complaints, and filing & payments as CSV, plus the officer PDF; the **cash claims CSV** (every claim and what the seller did); Fraud Shield receipts and fake codes CSV and PDF; community watch ratings, shops and areas CSV and PDF (with Bohlale's latest analysis); draw entries and winners CSV and the draw PDF. Each report uses the filters last set on its own page. Search results and the system log keep their own downloads. Customer phone numbers are masked in every download.
 
 ## Filing and paying (sustained compliance)
 
@@ -228,9 +232,36 @@ Menu **Reports** (also a button in the top bar of every RSL page): the dashboard
 - Every menu, message and help answer has a Sesotho version: `public/i18n.js` (screens) and `public/faq.js` (questions and answers). The same files serve the real USSD server, the on-screen phones and WhatsApp, so a correction in one place changes all three. Sesotho screens stay within the 182-character USSD limit.
 - **The Sesotho wording is a careful draft. Ask a fluent Sesotho speaker at RSL to check it before the pilot.**
 
-## Dashboard and help questions
+## Overview: click anything
 
-- **Dashboard** (first item on the RSL side): a bird's-eye view of receipts, sales, sellers, customer ratings, the Fraud Shield, the draw, what needs attention and the latest activity, for 7, 14 or 30 days. Every figure links to its page, and the PDF version explains each figure.
+- **Overview** (first RSL page): sales per day with the forecast for the next 14 days, sellers and leads on a map, "Needs attention", top sellers, the tax-net funnel and the tip of the day, for 7, 14 or 30 days.
+- **Every chart bar, map dot, KPI, funnel step and list item is clickable.** It opens one detail panel on the right: a day's receipts by seller, a seller's own chart with forecast, risk score, tax position and the actions to take (invite, visit, mark contacted, ask Bohlale, see all transactions), a shop or area, a rating type, a time slot, a forecast day. Inside the panel, rows are clickable too, and **Back** returns. The same panel works on Community watch (charts and the three maps), the Officer console (worklist names and the map) and Forecasts.
+- Less-used tables (Filing and payments, RSL e-services link, latest ratings, how the models work) are folded; click their heading to open them.
+
+## Forecasts and machine learning
+
+`public/ml.js` holds small, explainable models that **re-train from Rasiti's own data whenever it changes** (in the browser for the pages, and on the server for emails). No outside service.
+
+- **Sales forecast:** Holt-Winters exponential smoothing with a weekly season. It learns the level, the trend and the day-of-week pattern; its three settings are chosen by testing many combinations on the history. Forecasts come with an 80% range.
+- **Measured accuracy:** the last 14 days are hidden, forecast and compared (average error and how many days fell inside the range), shown on the Forecasts page and in emails.
+- **One forecast per seller:** expected sales and tax for the current quarter (sales so far plus the forecast for the rest of the quarter, at the demo rate).
+- **Chance of a late return or payment:** logistic regression trained on every past return, with four plain features (past late filing, past late payment, unpaid earlier tax, declared below receipts). The learned weights are shown, and each seller's score comes with its main reason.
+- **Unusual weeks:** a seller whose last 7 days are far below (or above) what their own model expected is flagged.
+- **Forecasts page** (menu): the next 30 days with range, the learned weekly pattern, tax expected by seller, late-payment risk by seller, forecast alerts and a "How the models work" table. Bohlale can answer questions about forecasts. Forecasts only rank what officers look at first; they never decide anything.
+
+## Email reports and alerts
+
+Menu **Reports & alerts**, section *Email reports and alerts* (owners and admins edit; everyone can read).
+
+- **Reports:** daily, weekly, monthly, quarterly, every 6 months or yearly, to any addresses you choose. Each covers the last complete period: figures with the change on the period before, actions needed, what is coming up (due dates, draws, cash claims about to expire), and the forecast with its measured accuracy. Bohlale writes the opening summary when an AI key is set (masked figures only).
+- **Alerts:** "As soon as something happens" sends only new actions, and repeats one weekly while it is still open. Alerts cover: tax overdue, returns not filed, returns due in 7 and 2 days, nil returns with receipts, cash claims rejected by many real buyers, cash claims about to expire, new leads, sellers asking for a helper, reversed or paid-back payments, self-buying, one phone with many receipts, fake codes, the monthly draw to run, and forecast alerts (sales expected to fall, a seller far below expectation).
+- **Buttons:** Preview, Send now, Edit, Delete, On/off. **Alerts right now** shows what an alert email would contain; **Emails sent** keeps every email (click to read it), with its status.
+- **Sending:** set `SMTP_URL` (or `RESEND_API_KEY`) and `MAIL_FROM`. Without them, every email is still built and kept in *Emails sent* as "Not sent", so the feature can be shown without an email account.
+- **Timing:** reports go out from 06:00 Maseru time. The server checks every 10 minutes while it is awake; on a free Render server, point the keep-awake monitor at `/api/notify?cron=1&key=CRON_KEY` so the check also runs when nobody is using the site.
+- Seven emails are created on first use, sent to `ADMIN_EMAIL`: alerts as they happen, weekly, monthly and quarterly reports (on), and daily, six-month and yearly reports (off).
+
+## Help questions
+
 - **Questions & answers** on USSD and WhatsApp: tax help for sellers (registering, Simplified Business Tax, filing, paying, records, nil returns, penalties, VAT, privacy) and help for customers (receipts, entries, the draw, prizes and scams, checking receipts, reporting shops, privacy). USSD: main menu option 3, customer option 6 or seller option 5. On WhatsApp customers and sellers can also type a question in their own words. All answers are in `public/faq.js`; edit that one file to change them everywhere. Tax answers are general guidance and send people to RSL for anything specific.
 
 ## Privacy controls and the system log
@@ -250,10 +281,7 @@ The Officer console shows every exchange under **RSL e-services link**. In a pil
 
 ## Daily education messages
 
-`public/tips.js` holds 31 short tips in English and Sesotho, each with its source (RSL's public guides).
-
-- **Free to read every day:** a post on a Rasiti WhatsApp Channel, "Tip of the day" in the USSD Q&A menu (`*999#` → 3 → 3), and on WhatsApp (type `TIP`; the first chat of the day shows it).
-- **Optional daily SMS for M2.00 a day:** people subscribe on USSD (`*999#` → 3 → 4 → 1) or by sending `SUBSCRIBE` on WhatsApp, and stop with `STOP` or option 2. The subscriber pays from airtime, so the SMS costs the project nothing. The Dashboard shows subscribers, income, the network's billing share and SMS cost (all assumptions to agree with the networks), and has a button to send today's SMS (simulated).
+`public/tips.js` holds 33 short tips in English and Sesotho, each with its source (RSL's public guides). They are free to read every day: a post on a Rasiti WhatsApp Channel, "Tip of the day" in the USSD Q&A menu (`*999#` → 3 → 3), on WhatsApp (type `TIP`; the first chat of the day shows it) and on the Overview.
 
 To use RSL's own education material, replace or add tips in `public/tips.js`; the list repeats every 33 days.
 
@@ -321,6 +349,7 @@ public/rsl-mock.js  Simulated RSL e-services link: TIN check, return acknowledge
 public/i18n.js      Sesotho for every phone screen (USSD, WhatsApp, on-screen phones)
 public/app.js       Phones, Fraud Shield, maps, officer console, draw, Bohlale AI, users
 public/agent.js     Mohlomi AI test agent (runs the steps in the browser)
+public/ml.js        Machine learning: forecasts, accuracy test, late-payment risk, unusual weeks (browser and server)
 public/vendor/      Leaflet maps and jsPDF (served locally)
 public/img/         Login photo, Bohlale AI and Mohlomi AI logos
 api/state.js        GET all demo data
@@ -334,9 +363,10 @@ api/momo.js         M-Pesa / EcoCash payment notifications: merchant code -> sel
 api/card.js         Card machine (speed point) notifications from banks: terminal -> seller -> receipt; reversals
 api/agent.js        Mohlomi AI: plans tests from plain words, logs each run
 api/bohlale.js      Bohlale AI: sends masked data to an OpenAI-compatible model
+api/notify.js       Email reports and alerts: rules, outbox, scheduled sending (/api/notify?cron=1&key=CRON_KEY)
 api/logs.js         Full system log (who, what, when) for owners and admins
 api/tile.js         Map tiles for PDF reports (satellite, street map as backup; Lesotho only)
-api/_lib/           Database, sessions, schema, receipt code checks, seller PINs, cash claims (cash.js)
+api/_lib/           Database, sessions, schema, receipt code checks, seller PINs, cash claims (cash.js), email (mail.js), report and alert builder (insights.js)
 schema.sql          Same tables as the app creates automatically
 dev-server.mjs      Server used by Render (npm start) and for local testing
 vercel.json         Vercel settings

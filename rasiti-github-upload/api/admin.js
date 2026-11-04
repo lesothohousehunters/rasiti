@@ -88,14 +88,6 @@ export default route(async (req, res) => {
     return res.status(200).json({ ok: true });
   }
 
-  if (b.op === 'tip_sms') {
-    // Daily education SMS to people who subscribed (M2.00 a day, paid by them). Simulated: the pilot connects this to the SMS gateway.
-    const me = await requireRole(req, res, WORKERS); if (!me) return;
-    const count = Math.max(0, Math.min(100000, Math.round(Number(b.count) || 0)));
-    await audit(q, me, 'education_sms_sent', { count, cost_maloti: Number(b.cost) || 0, tip: String(b.tip || '').slice(0, 160), simulated: true });
-    return res.status(200).json({ ok: true, count });
-  }
-
   if (b.op === 'contacts') {
     const me = await requireRole(req, res, ['owner', 'admin']); if (!me) return;
     await audit(q, me, b.show ? 'contacts_shown' : 'contacts_hidden', { page: String(b.page || '').slice(0, 30) });
@@ -118,10 +110,6 @@ export default route(async (req, res) => {
     };
     // Demo sellers all use the demo PIN (shown on the Start here page). Real sellers choose their own when they join.
     await q('UPDATE sellers SET pin_hash=$1 WHERE pin_hash IS NULL', [await hashPin(DEMO_PIN)]);
-    // Demo: 1 in 8 customers subscribed to the optional daily tip by SMS (M2.00 a day).
-    const subs = await q(`INSERT INTO phone_prefs(phone, tips_sub) SELECT phone, TRUE FROM (SELECT DISTINCT phone FROM receipts WHERE phone IS NOT NULL ORDER BY phone) x
-      WHERE abs(hashtext(phone)) % 8 = 0 ON CONFLICT (phone) DO UPDATE SET tips_sub=TRUE RETURNING phone`);
-    counts.tip_subscribers = subs.length;
     await audit(q, me, 'demo_data_loaded', counts);
     return res.status(200).json({ ok: true, counts });
   }

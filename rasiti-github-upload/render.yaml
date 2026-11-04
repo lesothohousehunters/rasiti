@@ -24,3 +24,11 @@ services:
         sync: false
       - key: CARD_KEY
         sync: false
+      - key: SMTP_URL
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: CRON_KEY
+        sync: false
+      - key: SITE_URL
+        sync: false

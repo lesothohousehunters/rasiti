@@ -22,6 +22,5 @@ export default route(async (req, res) => {
     q("SELECT id, seller_no, period, sales::float AS sales, declared::float AS declared, nil_reason, tax_due::float AS tax_due, channel, filed_at FROM returns WHERE filed_at > now() - interval '400 days' ORDER BY period"),
     q("SELECT id, seller_no, period, amount::float AS amount, ref, channel, paid_at FROM payments WHERE paid_at > now() - interval '400 days' ORDER BY paid_at")
   ]);
-  const [{ subs }] = await q('SELECT count(*)::int AS subs FROM phone_prefs WHERE tips_sub');
-  res.status(200).json({ tip_subscribers: subs, empty: false, now: new Date().toISOString(), sellers: sellers.map(publicSeller), receipts, claims, reports, fakes, reviews, actions, draws, returns, payments });
+  res.status(200).json({ empty: false, now: new Date().toISOString(), sellers: sellers.map(publicSeller), receipts, claims, reports, fakes, reviews, actions, draws, returns, payments });
 });

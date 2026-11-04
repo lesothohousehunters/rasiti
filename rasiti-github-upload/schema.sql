@@ -77,3 +77,12 @@ ALTER TABLE claims ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ;
 ALTER TABLE claims ADD COLUMN IF NOT EXISTS receipt_code TEXT;
 CREATE INDEX IF NOT EXISTS claims_seller_state ON claims(seller_no, state);
 CREATE INDEX IF NOT EXISTS claims_phone_time ON claims(phone, created_at);
+-- Email reports and alerts (rules, outbox, alerts already sent so they are not repeated)
+CREATE TABLE IF NOT EXISTS email_rules(
+  id SERIAL PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, frequency TEXT NOT NULL, recipients TEXT[] NOT NULL DEFAULT '{}',
+  active BOOLEAN NOT NULL DEFAULT TRUE, ai_summary BOOLEAN NOT NULL DEFAULT TRUE, last_key TEXT, last_run TIMESTAMPTZ,
+  created_by INT, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS email_outbox(
+  id SERIAL PRIMARY KEY, rule_id INT, kind TEXT, subject TEXT, recipients TEXT[], html TEXT, text TEXT, status TEXT NOT NULL,
+  error TEXT, alerts INT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS alert_seen(key TEXT PRIMARY KEY, first_at TIMESTAMPTZ NOT NULL DEFAULT now(), last_sent TIMESTAMPTZ);

@@ -45,3 +45,9 @@ const server = http.createServer(async (req, res) => {
 });
 server.on('error', e => { console.error('Rasiti could not start:', e.code || '', e.message); process.exit(1); });
 server.listen(PORT, '0.0.0.0', () => console.log(`Rasiti running on port ${PORT}`));
+// Email reports and alerts: check every 10 minutes which emails are due (see api/notify.js). An outside scheduler can also call
+// /api/notify?cron=1&key=CRON_KEY, which keeps a sleeping free server awake as well. Set NOTIFY_INTERNAL=0 to switch this off.
+if (process.env.DATABASE_URL && process.env.NOTIFY_INTERNAL !== '0') {
+  const tick = async () => { try { const m = await import(pathToFileURL(join(root, 'api', 'notify.js')).href); const ran = await m.runDue(null); if (ran.length) console.log('Email:', ran.map(r => `${r.rule}: ${r.status || (r.skipped ? 'nothing new' : r.error)}`).join('; ')); } catch (e) { console.error('Email check failed:', e.message); } };
+  setTimeout(tick, 60000); setInterval(tick, 10 * 60000);
+}

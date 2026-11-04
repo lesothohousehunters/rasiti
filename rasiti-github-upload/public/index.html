@@ -417,6 +417,7 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 #sxTbl td{vertical-align:top}#sxTbl .mono{white-space:nowrap}
 @media (max-width:640px){.wf label{flex:1 1 140px}.wf select,.wf input{min-width:0;width:100%}}
 .dl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.nt-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0;padding:14px;border:1px solid var(--line);border-radius:12px}.nt-form label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;font-weight:600}.nt-form .nt-wide{grid-column:1/-1}.nt-form .nt-check{flex-direction:row;align-items:center;gap:8px;font-weight:500}.nt-btns{display:flex;gap:8px;align-items:end}.nt-form .err{grid-column:1/-1;margin:0}
 .rp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px;align-items:stretch}
 .rp-card{display:flex;flex-direction:column;gap:10px}.rp-card h3{margin:0}.rp-card p{margin:0}
 .rp-btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
@@ -424,6 +425,24 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 .dl span{font-size:.78rem;font-weight:600;color:var(--muted);margin-right:4px}
 .chart svg{width:100%;height:auto;display:block}
 .chart [data-tip]{cursor:default}
+/* detail panel opened by clicking any chart bar, map dot or list item */
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100vw);background:var(--surface);border-left:1px solid var(--line);box-shadow:-12px 0 32px rgba(0,0,0,.14);z-index:2000;overflow:auto;padding:0 22px 28px;transform:translateX(100%);transition:transform .2s ease}
+.drawer.open{transform:none}
+.drw-head{position:sticky;top:0;background:var(--surface);display:flex;align-items:center;gap:10px;padding:16px 0 12px;border-bottom:1px solid var(--line);margin-bottom:12px;z-index:1}
+.drw-head h2{flex:1;margin:0;font-size:1.15rem}.drw-head h2 small{font-weight:500;color:var(--muted);font-size:.85rem}
+.drw-x{border:0;background:transparent;font-size:1.6rem;line-height:1;cursor:pointer;color:var(--muted);padding:2px 8px}
+.drw-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.drw-item{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}.drw-item .why{margin:4px 0 8px}
+.drill{cursor:pointer}.chart rect.drill:hover{fill:rgba(232,121,58,.10)}
+tr.drill:hover td,li.drill:hover,.fn.drill:hover{background:rgba(232,121,58,.07)}
+li.drill{border-radius:8px;padding:6px}.fn.drill{border-radius:6px;padding:2px 4px}
+.drill-link{cursor:pointer;text-decoration:underline;text-decoration-color:rgba(232,121,58,.5);text-underline-offset:3px}
+details.fold>summary{list-style:none;cursor:pointer}details.fold>summary::-webkit-details-marker{display:none}
+details.fold>summary h3{display:inline-flex;align-items:center;gap:8px;margin:0}details.fold>summary h3::before{content:'▸';color:var(--muted);transition:transform .15s}
+details.fold[open]>summary h3::before{transform:rotate(90deg)}details.fold[open]>summary{margin-bottom:12px}
+.mail-view{width:100%;height:65vh;border:1px solid var(--line);border-radius:10px;background:#fff}
+.chart [data-tip].drill{cursor:pointer}
+
 .viz-tip{position:fixed;z-index:9500;pointer-events:none;background:var(--navy);color:var(--on-navy);font-size:.78rem;font-weight:500;padding:6px 10px;border-radius:8px;max-width:280px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
 .bh-analyst{margin-bottom:0}
 .bh-ahead{display:flex;gap:12px;align-items:center;margin-bottom:12px}.bh-ahead b{display:block}.bh-ahead small{color:var(--muted)}
@@ -446,6 +465,8 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 .kpi .v small{font-size:1rem;color:var(--muted);font-weight:600}
 .kpi .d{display:block;font-size:.76rem;margin-top:8px;color:var(--muted);font-weight:600}
 .kpi .d.up{color:var(--green)}.kpi .d.down{color:var(--bad)}
+.dash-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}@media (min-width:1280px){.dash-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}}@media (max-width:640px){.dash-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (min-width:900px){.fc-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .dash-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px;align-items:start}
 .dash-grid .dash-wide{grid-column:1/-1}
 @media (max-width:980px){.dash-grid{grid-template-columns:minmax(0,1fr)}}
@@ -652,24 +673,34 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 </section>
 
 <section data-view="dash" hidden>
-  <div class="dash-top"><p class="lede" style="margin:0">Everything on one page. Click any figure to open its page. All downloads are under <a href="#reports">Reports</a>.</p>
+  <div class="dash-top"><p class="lede" style="margin:0"><b>Click anything:</b> a bar, a dot on the map, a figure or a line in "Needs attention" opens the details and what to do.</p>
     <div class="dash-tools"><div class="filters" id="dashFilters" style="margin:0"></div><button class="btn small" type="button" id="dashBrief">Ask Bohlale for today's briefing</button></div></div>
   <div class="kpis dash-kpis" id="dashKpis"></div>
   <div class="dash-grid">
-    <div class="panel"><h3>Receipts per day</h3><div class="chart" id="dashChart"></div><p class="note" id="dashChartNote"></p></div>
-    <div class="panel"><h3>Needs attention</h3><ul class="attn" id="dashAttn"></ul><p class="note" style="margin-bottom:0"><a href="#officer">Open the officer console</a></p></div>
-    <div class="panel dash-map"><h3>Everything on one map</h3><div class="map small" id="dashMap"></div>
+    <div class="panel dash-wide"><h3>Receipted sales per day, and the forecast for the next 14 days</h3><div class="chart" id="dashChart"></div><p class="note" id="dashChartNote"></p></div>
+    <div class="panel dash-map"><h3>Sellers and leads on the map</h3><div class="map small" id="dashMap"></div>
       <div class="legend"><span><i style="background:#1d9e57"></i>Registered seller</span><span><i style="background:#3b82f6"></i>On Rasiti, not registered</span><span><i style="background:#d93025"></i>New lead</span><span><i style="background:#f0a020"></i>Low receipts</span></div></div>
+    <div class="panel"><h3>Needs attention</h3><ul class="attn" id="dashAttn"></ul></div>
+    <div class="panel"><h3>Top sellers</h3><div class="chart" id="dashTopCh"></div></div>
     <div class="stack"><div class="panel"><h3>Widening the tax net</h3><div class="funnel" id="dashFunnel"></div></div>
-      <div class="panel"><h3>Monthly draw</h3><div id="dashDraw"></div></div></div>
-    <div class="panel"><h3>Areas by receipt rate</h3><div class="tbl-wrap"><table id="dashAreas"></table></div></div>
-    <div class="panel"><h3>Top sellers</h3><div class="tbl-wrap"><table id="dashTop"></table></div></div>
-    <div class="panel dash-wide"><h3 class="h-row">Daily education message <button class="btn small primary" type="button" id="tipSmsBtn">Send today's SMS tip to subscribers</button></h3>
-      <div class="tip-grid"><div><div class="tip-card" id="tipToday"></div></div>
-        <div><table class="tbl" id="tipCost"></table><p class="note" id="tipNote"></p></div></div>
-      <h4 class="sub">Next 7 days</h4><div class="tbl-wrap"><table id="tipNext"></table></div></div>
-    <div class="panel dash-wide"><h3 class="h-row">Latest activity <a class="btn small" href="#logs" id="dashActLink" hidden>Full system log</a></h3><ul class="feed dash-act" id="dashAct"></ul></div>
+      <div class="panel"><h3>Tip of the day</h3><div class="tip-card" id="tipToday"></div><p class="note" style="margin-bottom:0">Free in the USSD and WhatsApp menus and on the Rasiti WhatsApp Channel.</p></div></div>
   </div>
+</section>
+
+<section data-view="forecast" hidden>
+  <p class="lede">Rasiti learns from its own data: the level, trend and weekly pattern of sales, each seller's pattern, and which sellers tend to file or pay late. The models re-train whenever new data arrives. Click any bar for the details.</p>
+  <div class="kpis fc-kpis" id="fcKpis"></div>
+  <div class="panel"><h3>Receipted sales: the last 45 days and the next 30 (forecast)</h3><div class="chart" id="fcMain"></div><p class="note" id="fcNote"></p></div>
+  <div class="two mt">
+    <div class="panel"><h3>Forecast alerts</h3><ul class="attn" id="fcAlerts"></ul></div>
+    <div class="panel"><h3>Weekly pattern the model learned</h3><div class="chart" id="fcWeek"></div></div>
+  </div>
+  <div class="two mt">
+    <div class="panel"><h3>Tax expected this quarter, by seller</h3><div class="chart" id="fcTax"></div><p class="note">Sales so far plus the forecast for the rest of the quarter, at the demo rate. RSL sets the real rate.</p></div>
+    <div class="panel"><h3>Chance of a late return or payment</h3><div class="chart" id="fcRisk"></div><p class="note">Learned from every past return. A reason to remind early, never a penalty.</p></div>
+  </div>
+  <details class="panel mt fold"><summary><h3>How the models work</h3></summary><div class="tbl-wrap"><table id="fcModel"></table></div>
+    <p class="note">Sales forecast: Holt-Winters exponential smoothing with a weekly season; its settings are chosen by testing many combinations on the history. Accuracy is measured by hiding the last 14 days and forecasting them. Late-payment risk: logistic regression with three plain features, so every score can be explained. All in <code>public/ml.js</code>, no outside service.</p></details>
 </section>
 
 <section data-view="shield" hidden>
@@ -700,7 +731,7 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 </section>
 
 <section data-view="watch" hidden>
-  <p class="lede">Customer ratings show where trade happens and which shops give receipts, including shops not on Rasiti. RSL looks at areas and patterns: no single customer's word triggers action.</p>
+  <p class="lede">Customer ratings show where trade happens and which shops give receipts, including shops not on Rasiti. <b>Click any dot, circle or bar</b> for the details. No single customer's word triggers action.</p>
   <div class="panel wf-bar">
     <div class="wf">
       <label>Period<select id="wfDays"><option value="7">Last 7 days</option><option value="14">Last 14 days</option><option value="30" selected>Last 30 days</option></select></label>
@@ -738,11 +769,11 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
     <div class="panel"><h3>By shop</h3><div class="tbl-wrap"><table id="shopTbl"></table></div>
       <p class="note">Receipt rates show once 3 or more different people have rated a shop. Shops at 80% or more get the public "Gives receipts" badge.</p></div>
   </div>
-  <div class="panel mt"><h3>Latest ratings</h3><p class="note" id="rateCount"></p><div class="tbl-wrap"><table id="rateTbl"></table></div></div>
+  <details class="panel mt fold"><summary><h3>Latest ratings</h3></summary><p class="note" id="rateCount"></p><div class="tbl-wrap"><table id="rateTbl"></table></div></details>
 </section>
 
 <section data-view="officer" hidden>
-  <p class="lede">A short, ranked worklist. Each item says why it is there. A nil return or a refused cash claim is never treated as non-compliance on its own, and nothing becomes a penalty without an officer's decision.</p>
+  <p class="lede">A short, ranked worklist. Click a seller's name or a dot on the map for the details and actions. A nil return or a refused cash claim is never treated as non-compliance on its own, and nothing becomes a penalty without an officer's decision.</p>
   <div class="panel wf-bar">
     <div class="wf">
       <label>Priority<select id="ofPri"><option value="all">All priorities</option><option value="3">High</option><option value="2">Medium</option><option value="1">Low</option><option value="0">Watching</option><option value="-1">No action</option></select></label>
@@ -762,13 +793,13 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
       <div class="panel"><h3>Complaints from customers</h3><div class="tbl-wrap"><table id="reportsTbl"></table></div><p class="note">Action starts at 3 independent customers. Reporters are never shown to sellers.</p></div>
     </div>
   </div>
-  <div class="panel mt"><h3 class="h-row">Filing and payments <button class="btn small primary" type="button" id="remBtn">Send reminders</button></h3>
-    <p class="note" style="margin-top:0">Registered sellers file from their sales book and pay by mobile money on USSD or WhatsApp, in full or in small parts before the due date. Tax uses a demo rate of 3% of declared sales; RSL sets the real SBT rate and schedule.</p>
-    <div class="tbl-wrap"><table id="taxTbl"></table></div></div>
-  <div class="panel mt"><h3 class="h-row">RSL e-services link <span class="pill p-warn">Simulated</span></h3>
+  <details class="panel mt fold"><summary><h3>Filing and payments</h3></summary>
+    <p><button class="btn small primary" type="button" id="remBtn">Send reminders</button></p><p class="note" style="margin-top:0">Registered sellers file from their sales book and pay by mobile money on USSD or WhatsApp, in full or in small parts before the due date. Tax uses a demo rate of 3% of declared sales; RSL sets the real SBT rate and schedule.</p>
+    <div class="tbl-wrap"><table id="taxTbl"></table></div></details>
+  <details class="panel mt fold"><summary><h3>RSL e-services link <span class="pill p-warn">Simulated</span></h3></summary>
     <p class="note" style="margin-top:0">How Rasiti would talk to RSL's own systems. Each registration is checked against RSL's taxpayer register (TIN check), each return is sent to RSL and gets an acknowledgement number, and each payment gets an official RSL receipt number. RSL does not give outside teams access to live systems, so these answers are simulated. In a pilot they are replaced by RSL's real e-services connection. Demo rule: ID numbers ending in 00 are already on RSL's register.</p>
     <div class="kpis small-kpis" id="rslKpis"></div>
-    <div class="tbl-wrap"><table id="rslTbl"></table></div></div>
+    <div class="tbl-wrap"><table id="rslTbl"></table></div></details>
 </section>
 
 <section data-view="draw" hidden>
@@ -790,7 +821,7 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 </section>
 
 <section data-view="reports" hidden>
-  <p class="lede">Every report in one place. CSV files open in Excel; PDFs are ready to print or email. Each report uses the filters last set on its own page. Phone numbers stay masked unless an admin shows contacts.</p>
+  <p class="lede">Every report in one place, and the emails Rasiti sends by itself. CSV files open in Excel; PDFs are ready to print or email. Each report uses the filters last set on its own page. Phone numbers stay masked unless an admin shows contacts.</p>
   <div class="rp-grid">
     <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><h3>Dashboard</h3></div><p class="note">One-page overview: receipts, sellers, Fraud Shield, draw, filing and what needs attention.</p><div class="rp-btns"><button class="btn small primary" type="button" id="dashPdf">Dashboard PDF</button></div></div>
     <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5h6M9 3h6v4H9z"/><rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 12h6M9 16h4"/></svg><h3>Officer console</h3></div><p class="note">The worklist, held draw entries, customer complaints, filing and payments.</p><div class="rp-btns"><button class="btn small" type="button" data-dl="work-csv">Worklist CSV</button><button class="btn small" type="button" data-dl="review-csv">Review queue CSV</button><button class="btn small" type="button" data-dl="complaints-csv">Complaints CSV</button><button class="btn small" type="button" data-dl="tax-csv">Filing &amp; payments CSV</button><button class="btn small primary" type="button" data-dl="officer-pdf">Officer PDF</button></div></div>
@@ -800,6 +831,26 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
     <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="5"/><path d="M8.5 12.5L7 21l5-3 5 3-1.5-8.5"/></svg><h3>Monthly draw</h3></div><p class="note">Every entry in the draw with masked numbers, so the result can be checked, and the winners.</p><div class="rp-btns"><button class="btn small" type="button" data-dl="entries-csv">Draw entries CSV</button><button class="btn small" type="button" data-dl="winners-csv">Winners CSV</button><button class="btn small primary" type="button" data-dl="draw-pdf">Draw PDF</button></div></div>
   </div>
   <p class="note">Need one transaction, or a custom list? Use <a href="#search">Search</a> (results CSV and PDF). The full audit trail is in the <a href="#logs">System log</a>.</p>
+  <div class="panel mt"><h3>Email reports and alerts</h3>
+    <p class="note" id="ntStatus" style="margin-top:0"></p>
+    <div class="tbl-wrap"><table id="ntRules"></table></div>
+    <form id="ntForm" class="nt-form" hidden>
+      <input type="hidden" id="ntId">
+      <label>Name<input id="ntName" type="text" maxlength="60" placeholder="e.g. Monthly report for the Deputy Commissioner" required></label>
+      <label>What<select id="ntKind"><option value="report">Report: figures, actions, coming up, forecast</option><option value="alerts">Alerts: only actions needed</option></select></label>
+      <label>How often<select id="ntFreq"></select></label>
+      <label class="nt-wide">Send to (email addresses, separated by commas)<input id="ntTo" type="text" list="ntUsers" autocomplete="off" placeholder="name@rsl.org.ls, other@rsl.org.ls"><datalist id="ntUsers"></datalist></label>
+      <label class="nt-check"><input id="ntAi" type="checkbox" checked> Bohlale writes the opening summary</label>
+      <label class="nt-check"><input id="ntActive" type="checkbox" checked> On</label>
+      <div class="nt-btns"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" id="ntCancel">Cancel</button></div>
+      <p class="err" id="ntErr"></p>
+    </form>
+    <p id="ntAddRow"><button class="btn small primary" type="button" id="ntAdd">Add an email</button></p>
+  </div>
+  <div class="two mt">
+    <div class="panel"><h3>Alerts right now</h3><p class="note" style="margin-top:0">What the alert emails would contain. Click one for the details.</p><ul class="attn" id="ntAlerts"></ul></div>
+    <div class="panel"><h3>Emails sent</h3><p class="note" style="margin-top:0">Click one to read it.</p><div class="tbl-wrap"><table id="ntOut"></table></div></div>
+  </div>
 </section>
 
 <section data-view="bohlale" hidden>
@@ -948,13 +999,15 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
   </form>
 </div>
 
+<aside class="drawer" id="drawer" hidden aria-label="Details"><div class="drw-head"><button type="button" class="btn small" id="drwBack" hidden>← Back</button><h2 id="drwTitle"></h2><button type="button" class="drw-x" id="drwX" aria-label="Close">×</button></div><div id="drwBody"></div></aside>
 <div class="toast" id="toast" hidden></div>
 <script src="vendor/leaflet.js"></script>
-<script src="i18n.js?v=20261104c"></script>
-<script src="faq.js?v=20261104c"></script>
-<script src="rsl-mock.js?v=20261104c"></script>
-<script src="tips.js?v=20261104c"></script>
-<script src="app.js?v=20261104c"></script>
-<script src="agent.js?v=20261104c"></script>
+<script src="i18n.js?v=20261104d"></script>
+<script src="faq.js?v=20261104d"></script>
+<script src="rsl-mock.js?v=20261104d"></script>
+<script src="tips.js?v=20261104d"></script>
+<script src="ml.js?v=20261104d"></script>
+<script src="app.js?v=20261104d"></script>
+<script src="agent.js?v=20261104d"></script>
 </body>
 </html>

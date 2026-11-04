@@ -82,17 +82,7 @@ async function respond(q, parts, phone, sessionId, ctx) {
 
   if (who === undefined) return con('Rasiti receipts\n1. I am a customer\n2. I am a seller\n3. Questions & answers\n' + (ctx.lang === 'st' ? '5. English' : '4. Sesotho'));
   if (who === '3') {
-    if (p[0] === undefined) return con('Questions & answers\n1. For customers\n2. For sellers (tax help)\n3. Tip of the day\n4. Daily tip by SMS (M2/day)' + BACK);
-    if (p[0] === '4') { // optional daily tip by SMS, paid by the subscriber
-      if (!phone) return end('We could not read your phone number. Please try again.');
-      const [pr] = await q('SELECT tips_sub FROM phone_prefs WHERE phone=$1', [phone]); const on = !!(pr && pr.tips_sub);
-      if (p[1] === undefined) return con(`Daily tip by SMS: ${on ? 'ON' : 'OFF'}\nOne tax tip every day for M2.00 a day, charged to your airtime.\n1. Subscribe\n2. Stop` + BACK);
-      if (p[1] !== '1' && p[1] !== '2') return end('Please choose 1 or 2.');
-      const want = p[1] === '1';
-      await q('INSERT INTO phone_prefs(phone, tips_sub) VALUES ($1,$2) ON CONFLICT (phone) DO UPDATE SET tips_sub=EXCLUDED.tips_sub, updated_at=now()', [phone, want]);
-      await audit(q, null, want ? 'tip_subscribed' : 'tip_unsubscribed', { actor:'Customer ' + mk(phone), channel:'USSD', price:'M2.00 a day' });
-      return end(want ? 'Subscribed. You will get one tax tip by SMS every day for M2.00 a day.\nTo stop: *999# > 3 > 4 > 2.' : 'Daily tip stopped. You will not be charged. The free tip stays in the menu: *999# > 3 > 3.');
-    }
+    if (p[0] === undefined) return con('Questions & answers\n1. For customers\n2. For sellers (tax help)\n3. Tip of the day' + BACK);
     if (p[0] === '3') { const T = await tips(); const t = T.forDate(new Date()); return end('Tip of the day\n' + T.text(t, ctx.lang)); }
     const set = p[0] === '1' ? 'buyer' : p[0] === '2' ? 'seller' : null;
     if (!set) return end('Please choose 1, 2 or 3. Dial again to start.');

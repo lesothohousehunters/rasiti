@@ -4,8 +4,6 @@
    When RSL shares its own education resources, replace or add tips here: the list repeats every 33 days.
    How they reach people:
    - Free to read: a WhatsApp Channel post every day, and "Tip of the day" on the USSD and WhatsApp menus.
-   - Optional daily SMS: people who subscribe pay M2.00 a day (charged to airtime), so the SMS costs Rasiti nothing.
-     Subscribe on USSD (*999# > 3 > 4) or by sending SUBSCRIBE on WhatsApp; STOP ends it.
    Keep English tips under 155 characters so each fits in one SMS. */
 (function (w) {
   const G = 'RSL Guide on Tax Registration', R = 'RSL website: Registration', P = 'RSL Guide on Tax Registration: payments';
@@ -50,9 +48,5 @@
   function text(t, lang) { return lang === 'st' ? t.st : t.en; }
   // Next n days, for the officer console schedule.
   function schedule(from, n) { const out = []; for (let i = 0; i < n; i++) { const d = new Date((from || new Date()).getTime() + i * DAY); out.push({ date: d, tip: forDate(d) }); } return out; }
-  w.RASITI_TIPS = { list: T, forDate, text, schedule,
-    // Optional daily SMS subscription. Assumptions to confirm with Econet and Vodacom:
-    // subscription price per day, cost of one SMS through a self-hosted SMS gateway connected directly to the networks,
-    // and the share of the subscription the network keeps for billing it to airtime.
-    subPrice: 2.00, smsPrice: 0.14, networkShare: 0.5 };
+  w.RASITI_TIPS = { list: T, forDate, text, schedule };
 })(typeof window !== 'undefined' ? window : globalThis);

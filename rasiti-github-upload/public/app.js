@@ -203,7 +203,6 @@ function loadState(st) {
   st.actions.forEach(a => { if (a.kind === 'invite') S.invited.add(a.target); else if (a.kind === 'visit') S.visits.add(a.target); else S.done.add(a.item_id); });
   S.draws = st.draws || [];
   S.returns = (st.returns || []).map(r => ({id:r.id, no:r.seller_no, period:r.period, sales:Number(r.sales) || 0, declared:Number(r.declared), nil:r.nil_reason, tax:Number(r.tax_due), ch:r.channel, t:Date.parse(r.filed_at)}));
-  S.tipSubs = Number(st.tip_subscribers) || 0;
   S.payments = (st.payments || []).map(x => ({id:x.id, no:x.seller_no, period:x.period, amt:Number(x.amount), ref:x.ref, ch:x.channel, t:Date.parse(x.paid_at)}));
   S.traders.forEach(t => { const s0 = st.sellers.find(x => x.no === t.no); t.reminders = s0 ? s0.reminders !== false : true; });
 }
@@ -705,8 +704,6 @@ function waSend(k, v, label) {
   if (/^(english|senyesemane)$/i.test(String(v).trim())) { setLang(k, 'en'); home(k); return; }
   if (/^(hi|hello|menu|lumela|dumela|start|lethathamo)$/i.test(String(v).trim())) { home(k); return; }
   if (/^(tip|tips|keletso)$/i.test(String(v).trim())) { tipMsg(k); return; }
-  if (/^(subscribe|ingolise)$/i.test(String(v).trim())) { tipSub(k, true); return; }
-  if (/^(stop|emisa)$/i.test(String(v).trim())) { tipSub(k, false); return; }
   setTimeout(() => (k === 't' ? tStep : cStep)(v), 250);
 }
 function openSheet(k, opts) {
@@ -717,12 +714,7 @@ function openSheet(k, opts) {
 function closeSheet(k) { $('#' + k + 'Sheet').hidden = true; }
 // Tip of the day on WhatsApp: free to send while the person is chatting, and posted daily on the free Rasiti WhatsApp Channel.
 function tipMsg(k) { const p = PH[k]; const t = TIPS.forDate(new Date(clock), k === 't' ? 'seller' : null); p.tipDay = new Date(clock).toDateString();
-  show(k, '💡 Tip of the day\n' + TIPS.text(t, p.lang) + '\n\n' + (p.lang === 'st' ? 'Mohloli' : 'Source') + ': ' + t.src + '\nType TIP any day for a new tip.\n' + (p.tipSub ? '' : 'Get this tip every day by SMS for M2.00 a day: send SUBSCRIBE.\n') + '0. Menu'); }
-// Optional daily tip by SMS: the subscriber pays M2.00 a day (billed to airtime by the network in a pilot).
-function tipSub(k, on) { const p = PH[k]; const ph = phoneOf(k); if (!!p.tipSub !== on) S.tipSubs = Math.max(0, (S.tipSubs || 0) + (on ? 1 : -1)); p.tipSub = on;
-  if (ph) persist({kind:'tip_sub', phone:ph, on}).catch(() => {});
-  log('info', `${k === 'c' ? 'Customer' : 'Seller'} phone ${on ? 'subscribed to' : 'stopped'} the daily tip by SMS (M2.00 a day)`);
-  show(k, (on ? 'Subscribed to the daily tip by SMS (M2.00 a day). Send STOP to end it.' : 'Daily tip by SMS stopped. You will not be charged.') + '\n0. Menu'); renderAll(); }
+  show(k, '💡 Tip of the day\n' + TIPS.text(t, p.lang) + '\n\n' + (p.lang === 'st' ? 'Mohloli' : 'Source') + ': ' + t.src + '\nType TIP any day for a new tip.\n0. Menu'); }
 function home(k) { PH[k].st = 'home'; PH[k].d = {};
   if (PH[k].mode === 'wa' && PH[k].tipDay !== new Date(clock).toDateString() && (k === 't' ? tByNo(PH.t.who) : isCustomer(PH.c.who))) tipMsg(k);
   if (k === 'c' && !isCustomer(PH.c.who)) { PH.c.st = 'c_reg0'; show('c', regPrompt()); return; }
@@ -1082,7 +1074,7 @@ function getMap(id) {
 function renderLeadMap(wl) {
   const m = getMap('leadMap'); if (!m) return; m.layer.clearLayers();
   for (const i of wl) { if (!i.ll) continue; const col = i.pri >= 3 ? '#d93025' : i.pri === 2 ? '#f0a020' : '#9aa0ad';
-    L.circleMarker(i.ll, {radius:9, color:'#fff', weight:2, fillColor:col, fillOpacity:1}).bindPopup(`<b>${esc(i.subj.name)}</b>${esc(i.act)}`).addTo(m.layer); }
+    L.circleMarker(i.ll, {radius:9, color:'#fff', weight:2, fillColor:col, fillOpacity:1}).bindTooltip(`${esc(i.subj.name)}: ${esc(i.act)}. Click for details.`).on('click', () => openDrill(i.subj.no ? 'seller:' + i.subj.no : 'item:' + i.id)).addTo(m.layer); }
   setTimeout(() => m.map.invalidateSize(), 50);
 }
 
@@ -1094,7 +1086,7 @@ function watchReports(f) { f = f || {days:30, area:'all', who:'all'}; const spam
   return S.reports.filter(r => r.t >= from && !spam.has(r.ph) && (!r.target.no || tByNo(r.target.no)) && (f.area === 'all' || repArea(r) === f.area) && (f.who === 'all' || (f.who === 'on') === !!r.target.no)); }
 function shopStats(f) { const by = {};
   for (const r of watchReports(f)) { const k = r.target.no ? 'T' + r.target.no : 'P' + r.target.place; const tr = r.target.no && tByNo(r.target.no);
-    const e = by[k] = by[k] || {label:tr ? `${tr.name} · ${tr.trade}` : r.target.label, area:repArea(r), on:!!tr, kind:tr ? 'On Rasiti' : (r.target.kind || 'Informal'), got:0, neg:0, people:new Set(), negP:new Set(), lls:[], tr, types:{}};
+    const e = by[k] = by[k] || {key:k, label:tr ? `${tr.name} · ${tr.trade}` : r.target.label, area:repArea(r), on:!!tr, kind:tr ? 'On Rasiti' : (r.target.kind || 'Informal'), got:0, neg:0, people:new Set(), negP:new Set(), lls:[], tr, types:{}};
     if (r.type === 'got') e.got++; else { e.neg++; e.negP.add(r.ph); } e.types[r.type] = (e.types[r.type] || 0) + 1; e.people.add(r.ph); if (r.lat != null) e.lls.push([r.lat, r.lng]); }
   return Object.values(by).map(e => { const n = e.got + e.neg; const rate = e.people.size >= 3 ? e.got / n : null;
     const sig = rate === null ? 'few' : (!e.on && e.negP.size >= 3) ? 'lead' : rate >= .8 ? 'good' : rate < .5 ? 'low' : 'mid';
@@ -1140,15 +1132,15 @@ function chartDaily(days, p, W) { W = W || 640; const H = 230, L = 34, R = 10, T
   days.forEach((d, i) => { const x = L + i * bw + g / 2, w = bw - g; const hg = ch * d.got / mx, hn = ch * d.no / mx; const yb = T + ch;
     if (hg) s += `<path d="${hg && !hn ? barPath(x, yb - hg, w, hg, 3) : `M${x},${yb}V${yb - hg}H${x + w}V${yb}Z`}" fill="${p.got}"/>`;
     if (hn) s += `<path d="${barPath(x, yb - hg - hn - (hg ? 2 : 0), w, hn, 3)}" fill="${p.no}"/>`;
-    s += `<rect x="${L + i * bw}" y="${T}" width="${bw}" height="${ch}" fill="transparent" data-tip="${esc(fD(d.t))}: ${d.got + d.no} ratings · ${d.got} got a receipt · ${d.no} no receipt or a problem"/>`;
+    s += `<rect class="drill" data-drill="wday:${d.t}" x="${L + i * bw}" y="${T}" width="${bw}" height="${ch}" fill="transparent" data-tip="${esc(fD(d.t))}: ${d.got + d.no} ratings · ${d.got} got a receipt · ${d.no} no receipt or a problem"/>`;
     const step = days.length > 20 ? 7 : days.length > 10 ? 3 : 1; if (i % step === 0 || i === days.length - 1 && days.length <= 10) s += `<text x="${x + w / 2}" y="${H - 9}" font-size="10.5" text-anchor="middle" fill="${p.muted}">${esc(fD(d.t))}</text>`; });
   return s + '</svg>'; }
-function chartHBars(items, p, W, fmt) { W = W || 420; const rowH = 30, T = 6, H = T + items.length * rowH + 4, LW = Math.min(190, W * .42), R = 44; const mx = Math.max(1, ...items.map(i => i.v));
+function chartHBars(items, p, W, fmt) { W = W || 420; const rowH = 30, T = 6, H = T + items.length * rowH + 4, LW = Math.min(190, W * .42), R = 70; const mx = Math.max(1, ...items.map(i => i.v));
   let s = svgOpen(W, H, p);
   items.forEach((it, i) => { const y = T + i * rowH; const w = (W - LW - R) * it.v / mx;
     s += `<text x="${LW - 8}" y="${y + 18}" font-size="11.5" text-anchor="end" fill="${p.ink}">${esc(it.label)}</text><rect x="${LW}" y="${y + 6}" width="${W - LW - R}" height="16" rx="3" fill="${p.grid}" opacity=".45"/>`;
     if (w > 0) s += `<path d="M${LW},${y + 6}H${LW + w - 3}Q${LW + w},${y + 6} ${LW + w},${y + 9}V${y + 19}Q${LW + w},${y + 22} ${LW + w - 3},${y + 22}H${LW}Z" fill="${p.bar}"/>`;
-    s += `<text x="${LW + w + 6}" y="${y + 18}" font-size="11.5" font-weight="600" fill="${p.ink}">${fmt ? fmt(it.v) : it.v}</text><rect x="0" y="${y}" width="${W}" height="${rowH}" fill="transparent" data-tip="${esc(it.tip || it.label + ': ' + it.v)}"/>`; });
+    s += `<text x="${LW + w + 6}" y="${y + 18}" font-size="11.5" font-weight="600" fill="${p.ink}">${fmt ? fmt(it.v) : it.v}</text><rect x="0" y="${y}" width="${W}" height="${rowH}" fill="transparent"${it.drill ? ` class="drill" data-drill="${esc(it.drill)}"` : ''} data-tip="${esc(it.tip || it.label + ': ' + it.v)}"/>`; });
   return s + '</svg>'; }
 function chartHours(hours, p, W) { W = W || 420; const H = 220, L = 34, R = 8, T = 14, B = 30; const cw = W - L - R, ch = H - T - B; const bw = cw / hours.length;
   let s = svgOpen(W, H, p);
@@ -1156,7 +1148,7 @@ function chartHours(hours, p, W) { W = W || 420; const H = 220, L = 34, R = 8, T
   hours.forEach((h, i) => { const x = L + i * bw + bw * .18, w = bw * .64, v = h.missed ?? 0, hh = ch * v / 100;
     if (hh) s += `<path d="${barPath(x, T + ch - hh, w, hh, 4)}" fill="${p.no}"/>`;
     if (h.got + h.no) s += `<text x="${x + w / 2}" y="${T + ch - hh - 5}" font-size="10.5" text-anchor="middle" fill="${p.ink}" font-weight="600">${h.missed}%</text>`;
-    s += `<text x="${x + w / 2}" y="${H - 10}" font-size="10.5" text-anchor="middle" fill="${p.muted}">${h.label}</text><rect x="${L + i * bw}" y="${T}" width="${bw}" height="${ch}" fill="transparent" data-tip="${h.label}: ${h.got + h.no} ratings · ${h.missed ?? 0}% had no receipt or a problem"/>`; });
+    s += `<text x="${x + w / 2}" y="${H - 10}" font-size="10.5" text-anchor="middle" fill="${p.muted}">${h.label}</text><rect class="drill" data-drill="hour:${i}" x="${L + i * bw}" y="${T}" width="${bw}" height="${ch}" fill="transparent" data-tip="${h.label}: ${h.got + h.no} ratings · ${h.missed ?? 0}% had no receipt or a problem"/>`; });
   return s + '</svg>'; }
 function chartSchematic(st, p, W) { W = W || 640; const H = Math.round(W * .62); const pts = st.filter(x => x.ll); const all = [...pts.map(x => x.ll), ...Object.values(AREAS)];
   const la = all.map(x => x[0]), lo = all.map(x => x[1]); const a0 = Math.min(...la) - .004, a1 = Math.max(...la) + .004, o0 = Math.min(...lo) - .006, o1 = Math.max(...lo) + .006;
@@ -1172,19 +1164,19 @@ function renderWatchMaps(a) {
   const sel = a.st.filter(x => WF.sig === 'all' || x.sig === WF.sig);
   const m = getMap('watchMap'); if (m) { m.layer.clearLayers();
     for (const x of sel) { if (!x.ll) continue;
-      L.circleMarker(x.ll, {radius:x.on ? 8 : 7, color:'#fff', weight:2, fillColor:SIGCOL[x.sig], fillOpacity:1}).bindPopup(`<b>${esc(x.label)}</b>${esc(x.kind)} · ${esc(x.area)}<br>${x.n} ratings from ${x.people.size} people<br>${x.rate === null ? 'Too few ratings to judge' : Math.round(x.rate * 100) + '% got a receipt'}`).addTo(m.layer); }
+      L.circleMarker(x.ll, {radius:x.on ? 8 : 7, color:'#fff', weight:2, fillColor:SIGCOL[x.sig], fillOpacity:1}).bindTooltip(`${esc(x.label)}: ${x.rate === null ? 'too few ratings' : Math.round(x.rate * 100) + '% got a receipt'}. Click for details.`).on('click', () => openDrill(x.tr ? 'seller:' + x.tr.no : 'shop:' + x.key)).addTo(m.layer); }
     setTimeout(() => m.map.invalidateSize(), 50); }
   const h = getMap('hotMap'); if (h) { h.layer.clearLayers();
     for (const r of a.rs) { if (r.type === 'got' || (WF.ctype !== 'all' && r.type !== WF.ctype)) continue; let ll = r.lat != null ? [r.lat, r.lng] : null;
       if (!ll && r.target.no) { const t = tByNo(r.target.no); const b = t && traderLL(t); if (b) { const j = hashStr(r.id); ll = [b[0] + ((j % 100) - 50) / 90000, b[1] + (((j >> 8) % 100) - 50) / 90000]; } }
       if (!ll) continue;
-      L.circleMarker(ll, {radius:6, stroke:false, fillColor:'#eb6834', fillOpacity:.35}).bindPopup(`<b>${esc(REPTYPE[r.type])}</b>${esc(r.target.no ? tByNo(r.target.no).name : r.target.label)}<br>${fT(r.t)}`).addTo(h.layer); }
+      L.circleMarker(ll, {radius:6, stroke:false, fillColor:'#eb6834', fillOpacity:.35}).bindTooltip(`${esc(REPTYPE[r.type])}: ${esc(r.target.no ? tByNo(r.target.no).name : r.target.label)}, ${fT(r.t)}`).on('click', () => openDrill(r.target.no ? 'seller:' + r.target.no : 'shop:P' + r.target.place)).addTo(h.layer); }
     if (!h.fitted) { h.fitted = true; h.map.fitBounds(L.latLngBounds(Object.values(AREAS)).pad(.15)); }
     setTimeout(() => h.map.invalidateSize(), 50); }
   const am = getMap('areaMap'); if (am) { am.layer.clearLayers();
     for (const x of a.areas) { const c = AREAS[x.area]; if (!c || x.rate == null) continue; const col = x.rate >= 80 ? '#1d9e57' : x.rate < 50 ? '#f0a020' : '#3b82f6';
       L.circle(c, {radius:140 + x.n * 5, color:'#fff', weight:2, fillColor:col, fillOpacity:.45}).bindTooltip(`${x.rate}%`, {permanent:true, direction:'center', className:'area-tip'})
-        .bindPopup(`<b>${esc(x.area)}</b>${x.n} ratings · ${x.rate}% got a receipt<br>${x.shops} shops, ${x.off} not on Rasiti, ${x.leads} new leads<br>First half of period: ${x.early ?? '–'}% · second half: ${x.late ?? '–'}%`).addTo(am.layer); }
+        .on('click', () => openDrill('area:' + x.area)).addTo(am.layer); }
     if (!am.fitted) { am.fitted = true; am.map.fitBounds(L.latLngBounds(Object.values(AREAS)).pad(.15)); }
     setTimeout(() => am.map.invalidateSize(), 50); }
 }
@@ -1204,7 +1196,7 @@ function renderWatch() {
   const p = PAL[isDark() ? 'dark' : 'light'];
   const cw = id => Math.max(300, Math.round($(id).clientWidth || 0)) || 600;
   $('#chDaily').innerHTML = chartDaily(a.days, p, cw('#chDaily'));
-  $('#chTypes').innerHTML = chartHBars(a.types.map(t => ({label:REPSHORT[t.k], v:t.n, tip:`${t.label}: ${t.n} (${pct(t.n, k.ratings) ?? 0}% of ratings)`})), p, cw('#chTypes'));
+  $('#chTypes').innerHTML = chartHBars(a.types.map(t => ({label:REPSHORT[t.k], v:t.n, drill:'rtype:' + t.k, tip:`${t.label}: ${t.n} (${pct(t.n, k.ratings) ?? 0}% of ratings)`})), p, cw('#chTypes'));
   $('#chHours').innerHTML = chartHours(a.hours, p, cw('#chHours'));
   $('#areaTbl').innerHTML = '<tr><th>Area</th><th class="num">Shops</th><th class="num">Not on Rasiti</th><th>Got a receipt</th><th class="num">Change</th><th class="num">Leads</th></tr>' + a.areas.map(x => { const pc = x.rate ?? 0; const ch = x.early != null && x.late != null && x.p1n >= 3 && x.p2n >= 3 ? x.late - x.early : null;
     return `<tr><td>${esc(x.area)}<div class="note">${x.n} ratings</div></td><td class="num">${x.shops}</td><td class="num">${x.off}</td><td style="min-width:130px"><div class="fn" style="grid-template-columns:1fr 40px"><span class="bar"><i style="width:${pc}%;background:${pc >= 80 ? 'var(--green)' : pc < 50 ? 'var(--warn)' : 'var(--accent)'}"></i></span><b>${pc}%</b></div></td><td class="num">${ch == null ? '–' : (ch > 0 ? '▲ +' : ch < 0 ? '▼ ' : '') + ch}</td><td class="num">${x.leads}</td></tr>`; }).join('') || '<tr><td>No ratings match these filters.</td></tr>';
@@ -1664,7 +1656,7 @@ function renderOfficer() {
   fillSel('#ofArea', [['all', 'All areas'], ...[...new Set([...S.traders.map(t => t.market), ...S.reports.map(r => r.target.area).filter(Boolean)])].sort().map(a => [a, a])], OF.area);
   $('#ofNote').textContent = 'Showing: ' + officerLabel() + '. The worklist, map, review queue and complaints follow these filters.';
   const wl = officerItems(); const dis = canWork() ? '' : ' disabled title="Viewers cannot take actions"';
-  $('#workTbl').innerHTML = '<tr><th>Priority</th><th>Seller</th><th>Recommended action and why</th><th></th></tr>' + wl.map(i => `<tr><td>${PRI[i.pri]}</td><td><b>${esc(i.subj.name)}</b><div class="note">${esc([i.subj.trade, i.subj.market].filter(Boolean).join(' · '))}${i.subj.no ? ' · code ' + i.subj.no : ''}</div></td><td>${esc(i.act)}<ul class="why">${i.why.map(w => `<li>${esc(w)}</li>`).join('')}</ul></td><td style="white-space:nowrap">${i.btn ? `<button class="btn small" data-w="${esc(i.id)}"${dis}>${i.btn}</button> ` : ''}${i.subj.no ? `<button class="btn small bh-ask" data-ask="${i.subj.no}" title="Ask Bohlale AI to explain this case">Ask Bohlale</button>` : ''}</td></tr>`).join('');
+  $('#workTbl').innerHTML = '<tr><th>Priority</th><th>Seller</th><th>Recommended action and why</th><th></th></tr>' + wl.map(i => `<tr><td>${PRI[i.pri]}</td><td><b class="drill-link" data-drill="${i.subj.no ? 'seller:' + i.subj.no : 'item:' + esc(i.id)}" tabindex="0">${esc(i.subj.name)}</b><div class="note">${esc([i.subj.trade, i.subj.market].filter(Boolean).join(' · '))}${i.subj.no ? ' · code ' + i.subj.no : ''}</div></td><td>${esc(i.act)}<ul class="why">${i.why.map(w => `<li>${esc(w)}</li>`).join('')}</ul></td><td style="white-space:nowrap">${i.btn ? `<button class="btn small" data-w="${esc(i.id)}"${dis}>${i.btn}</button> ` : ''}${i.subj.no ? `<button class="btn small bh-ask" data-ask="${i.subj.no}" title="Ask Bohlale AI to explain this case">Ask Bohlale</button>` : ''}</td></tr>`).join('');
   $('#reviewTbl').innerHTML = '<tr><th>Case</th><th>Seller</th><th class="num">Amount</th><th>Why it was held</th><th>Decision</th></tr>' + heldGroups().map(rs => { const r = rs[0]; const e = S.eval[r.code]; const tr = tByNo(r.no) || {name:r.no}; const phs = new Set(rs.map(x => x.ph)); const codes = rs.map(x => x.code).join(',');
     return `<tr><td><b>${rs.length} receipt${rs.length > 1 ? 's' : ''}</b><div class="note">${phs.size} phone${phs.size > 1 ? 's' : ''} · latest ${fT(r.t)}</div><details><summary>Codes</summary><div class="mono">${rs.map(x => x.code + ' ' + mask(x.ph)).join('<br>')}</div></details></td><td>${esc(tr.name)}</td><td class="num">${M(rs.reduce((a, x) => a + x.amt, 0))}</td><td><ul class="why" style="margin:0">${e.flags.map(f => `<li>${esc(f.why)}</li>`).join('')}</ul>${r.note ? `<div class="note">Hint: ${esc(r.note)}</div>` : ''}</td><td style="white-space:nowrap"><button class="btn small" data-rv="approved" data-c="${codes}"${dis}>Approve entries</button> <button class="btn small" data-rv="rejected" data-c="${codes}"${dis}>Reject</button></td></tr>`; }).join('') + (heldGroups().length ? '<tr><td colspan="5" class="note">Either way, the sale stays in the seller\'s sales book. Only draw entries are decided here.</td></tr>' : '<tr><td colspan="5" class="note">Queue empty.</td></tr>');
   const regs = S.traders.filter(t => t.status === 'registered' && (OF.area === 'all' || t.market === OF.area));
@@ -1897,6 +1889,13 @@ function bhExtra() {
       sellers:S.traders.filter(t => t.status === 'registered').map(t => { const x = taxOf(t.no); return {code:t.no, name:t.name, last_return:x.last ? {declared:x.last.declared, nil_reason:x.last.nil, tax_due:x.last.tax, paid:x.paid(x.last.period)} : 'not filed', returns_12m:x.rets.length, filed_on_time:x.rets.filter(x.onTimeFile).length, overdue_tax:x.overdueAmt, overdue_quarters:x.overdue.map(r => perName(r.period)), on_time_streak:x.streak, reminders:t.reminders !== false}; }),
       total_paid_12m:S.payments.reduce((a, x) => a + x.amt, 0)},
     community_watch:watchContext(watchData({days:30, area:'all', who:'all', sig:'all', ctype:'all'})),
+    forecasts:(() => { const ml = mlRun(); const sum = (a, k) => a.reduce((x, y) => x + y[k], 0); return {how:'Learned by Rasiti from its own data (Holt-Winters forecast with a weekly pattern; logistic regression for late returns). Re-trained whenever data changes. Forecasts rank what to look at; they never decide.',
+      sales_next_7_days:Math.round(sum(ml.fV.slice(0, 7), 'yhat')), sales_next_30_days:{expected:Math.round(sum(ml.fV.slice(0, 30), 'yhat')), low:Math.round(sum(ml.fV.slice(0, 30), 'lo')), high:Math.round(sum(ml.fV.slice(0, 30), 'hi'))},
+      tested_accuracy:ml.bt ? {average_error_pct:ml.bt.mape, days_inside_range_pct:ml.bt.coverage, test_days:ml.bt.days} : null, weekday_pattern_pct_vs_average:ml.week ? Object.fromEntries(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => [d, ml.week[i]])) : null,
+      this_quarter:{name:ml.q.name, due:ml.q.due, expected_sales:Math.round(ml.q.sales), expected_tax:Math.round(ml.q.tax)}, draw_entries_expected_this_month:ml.drawExp,
+      late_return_risk:ml.risk.map(r => ({seller:r.t.name, code:r.t.no, chance_pct:Math.round(r.p * 100), main_reason:r.why[0].push > 0.05 ? r.why[0].name : 'none'})),
+      sellers:ml.sellers.filter(x => x.m).map(x => ({seller:x.t.name, code:x.t.no, expected_sales_this_quarter:Math.round(x.qSales), last_7_days:Math.round(x.last7), expected_last_7_days:Math.round(x.exp7), unusual_z:x.z})),
+      alerts:ml.alerts.map(a => a.t + ': ' + a.why)}; })(),
     recent_activity:S.feed.slice(0, 10).map(f => fT(f.t) + ' ' + f.text)
   };
 }
@@ -1909,7 +1908,8 @@ const BH_TOPICS = {
   officer_actions:/invit|visit|contact|done|action|officer|follow/i,
   community_watch:/area|rating|rate|communit|watch|complain|report|market|hotspot|time of day|hour|lead|badge|unlisted|extra|where/i,
   recent_activity:/recent|just|latest|happen|activity|log/i,
-  filing_and_payments:/fil|return|pay|arrear|overdue|owe|debt|reminder|streak|on time|late|sbt|tax due|plan/i
+  filing_and_payments:/fil|return|pay|arrear|overdue|owe|debt|reminder|streak|on time|late|sbt|tax due|plan/i,
+  forecasts:/forecast|predict|expect|next (week|month|quarter)|trend|future|risk|likely|machine|learn|model|anomal|unusual|project/i
 };
 function bhContextFor(question, focusNo, full) {
   const was = SHOWPH; SHOWPH = false; // Bohlale never sees full phone numbers
@@ -2167,7 +2167,7 @@ function dashData(days) { days = days || DASHD;
   const chg = (a, b) => b ? Math.round((a - b) / b * 100) : null;
   return {days, rs, prs, w, held, fakes, daily, per, o, by, reg, via, enrolled, filed, wl, top,
     k:{receipts:rs.length, receiptsChg:chg(rs.length, prs.length), value:sum(rs), valueChg:chg(sum(rs), sum(prs)), customers:cust(rs), customersChg:chg(cust(rs), cust(prs)),
-      sellers:S.traders.length, reg, via, rate:w.kp.rate, leads:w.kp.leads, held, fakes, entries:o.active, pending:S.claims.filter(c => c.state === 'pending').length,
+      sellers:S.traders.length, reg, via, rate:w.kp.rate, leads:w.kp.leads, held, fakes, entries:o.active, pending:S.claims.filter(c => claimState(c) === 'pending').length,
       high:wl.filter(i => i.pri >= 3).length, ...(() => { const xs = S.traders.filter(t => t.status === 'registered').map(t => taxOf(t.no)); const rets = xs.flatMap(x => x.rets);
         return {onTime:pctS(rets.filter(r => r.t <= perDueT(r.period)).length, rets.length), returns:rets.length, taxPaid:S.payments.filter(x => x.t >= from).reduce((a, x) => a + x.amt, 0), overdue:xs.reduce((a, x) => a + x.overdueAmt, 0)}; })()}}; }
 const dChg = (c, word) => c == null ? `<span class="d">no earlier data</span>` : `<span class="d ${c > 0 ? 'up' : c < 0 ? 'down' : ''}">${c > 0 ? '▲' : c < 0 ? '▼' : '■'} ${Math.abs(c)}% ${word}</span>`;
@@ -2180,41 +2180,31 @@ function chartCount(daily, p, W) { W = W || 640; const H = 210, L = 34, R = 10, 
     const step = daily.length > 20 ? 7 : daily.length > 10 ? 3 : 1; if (i % step === 0) s += `<text x="${x + w / 2}" y="${H - 9}" font-size="10.5" text-anchor="middle" fill="${p.muted}">${esc(fD(d.t))}</text>`; });
   return s + '</svg>'; }
 function dashMapSpec(D) { const pts = [];
-  for (const t of S.traders) { const ll = traderLL(t); if (ll) pts.push({ll, color:t.status === 'registered' ? '#1d9e57' : '#3b82f6', r:11}); }
-  for (const x of D.w.st) if (!x.on && x.ll && (x.sig === 'lead' || x.sig === 'low')) pts.push({ll:x.ll, color:x.sig === 'lead' ? '#d93025' : '#f0a020', r:10});
+  for (const t of S.traders) { const ll = traderLL(t); if (ll) pts.push({ll, color:t.status === 'registered' ? '#1d9e57' : '#3b82f6', r:11, drill:'seller:' + t.no, name:t.name}); }
+  for (const x of D.w.st) if (!x.on && x.ll && (x.sig === 'lead' || x.sig === 'low')) pts.push({ll:x.ll, color:x.sig === 'lead' ? '#d93025' : '#f0a020', r:10, drill:'shop:' + x.key, name:x.label});
   return {points:pts, labels:Object.entries(AREAS).map(([n, ll]) => ({ll, text:n})), legend:[['#1d9e57', 'Registered seller'], ['#3b82f6', 'On Rasiti, not registered'], ['#d93025', 'New lead (not on Rasiti)'], ['#f0a020', 'Low receipts']]}; }
 function renderDash() {
-  if (!$('#dashKpis')) return; const D = dashData(); const k = D.k; const p = PAL[isDark() ? 'dark' : 'light'];
+  if (!$('#dashKpis')) return; const D = dashData(); const k = D.k; const ml = mlRun();
   $('#dashFilters').innerHTML = [[7, 'Last 7 days'], [14, 'Last 14 days'], [30, 'Last 30 days']].map(([v, l]) => `<button type="button" data-dd="${v}" aria-pressed="${DASHD === v}">${l}</button>`).join('');
+  const n30 = ml.fV.slice(0, 30).reduce((a, f) => a + f.yhat, 0);
   $('#dashKpis').innerHTML = [
-    dkpi(k.receipts.toLocaleString('en-US'), 'Receipts issued', dChg(k.receiptsChg, 'vs previous'), 'shield'),
-    dkpi(M(k.value), 'Receipted sales', dChg(k.valueChg, 'vs previous'), 'officer'),
-    dkpi(k.customers.toLocaleString('en-US'), 'Customers asking for receipts', dChg(k.customersChg, 'vs previous'), 'draw'),
+    dkpi(M(k.value), 'Receipted sales', dChg(k.valueChg, 'vs previous'), 'search'),
+    dkpi(k.receipts.toLocaleString('en-US'), 'Receipts issued', dChg(k.receiptsChg, 'vs previous'), 'search'),
     dkpi(`${k.reg}<small> / ${k.sellers}</small>`, 'Sellers registered for tax', `<span class="d up">${k.via} registered through Rasiti</span>`, 'officer'),
-    dkpi((k.rate ?? '-') + '%', 'Purchases with a receipt (customer ratings)', `<span class="d">${k.leads} new leads found</span>`, 'watch'),
-    dkpi(k.held, 'Receipts held for review', `<span class="d ${k.fakes ? 'down' : ''}">${k.fakes} fake codes caught</span>`, 'shield'),
-    dkpi(k.entries.toLocaleString('en-US'), 'Live draw entries', `<span class="d">${Object.keys(D.by).length} customers in the ${esc(D.per.name)} draw</span>`, 'draw'),
-    dkpi(k.high, 'High-priority actions', `<span class="d">${k.pending} receipt requests waiting for sellers</span>`, 'officer'),
-    dkpi(k.onTime, 'Returns filed on time', `<span class="d">${k.returns} returns in the last 12 months</span>`, 'officer'),
-    dkpi(M(k.taxPaid), 'Tax paid through Rasiti', `<span class="d ${k.overdue ? 'down' : 'up'}">${k.overdue ? M(k.overdue) + ' overdue' : 'nothing overdue'}</span>`, 'officer')].join('');
-  $('#dashChart').innerHTML = chartCount(D.daily, p, Math.max(300, Math.round($('#dashChart').clientWidth || 600)));
-  const busy = D.daily.slice().sort((a, b) => b.n - a.n)[0];
-  $('#dashChartNote').textContent = `${D.k.receipts.toLocaleString('en-US')} receipts in ${D.days} days, about ${Math.round(D.k.receipts / D.days)} a day. Busiest day: ${busy ? fD(busy.t) + ' (' + busy.n + ')' : '-'}.`;
-  const steps = [['Reported by customers', D.w.st.filter(x => !x.on && x.negP.size > 0).length], ['On Rasiti, sales book only', D.enrolled], ['Registered for tax', D.reg], ['Filed last quarter', D.filed]]; const mx = Math.max(...steps.map(s => s[1]), 1);
-  $('#dashFunnel').innerHTML = steps.map(s => `<div class="fn"><span>${s[0]}</span><span class="bar"><i style="width:${s[1] / mx * 100}%"></i></span><b>${s[1]}</b></div>`).join('');
-  $('#dashAttn').innerHTML = D.wl.filter(i => i.pri >= 2).slice(0, 6).map(i => `<li><span class="pill ${i.pri >= 3 ? 'p-bad' : 'p-warn'}">${PRITXT[i.pri]}</span><div><b>${esc(i.subj.name)}</b><div class="note">${esc(i.act)}</div></div></li>`).join('') || '<li class="note">Nothing urgent. Well done.</li>';
-  $('#dashAreas').innerHTML = '<tr><th>Area</th><th class="num">Receipt rate</th><th class="num">Leads</th></tr>' + D.w.areas.filter(a => a.rate != null).map(a => `<tr><td>${esc(a.area)}</td><td class="num"><b style="color:${a.rate >= 80 ? 'var(--green)' : a.rate < 50 ? 'var(--warn)' : 'inherit'}">${a.rate}%</b></td><td class="num">${a.leads}</td></tr>`).join('');
-  $('#dashTop').innerHTML = '<tr><th>Seller</th><th class="num">Receipts</th><th class="num">Sales</th></tr>' + D.top.slice(0, 6).map(x => `<tr><td>${esc(x.t.name)}<div class="note">${esc(x.t.market)} · ${x.t.status === 'registered' ? 'registered' : 'not yet registered'}</div></td><td class="num">${x.n}</td><td class="num">${M(x.v)}</td></tr>`).join('');
-  const last = lastDrawData();
-  $('#dashDraw').innerHTML = `<div class="fn"><span>Live entries</span><span></span><b>${D.o.active.toLocaleString('en-US')}</b></div><p class="note" style="margin:6px 0 0">${esc(D.per.title)}. ${last ? `Last draw: ${esc(last.when)}, ${last.winners.length} winners.` : 'Not drawn yet.'} Prize pool M10,800 a month.</p>`;
-  if (currentView() === 'dash') { renderDashMap(D); renderDashActivity(); }
+    dkpi(k.high, 'High-priority actions', `<span class="d">${k.pending} cash claims waiting for sellers</span>`, 'officer'),
+    dkpi(M(n30), 'Forecast: sales next 30 days', `<span class="d">${ml.bt ? 'tested error ' + ml.bt.mape + '%' : 'learning'}</span>`, 'forecast'),
+    dkpi(M(ml.q.tax), `Forecast: tax for ${esc(ml.q.name)}`, `<span class="d">due ${esc(ml.q.due)}</span>`, 'forecast')].join('');
+  dashCharts(D);
+  const steps = [['reported', 'Reported by customers', D.w.st.filter(x => !x.on && x.negP.size > 0).length], ['enrolled', 'On Rasiti, sales book only', D.enrolled], ['registered', 'Registered for tax', D.reg], ['filed', 'Filed last quarter', D.filed]]; const mx = Math.max(...steps.map(s => s[2]), 1);
+  $('#dashFunnel').innerHTML = steps.map(s => `<div class="fn drill" data-drill="stage:${s[0]}" tabindex="0" title="Click for the list"><span>${s[1]}</span><span class="bar"><i style="width:${s[2] / mx * 100}%"></i></span><b>${s[2]}</b></div>`).join('');
+  const att = [...D.wl.filter(i => i.pri >= 2).slice(0, 5).map(i => ({drill:i.subj.no ? 'seller:' + i.subj.no : 'item:' + i.id, pill:`<span class="pill ${i.pri >= 3 ? 'p-bad' : 'p-warn'}">${PRITXT[i.pri]}</span>`, t:i.subj.name, d:i.act})),
+    ...ml.alerts.slice(0, 3).map((a, i) => ({drill:'alert:' + i, pill:'<span class="pill p-info">Forecast</span>', t:a.t, d:a.why}))];
+  $('#dashAttn').innerHTML = att.map(a => `<li class="drill" data-drill="${esc(a.drill)}" tabindex="0">${a.pill}<div><b>${esc(a.t)}</b><div class="note">${esc(a.d)}</div></div></li>`).join('') || '<li class="note">Nothing urgent. Well done.</li>';
+  if (currentView() === 'dash') renderDashMap(D);
 }
 function renderDashMap(D) { const m = getMap('dashMap'); if (!m) return; m.layer.clearLayers(); const spec = dashMapSpec(D);
-  for (const x of spec.points) L.circleMarker(x.ll, {radius:7, color:'#fff', weight:2, fillColor:x.color, fillOpacity:1}).addTo(m.layer);
+  for (const x of spec.points) L.circleMarker(x.ll, {radius:8, color:'#fff', weight:2, fillColor:x.color, fillOpacity:1}).bindTooltip(esc(x.name || '') + '. Click for details.').on('click', () => openDrill(x.drill)).addTo(m.layer);
   if (!m.fitted) { m.fitted = true; m.map.fitBounds(L.latLngBounds(Object.values(AREAS)).pad(.12)); } setTimeout(() => m.map.invalidateSize(), 50); }
-async function renderDashActivity() { const el = $('#dashAct'); const admin = API.online && API.user && ['owner', 'admin'].includes(API.user.role);
-  if (admin) { try { const r = await api('logs?limit=8', null, {quiet:true}); el.innerHTML = r.rows.map(x => `<li><time>${hm(Date.parse(x.at))}</time><span><b>${esc(logWho(x))}</b> ${esc(ACTLABEL(x.action).toLowerCase())}</span></li>`).join('') || '<li class="note">No activity yet.</li>'; $('#dashActLink').hidden = false; return; } catch {} }
-  $('#dashActLink').hidden = true; el.innerHTML = S.feed.slice(0, 8).map(f => `<li><time>${hm(f.t)}</time><span>${esc(f.text)}</span></li>`).join('') || '<li class="note">No activity yet in this session.</li>'; }
 function dashPDF() { return withBusy(async () => { const D = dashData(); const k = D.k;
   const [chart, map] = await Promise.all([svgToPng(chartCount(D.daily, PAL.light, 640)), mapImg(dashMapSpec(D))]);
   const busy = D.daily.slice().sort((a, b) => b.n - a.n)[0]; const ch = c => c == null ? 'no earlier data to compare' : `${c > 0 ? 'up' : c < 0 ? 'down' : 'no change'} ${Math.abs(c)}% on the previous ${D.days} days`;
@@ -2347,16 +2337,235 @@ function searchPDF() { return withBusy(async () => { const j = await sxFetch(500
     {t:'table', cols:[['When', 22], ['Type', 18], ['Reference', 26], ['Seller', 30], ['By', 14], ['Amount', 14, 1], ['Customer', 20], ['Checks and notes', 40]], rows:j.rows.map(r => [isoT(Date.parse(r.at)), SXK[r.kind] + (r.paid && r.kind === 'receipt' ? ' · ' + SXP[r.paid] : ''), r.ref, (r.seller_name || '') + ' (' + r.seller_no + ')', SXR[r.rec] || '', M(r.amount), !r.phone ? '' : /^\d+$/.test(r.phone) ? maskCsv(r.phone) : r.phone, sxStatus(r)])}
   ]); }, 'PDF downloaded'); }
 
+/* ================= Machine learning: forecasts, risk and anomalies (models in public/ml.js) ================= */
+// The models are re-trained from the data whenever it changes (new receipts, returns, payments or claims), so they keep learning.
+const ML = window.RASITI_ML;
+let MLC = null, MLKEY = '';
+const isoD = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+function mlRun() {
+  const key = [S.receipts.length, S.claims.length, S.returns.length, S.payments.length, new Date(clock).toDateString(), S.traders.length].join('|');
+  if (MLC && MLKEY === key) return MLC; MLKEY = key;
+  const d0 = new Date(clock); d0.setHours(0, 0, 0, 0); const today = d0.getTime(); const N = 112, first = today - N * DAY; // whole days up to yesterday
+  const series = f => { const v = Array(N).fill(0), n = Array(N).fill(0); for (const r of S.receipts) { if (!counts(r) || (f && !f(r))) continue; const i = Math.floor((r.t - first) / DAY); if (i >= 0 && i < N) { v[i] += r.amt; n[i]++; } } return {v, n}; };
+  const all = series(); let s0 = all.v.findIndex(x => x > 0); if (s0 < 0) s0 = N - 1;
+  const vY = all.v.slice(s0), nY = all.n.slice(s0), base = first + s0 * DAY;
+  const mV = ML.fit(vY), mN = ML.fit(nY), H = 92;
+  const fV = ML.forecast(mV, H).map((f, i) => ({...f, t:today + i * DAY})), fN = ML.forecast(mN, H).map((f, i) => ({...f, t:today + i * DAY}));
+  const bt = ML.backtest(vY, 14), week = ML.weekPattern(mV, base);
+  const sum = (a, k) => a.reduce((x, y) => x + (k ? y[k] : y), 0);
+  // this quarter: sales so far + forecast for the days left, per seller; tax at the demo rate for registered sellers
+  const cq = perOf(clock), qEnd = perStart(perOfNext(cq)), daysLeft = Math.max(0, Math.round((qEnd - today) / DAY));
+  const est = new Set(S.receipts.filter(r => r.ph && r.ch !== 'cash').map(r => r.ph));
+  const sellers = S.traders.map(t => { const s = series(r => r.no === t.no); const a = s.v.findIndex(x => x > 0); const ys = a < 0 ? [] : s.v.slice(a);
+    const soFar = S.receipts.filter(r => r.no === t.no && counts(r) && r.t >= perStart(cq)).reduce((x, r) => x + r.amt, 0);
+    if (ys.length < 21 || sum(ys.slice(-30)) === 0) return {t, ys, m:null, f:[], soFar, qSales:soFar, qLo:soFar, qHi:soFar, qTax:t.status === 'registered' ? Math.round(soFar * TAXRATE) : 0, z:0, last7:sum(ys.slice(-7)), exp7:null};
+    const m = ML.fit(ys); const f = ML.forecast(m, H).map((x, i) => ({...x, t:today + i * DAY}));
+    const rest = f.slice(0, daysLeft); const q = soFar + sum(rest, 'yhat'), qLo = soFar + sum(rest, 'lo'), qHi = soFar + sum(rest, 'hi');
+    const mh = ML.fit(ys.slice(0, -7)); const fh = ML.forecast(mh, 7); const last7 = sum(ys.slice(-7)), exp7 = sum(fh, 'yhat');
+    const z = mh.sd ? (last7 - exp7) / (mh.sd * Math.sqrt(7)) : 0;
+    return {t, ys, m, f, soFar, qSales:q, qLo, qHi, qTax:t.status === 'registered' ? Math.round(q * TAXRATE) : 0, z:+z.toFixed(1), last7, exp7}; });
+  // risk of a late return or late payment: logistic regression trained on every past return
+  const FEAT = ['Past returns filed late', 'Past tax paid late', 'Unpaid tax from earlier quarters', 'Declared below receipts, last return'];
+  const featOf = (t, prev, x) => { const lf = prev.filter(r => !x.onTimeFile(r)).length, lp = prev.filter(r => r.tax > 0 && !x.onTimePay(r)).length; const lr = prev[prev.length - 1];
+    const ps = lr ? perSales(t.no, lr.period) : 0; const under = lr && ps > 0 ? Math.max(0, 1 - lr.declared / ps) : 0;
+    return [prev.length ? lf / prev.length : 0, prev.length ? lp / prev.length : 0, prev.some(r => x.owedOf(r) > 0.5) ? 1 : 0, under]; };
+  const X = [], Y = [];
+  for (const t of S.traders.filter(t => t.status === 'registered')) { const x = taxOf(t.no);
+    x.rets.forEach((r, i) => { if (perDueT(r.period) > clock) return; X.push(featOf(t, x.rets.slice(0, i), x)); Y.push(!x.onTimeFile(r) || !x.onTimePay(r) ? 1 : 0); }); }
+  const model = X.length >= 6 && Y.some(v => v) && Y.some(v => !v) ? ML.logistic(X, Y, {l2:0.05, iters:1500}) : null;
+  const risk = model ? S.traders.filter(t => t.status === 'registered').map(t => { const x = taxOf(t.no); const f = featOf(t, x.rets.filter(r => perDueT(r.period) <= clock), x);
+    const p = model.predict(f); const why = f.map((v, j) => ({name:FEAT[j], v, push:(v - model.mu[j]) / model.sg[j] * model.weights[j]})).sort((a, b) => b.push - a.push);
+    return {t, p, f, why}; }).sort((a, b) => b.p - a.p) : [];
+  // expected draw entries this month
+  const ms = monthStart(), me = new Date(new Date(clock).getFullYear(), new Date(clock).getMonth() + 1, 1).getTime();
+  const {o} = pool({from:ms, to:Infinity}); const mRs = S.receipts.filter(r => r.t >= ms && counts(r)); const perRcpt = mRs.length ? o.active / mRs.length : 2;
+  const left = fN.filter(f => f.t >= today && f.t < me); const drawExp = Math.round(o.active + sum(left, 'yhat') * perRcpt);
+  // forecast alerts
+  const alerts = [];
+  const next7 = sum(fV.slice(0, 7), 'yhat'), last7 = sum(vY.slice(-7));
+  if (last7 > 0 && next7 < last7 * 0.8) alerts.push({lvl:2, drill:'fc:0', t:'Receipted sales expected to fall', why:`Next 7 days forecast ${M(next7)}, ${Math.round((1 - next7 / last7) * 100)}% below the last 7 days (${M(last7)}).`});
+  for (const s of sellers) { if (s.m && s.z <= -2.5 && s.exp7 > 300) alerts.push({lvl:2, drill:'seller:' + s.t.no, t:`${s.t.name}: receipts far below what the model expected`, why:`Last 7 days ${M(s.last7)} against about ${M(s.exp7)} expected (z = ${s.z}). Ask why: closed, a phone problem, or sales not receipted?`});
+    if (s.m && s.z >= 3.5) alerts.push({lvl:1, drill:'seller:' + s.t.no, t:`${s.t.name}: unusual jump in receipts`, why:`Last 7 days ${M(s.last7)} against about ${M(s.exp7)} expected (z = +${s.z}). Check the Fraud Shield for this seller.`}); }
+  const due = perDueT(lastPer());
+  for (const r of risk) if (r.p >= 0.5) alerts.push({lvl:r.p >= 0.7 ? 2 : 1, drill:'seller:' + r.t.no, t:`${r.t.name}: likely to file or pay late (${Math.round(r.p * 100)}%)`, why:`Main reason: ${(r.why[0].push > 0.05 ? r.why[0].name.toLowerCase() : 'no warning signs in the history')}. ${due > clock ? 'Next due date ' + fD(due) + ': remind early.' : 'Remind before the next due date ' + perDue(cq) + '.'}`});
+  MLC = {today, first:base, vY, nY, mV, mN, fV, fN, bt, week, sellers, risk, model, FEAT, samples:X.length, cq, daysLeft, drawExp, drawSoFar:o.active, alerts, trainedAt:Date.now(),
+    q:{name:perName(cq), due:perDue(cq), sales:sum(sellers, 'qSales'), lo:sum(sellers, 'qLo'), hi:sum(sellers, 'qHi'), tax:sum(sellers, 'qTax')}};
+  return MLC;
+}
+
+/* ---- charts with clickable bars (data-drill opens the detail panel) ---- */
+function chartForecast(act, fc, p, W, opt) { opt = opt || {}; W = W || 640; const H = opt.h || 240, L = 46, R = 10, T = 30, B = 28; const cw = W - L - R, ch = H - T - B;
+  const mx = niceMax(Math.max(1, ...act.map(d => d.v), ...fc.map(f => f.hi))); const n = act.length + fc.length, bw = cw / n, g = Math.max(1, Math.min(4, bw * .25));
+  const fmt = v => v >= 1000 ? 'M' + Math.round(v / 100) / 10 + 'k' : 'M' + Math.round(v);
+  let s = svgOpen(W, H, p);
+  s += `<rect x="${L}" y="8" width="10" height="10" rx="2" fill="${p.bar}"/><text x="${L + 15}" y="17" font-size="11.5" fill="${p.ink}">Actual</text><rect x="${L + 70}" y="8" width="10" height="10" rx="2" fill="${p.bar}" opacity=".35"/><text x="${L + 85}" y="17" font-size="11.5" fill="${p.ink}">Forecast (line = likely range)</text>`;
+  for (let i = 0; i <= 2; i++) { const v = mx * i / 2, y = T + ch - ch * i / 2; s += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="${p.grid}"/><text x="${L - 6}" y="${y + 4}" font-size="10.5" text-anchor="end" fill="${p.muted}">${fmt(v)}</text>`; }
+  const step = n > 40 ? 14 : n > 20 ? 7 : n > 10 ? 3 : 1;
+  act.forEach((d, i) => { const x = L + i * bw + g / 2, w = bw - g, h = ch * d.v / mx; if (h) s += `<path d="${barPath(x, T + ch - h, w, h, 3)}" fill="${p.bar}"/>`;
+    s += `<rect class="drill" x="${L + i * bw}" y="${T}" width="${bw}" height="${ch}" fill="transparent" data-drill="day:${d.t}" data-tip="${esc(fD(d.t))}: ${d.n} receipts worth ${M(d.v)}. Click for details."/>`;
+    if (i % step === 0) s += `<text x="${x + w / 2}" y="${H - 9}" font-size="10.5" text-anchor="middle" fill="${p.muted}">${esc(fD(d.t))}</text>`; });
+  const x0 = L + act.length * bw; s += `<line x1="${x0}" x2="${x0}" y1="${T - 4}" y2="${T + ch}" stroke="${p.muted}" stroke-dasharray="3 3"/><text x="${x0 + 4}" y="${T + 8}" font-size="10" fill="${p.muted}">today</text>`;
+  fc.forEach((f, j) => { const i = act.length + j; const x = L + i * bw + g / 2, w = bw - g, h = ch * f.yhat / mx;
+    if (h) s += `<path d="${barPath(x, T + ch - h, w, h, 3)}" fill="${p.bar}" opacity=".35"/>`;
+    s += `<line x1="${x + w / 2}" x2="${x + w / 2}" y1="${T + ch - ch * f.hi / mx}" y2="${T + ch - ch * f.lo / mx}" stroke="${p.ink}" stroke-width="1.2" opacity=".55"/>`;
+    s += `<rect class="drill" x="${L + i * bw}" y="${T}" width="${bw}" height="${ch}" fill="transparent" data-drill="fc:${j}" data-tip="${esc(fD(f.t))} (forecast): about ${M(f.yhat)}, likely ${M(f.lo)} to ${M(f.hi)}. Click for details."/>`;
+    if (i % step === 0) s += `<text x="${x + w / 2}" y="${H - 9}" font-size="10.5" text-anchor="middle" fill="${p.muted}">${esc(fD(f.t))}</text>`; });
+  return s + '</svg>'; }
+function chartWeek(pat, p, W) { W = W || 420; const H = 200, L = 34, R = 8, T = 14, B = 28; const cw = W - L - R, ch = H - T - B; const bw = cw / 7; const mx = Math.max(10, ...pat.map(Math.abs)); const y0 = T + ch / 2;
+  const D = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']; let s = svgOpen(W, H, p);
+  s += `<line x1="${L}" x2="${W - R}" y1="${y0}" y2="${y0}" stroke="${p.muted}"/><text x="${L - 6}" y="${y0 + 4}" font-size="10.5" text-anchor="end" fill="${p.muted}">avg</text>`;
+  pat.forEach((v, i) => { const x = L + i * bw + bw * .2, w = bw * .6, h = Math.abs(v) / mx * (ch / 2 - 10); const y = v >= 0 ? y0 - h : y0;
+    s += `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(1, h)}" rx="3" fill="${v >= 0 ? p.bar : p.no}"/><text x="${x + w / 2}" y="${v >= 0 ? y - 4 : y + h + 12}" font-size="10.5" text-anchor="middle" fill="${p.ink}" font-weight="600">${v > 0 ? '+' : ''}${v}%</text>`;
+    s += `<text x="${x + w / 2}" y="${H - 8}" font-size="10.5" text-anchor="middle" fill="${p.muted}">${D[i]}</text><rect class="drill" x="${L + i * bw}" y="${T}" width="${bw}" height="${ch}" fill="transparent" data-drill="dow:${i}" data-tip="${D[i]}: ${v > 0 ? '+' : ''}${v}% compared with an average day. Click for details."/>`; });
+  return s + '</svg>'; }
+
+/* ---- the detail panel: one place that every chart bar, map dot, KPI and list item opens ---- */
+const DRW = {stack:[]};
+function openDrill(spec, back) { const [kind, ...rest] = String(spec).split(':'); const arg = rest.join(':'); let h = null;
+  try { h = (DRILL[kind] || (() => null))(arg); } catch (e) { console.error(e); }
+  if (!h) return; if (!back) DRW.stack.push(spec);
+  const d = $('#drawer'); $('#drwTitle').innerHTML = h.title; $('#drwBody').innerHTML = h.body; $('#drwBack').hidden = DRW.stack.length < 2;
+  d.hidden = false; d.scrollTop = 0; requestAnimationFrame(() => d.classList.add('open')); $('#drwX').focus({preventScroll:true}); }
+function closeDrill() { const d = $('#drawer'); d.classList.remove('open'); DRW.stack = []; setTimeout(() => { if (!d.classList.contains('open')) d.hidden = true; }, 200); }
+const dRow = (cells, drill) => `<tr${drill ? ` class="drill" data-drill="${esc(drill)}" tabindex="0"` : ''}>${cells.map(c => `<td>${c}</td>`).join('')}</tr>`;
+const dKpis = list => `<div class="kpis small-kpis">${list.map(k => `<div class="kpi"><div class="v">${k[0]}</div><div class="l">${k[1]}</div></div>`).join('')}</div>`;
+const dBtns = list => `<div class="drw-btns">${list.filter(Boolean).join('')}</div>`;
+const goBtn = (label, hash, extra) => `<button type="button" class="btn small" data-go="${hash}"${extra || ''}>${label}</button>`;
+const PAYS = r => r.ch === 'cash' ? 'Cash' : r.ch === 'card' ? 'Card' : r.net === 'ecocash' ? 'EcoCash' : 'M-Pesa';
+const workBtns = items => items.map(i => `<div class="drw-item"><span>${PRI[i.pri]}</span><div><b>${esc(i.act)}</b><ul class="why">${i.why.map(w => `<li>${esc(w)}</li>`).join('')}</ul>${i.btn && canWork() ? `<button class="btn small primary" data-w="${esc(i.id)}">${i.btn}</button>` : ''}</div></div>`).join('');
+const DRILL = {
+  seller(no) { const t = tByNo(no); if (!t) return null; const ml = mlRun(); const s = ml.sellers.find(x => x.t.no === no) || {}; const rk = ml.risk.find(x => x.t.no === no);
+    const r30 = S.receipts.filter(r => r.no === no && counts(r) && r.t > clock - 30 * DAY); const cs = cashStats(no, 30); const x = t.status === 'registered' ? taxOf(no) : null;
+    const act = (s.ys || []).slice(-30).map((v, i, a) => ({t:ml.today - (a.length - i) * DAY, v, n:S.receipts.filter(r => r.no === no && counts(r) && r.t >= ml.today - (a.length - i) * DAY && r.t < ml.today - (a.length - i - 1) * DAY).length}));
+    const chart = s.m ? chartForecast(act, s.f.slice(0, 14), PAL[isDark() ? 'dark' : 'light'], 520, {h:200}).replace(/data-drill="fc:\d+"/g, `data-drill="seller:${no}"`) : '<p class="note">Too little history for a forecast yet.</p>';
+    const wl = worklist().filter(i => i.subj.no === no);
+    return {title:`${esc(t.name)} <small>code ${t.no}</small>`, body:`<p class="note">${esc(t.trade)} · ${esc(t.market)} · ${t.status === 'registered' ? 'Registered for tax, TIN ' + esc(t.tin || '-') : 'On Rasiti, not yet registered'}</p>
+      ${dKpis([[M(r30.reduce((a, r) => a + r.amt, 0)), 'Sales, 30 days'], [r30.length, 'Receipts, 30 days'], [cs.claims ? Math.round(cs.confirmed / cs.claims * 100) + '%' : '–', 'Cash claims confirmed'], [s.m ? M(s.qSales) : '–', `Forecast sales, ${ml.q.name}`], [rk ? Math.round(rk.p * 100) + '%' : '–', 'Risk of a late return or payment']])}
+      <h4 class="sub">Last 30 days and the next 14 (forecast)</h4><div class="chart">${chart}</div>
+      ${s.m && Math.abs(s.z) >= 2.5 ? `<p class="note"><b>${s.z < 0 ? 'Below' : 'Above'} expectation:</b> last 7 days ${M(s.last7)} against about ${M(s.exp7)} expected.</p>` : ''}
+      ${rk ? `<p class="note"><b>Why this risk score:</b> ${rk.why.filter(w => w.push > 0.05 && w.v > 0).map(w => `${esc(w.name.toLowerCase())}${w.name.startsWith('Unpaid') ? (w.v ? ': yes' : ': no') : ': ' + Math.round(w.v * 100) + '%'}`).join('; ') || 'nothing in the history points to lateness'}.</p>` : ''}
+      ${x ? `<p class="note"><b>Tax:</b> ${x.last ? perName(x.last.period) + ' return ' + (x.last.declared ? M(x.last.declared) : 'nil') : 'last return not filed yet'} · ${x.overdueAmt ? M(x.overdueAmt) + ' overdue' : 'nothing overdue'} · on-time streak ${x.streak}.</p>` : ''}
+      <h4 class="sub">What to do</h4>${wl.length ? workBtns(wl) : '<p class="note">No action needed right now.</p>'}
+      ${dBtns([`<button type="button" class="btn small" data-ask="${no}">Ask Bohlale</button>`, goBtn('All transactions', 'search', ` data-q="${no}"`), goBtn('Officer console', 'officer')])}`}; },
+  day(t) { t = +t; const rs = S.receipts.filter(r => r.t >= t && r.t < t + DAY && counts(r)); const by = {}; rs.forEach(r => { (by[r.no] = by[r.no] || {n:0, v:0}).n++; by[r.no].v += r.amt; });
+    const pays = ['Cash', 'M-Pesa', 'EcoCash', 'Card'].map(k => [k, rs.filter(r => PAYS(r) === k)]); const held = rs.filter(r => shieldState(r) === 'held').length;
+    return {title:`${fD(t)} <small>${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(t).getDay()]}</small>`, body:dKpis([[rs.length, 'Receipts'], [M(rs.reduce((a, r) => a + r.amt, 0)), 'Sales'], [held, 'Held by the Fraud Shield']])
+      + `<p class="note">${pays.map(([k, a]) => `${k}: ${a.length} (${M(a.reduce((x, r) => x + r.amt, 0))})`).join(' · ')}</p><h4 class="sub">By seller (click one)</h4><div class="tbl-wrap"><table><tr><th>Seller</th><th class="num">Receipts</th><th class="num">Sales</th></tr>`
+      + Object.entries(by).sort((a, b) => b[1].v - a[1].v).map(([no, x]) => dRow([esc((tByNo(no) || {name:no}).name), `<span class="num">${x.n}</span>`, M(x.v)], 'seller:' + no)).join('') + '</table></div>'
+      + dBtns([goBtn('Open this day in Search', 'search', ` data-from="${isoD(t)}" data-to="${isoD(t)}"`), held ? goBtn('Review held receipts', 'officer') : '']) }; },
+  fc(j) { const ml = mlRun(); const f = ml.fV[+j]; if (!f) return null; const n = ml.fN[+j];
+    return {title:`Forecast for ${fD(f.t)}`, body:dKpis([[M(f.yhat), 'Expected sales'], [`${M(f.lo)}–${M(f.hi)}`, 'Likely range (80%)'], [Math.round(n.yhat), 'Expected receipts']])
+      + `<p>The model learned the level, the trend and the weekly pattern of receipted sales from ${ml.vY.length} days of data, and re-learns every time new receipts arrive. ${ml.bt ? `When it was tested on the last ${ml.bt.days} days it had not seen, it was off by ${ml.bt.mape}% on average, and ${ml.bt.coverage}% of days fell inside its range.` : ''}</p>`
+      + `<p class="note">Settings it learned: level ${ml.mV.alpha}, trend ${ml.mV.beta}, weekly pattern ${ml.mV.gamma} (how fast each follows new data).</p>` + dBtns([goBtn('Open Forecasts', 'forecast')]) }; },
+  dow(i) { const ml = mlRun(); const D = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']; const v = ml.week ? ml.week[+i] : 0;
+    return {title:D[+i], body:`<p>On ${D[+i]}s receipted sales are usually <b>${Math.abs(v)}% ${v >= 0 ? 'above' : 'below'}</b> an average day. The model learned this from the data; it uses it for every forecast.</p><p class="note">Use it to plan market visits and launch days on busy days, and system maintenance on quiet ones.</p>`}; },
+  shop(key) { const st = shopStats(); const x = st.find(s => s.key === key); if (!x) return null; const wl = worklist().filter(i => i.id === 'v' + key || i.id === 'w' + key);
+    return {title:esc(x.label), body:`<p class="note">${esc(x.kind)} · ${esc(x.area)} · not on Rasiti</p>` + dKpis([[x.n, 'Ratings'], [x.people.size, 'Different customers'], [x.rate === null ? '–' : Math.round(x.rate * 100) + '%', 'Got a receipt'], [SIGTXT[x.sig], 'Signal']])
+      + `<p class="note">${Object.entries(x.types).map(([k, n]) => `${REPTYPE[k]}: ${n}`).join(' · ')}</p><h4 class="sub">What to do</h4>` + (wl.length ? workBtns(wl) : '<p class="note">No action until 3 different customers report it.</p>') + dBtns([goBtn('Community watch', 'watch')])}; },
+  area(name) { const a = watchData({days:30, area:'all', who:'all', sig:'all', ctype:'all'}); const x = a.areas.find(y => y.area === name); if (!x) return null;
+    const ts = S.traders.filter(t => t.market === name); const shops = a.st.filter(s => s.area === name && !s.on && (s.sig === 'lead' || s.sig === 'low'));
+    return {title:esc(name), body:dKpis([[x.rate == null ? '–' : x.rate + '%', 'Got a receipt (30 days)'], [x.n, 'Ratings'], [x.leads, 'New leads'], [ts.length, 'Rasiti sellers']])
+      + `<p class="note">First half of the month ${x.early ?? '–'}% · second half ${x.late ?? '–'}%.</p>` + (ts.length ? '<h4 class="sub">Sellers (click one)</h4><div class="tbl-wrap"><table>' + ts.map(t => dRow([esc(t.name), t.status === 'registered' ? 'Registered' : 'Not registered'], 'seller:' + t.no)).join('') + '</table></div>' : '')
+      + (shops.length ? '<h4 class="sub">Shops to look at</h4><div class="tbl-wrap"><table>' + shops.map(s => dRow([esc(s.label), SIG[s.sig]], 'shop:' + s.key)).join('') + '</table></div>' : '') + dBtns([goBtn('Community watch', 'watch')])}; },
+  wday(t) { t = +t; const rs = watchReports(WF).filter(r => r.t >= t && r.t < t + DAY); const by = {}; rs.forEach(r => { const k = r.target.no ? 'seller:' + r.target.no : 'shop:P' + r.target.place; const e = by[k] = by[k] || {label:r.target.no ? (tByNo(r.target.no) || {}).name : r.target.label, got:0, no:0}; e[r.type === 'got' ? 'got' : 'no']++; });
+    return {title:`Ratings on ${fD(t)}`, body:dKpis([[rs.length, 'Ratings'], [rs.filter(r => r.type === 'got').length, 'Got a receipt'], [rs.filter(r => r.type !== 'got').length, 'No receipt or a problem']])
+      + '<div class="tbl-wrap"><table><tr><th>Shop</th><th class="num">Got</th><th class="num">Problem</th></tr>' + Object.entries(by).sort((a, b) => b[1].no - a[1].no).map(([k, e]) => dRow([esc(e.label || '?'), e.got, e.no], k)).join('') + '</table></div>'}; },
+  rtype(k) { const rs = watchReports(WF).filter(r => r.type === k); const by = {}; rs.forEach(r => { const key = r.target.no ? 'seller:' + r.target.no : 'shop:P' + r.target.place; const e = by[key] = by[key] || {label:r.target.no ? (tByNo(r.target.no) || {}).name : r.target.label, n:0, area:repArea(r)}; e.n++; });
+    return {title:esc(REPTYPE[k] || k), body:`<p class="note">${rs.length} ratings in the period. Shops with the most (click one):</p><div class="tbl-wrap"><table>` + Object.entries(by).sort((a, b) => b[1].n - a[1].n).slice(0, 15).map(([key, e]) => dRow([esc(e.label || '?'), esc(e.area || ''), e.n], key)).join('') + '</table></div>'}; },
+  hour(i) { const h = HOURS[+i]; const rs = watchReports(WF).filter(r => { const x = new Date(r.t).getHours(); return +i === 5 ? (x < 6 || x >= 21) : x >= h[1] && x < h[2]; }); const by = {};
+    rs.forEach(r => { const a = repArea(r); const e = by[a] = by[a] || {n:0, no:0}; e.n++; if (r.type !== 'got') e.no++; });
+    return {title:`Purchases ${h[0]}${+i === 5 ? '' : 'h'}`, body:`<p class="note">${rs.length} ratings in this time slot. Areas where receipts were missed most (click one):</p><div class="tbl-wrap"><table><tr><th>Area</th><th class="num">Ratings</th><th class="num">No receipt</th></tr>` + Object.entries(by).sort((a, b) => b[1].no / b[1].n - a[1].no / a[1].n).map(([a, e]) => dRow([esc(a), e.n, Math.round(e.no / e.n * 100) + '%'], 'area:' + a)).join('') + '</table></div><p class="note">Tax helpers are most useful in the slots and areas at the top.</p>'}; },
+  stage(k) { const ml = {reported:() => shopStats().filter(x => !x.on && x.negP.size > 0).map(x => dRow([esc(x.label), SIG[x.sig]], 'shop:' + x.key)),
+      enrolled:() => S.traders.filter(t => t.status === 'enrolled').map(t => dRow([esc(t.name), esc(t.market)], 'seller:' + t.no)),
+      registered:() => S.traders.filter(t => t.status === 'registered').map(t => dRow([esc(t.name), 'TIN ' + esc(t.tin || '-')], 'seller:' + t.no)),
+      filed:() => S.traders.filter(t => t.status === 'registered' && t.declared != null).map(t => dRow([esc(t.name), t.declared ? M(t.declared) : 'nil'], 'seller:' + t.no))};
+    const T = {reported:'Reported by customers, not on Rasiti', enrolled:'On Rasiti, sales book only', registered:'Registered for tax', filed:'Filed last quarter'}; if (!ml[k]) return null;
+    return {title:T[k], body:'<p class="note">Click a row for details and actions.</p><div class="tbl-wrap"><table>' + ml[k]().join('') + '</table></div>'}; },
+  item(id) { const it = worklist().find(i => i.id === id); if (!it) return null; if (it.subj.no) return DRILL.seller(it.subj.no);
+    return {title:esc(it.subj.name), body:workBtns([it]) + dBtns([goBtn('Officer console', 'officer')])}; },
+  alert(i) { const a = mlRun().alerts[+i]; return a ? (a.drill ? DRILL[a.drill.split(':')[0]](a.drill.split(':').slice(1).join(':')) : {title:esc(a.t), body:`<p>${esc(a.why)}</p>`}) : null; },
+  email(id) { const e = (NOTIFY.out || []).find(x => String(x.id) === String(id)); if (!e) return null;
+    return {title:esc(e.subject), body:`<p class="note">To ${esc((e.recipients || []).join(', '))} · ${fT(Date.parse(e.created_at))} · ${esc(OUTSTATE[e.status] || e.status)}</p><iframe class="mail-view" sandbox srcdoc="${esc(e.html || '')}"></iframe>`}; }
+};
+
+/* ---- Forecasts page ---- */
+function renderForecast() { if (!$('#fcKpis')) return; const ml = mlRun(); const p = PAL[isDark() ? 'dark' : 'light']; const W = id => Math.max(300, Math.round($(id).clientWidth || 600));
+  const n30 = ml.fV.slice(0, 30).reduce((a, f) => a + f.yhat, 0), l30 = ml.fV.slice(0, 30).reduce((a, f) => a + f.lo, 0), h30 = ml.fV.slice(0, 30).reduce((a, f) => a + f.hi, 0);
+  $('#fcKpis').innerHTML = [
+    dkpi(M(n30), 'Receipted sales, next 30 days', `<span class="d">likely ${M(l30)} to ${M(h30)}</span>`, 'forecast'),
+    dkpi(M(ml.q.tax), `Tax expected for ${esc(ml.q.name)}`, `<span class="d">registered sellers, demo rate ${TAXRATE * 100}%, due ${esc(ml.q.due)}</span>`, 'forecast'),
+    dkpi(ml.drawExp.toLocaleString('en-US'), 'Draw entries expected this month', `<span class="d">${ml.drawSoFar.toLocaleString('en-US')} so far</span>`, 'draw'),
+    dkpi(ml.bt ? ml.bt.mape + '%' : '–', 'Average forecast error (tested)', `<span class="d">${ml.bt ? ml.bt.coverage + '% of test days inside the range' : 'needs more data'}</span>`, 'forecast')].join('');
+  const act = ml.vY.slice(-45).map((v, i, a) => ({t:ml.today - (a.length - i) * DAY, v, n:ml.nY[ml.nY.length - a.length + i]}));
+  $('#fcMain').innerHTML = chartForecast(act, ml.fV.slice(0, 30), p, W('#fcMain'));
+  $('#fcWeek').innerHTML = ml.week ? chartWeek(ml.week, p, W('#fcWeek')) : '<p class="note">Needs at least 2 weeks of data.</p>';
+  const tx = ml.sellers.filter(s => s.t.status === 'registered').sort((a, b) => b.qTax - a.qTax);
+  $('#fcTax').innerHTML = chartHBars(tx.map(s => ({label:s.t.name, v:s.qTax, drill:'seller:' + s.t.no, tip:`${s.t.name}: about ${M(s.qTax)} tax on ${M(s.qSales)} sales this quarter (${M(s.soFar)} so far). Click for details.`})), p, W('#fcTax'), M);
+  $('#fcRisk').innerHTML = ml.risk.length ? chartHBars(ml.risk.map(r => ({label:r.t.name, v:Math.round(r.p * 100), drill:'seller:' + r.t.no, tip:`${r.t.name}: ${Math.round(r.p * 100)}% chance of a late return or payment. Main reason: ${(r.why[0].push > 0.05 ? r.why[0].name.toLowerCase() : 'no warning signs in the history')}. Click for details.`})), p, W('#fcRisk'), v => v + '%') : '<p class="note">Needs at least 6 past returns to learn from.</p>';
+  $('#fcAlerts').innerHTML = ml.alerts.map((a, i) => `<li class="drill" data-drill="alert:${i}" tabindex="0"><span class="pill ${a.lvl >= 2 ? 'p-warn' : 'p-info'}">${a.lvl >= 2 ? 'Act' : 'Watch'}</span><div><b>${esc(a.t)}</b><div class="note">${esc(a.why)}</div></div></li>`).join('') || '<li class="note">Nothing unusual is predicted.</li>';
+  const m = ml.model; $('#fcModel').innerHTML = `<tr><th>Model</th><th>What it learned</th><th>Trained on</th></tr>
+    <tr><td>Sales forecast (Holt-Winters, weekly)</td><td>Level ${ml.mV.alpha}, trend ${ml.mV.beta}, weekly pattern ${ml.mV.gamma}; ${ml.bt ? `tested error ${ml.bt.mape}%` : ''}</td><td>${ml.vY.length} days</td></tr>
+    <tr><td>One forecast per seller</td><td>Each seller's own level, trend and weekly pattern</td><td>${ml.sellers.filter(s => s.m).length} sellers</td></tr>
+    <tr><td>Late return or payment (logistic regression)</td><td>${m ? ml.FEAT.map((f, j) => `${esc(f)}: ${m.weights[j] >= 0 ? '+' : ''}${m.weights[j].toFixed(2)}`).join('<br>') : 'Not enough history yet'}</td><td>${ml.samples} past returns${m ? `, ${m.positives} late; ${m.accuracy}% right on its own data` : ''}</td></tr>`;
+  $('#fcNote').textContent = `Re-trained ${fT(ml.trainedAt)} on the latest data. Forecasts and scores only rank what officers look at first; they never decide anything.`; }
+
+/* ---- Overview (dashboard) charts that open details ---- */
+function dashCharts(D) { const p = PAL[isDark() ? 'dark' : 'light']; const ml = mlRun(); const W = id => Math.max(300, Math.round($(id).clientWidth || 600));
+  const act = D.daily.map(d => ({t:d.t, v:d.v, n:d.n})).filter(d => d.t < ml.today);
+  $('#dashChart').innerHTML = chartForecast(act, ml.fV.slice(0, 14), p, W('#dashChart'));
+  const n14 = ml.fV.slice(0, 14).reduce((a, f) => a + f.yhat, 0); const busy = D.daily.slice().sort((a, b) => b.v - a.v)[0];
+  $('#dashChartNote').textContent = `${D.k.receipts.toLocaleString('en-US')} receipts in ${D.days} days. Busiest day ${busy ? fD(busy.t) : '-'}. The model expects about ${M(n14)} in the next 14 days${ml.bt ? ` (tested error ${ml.bt.mape}%)` : ''}. Click any bar.`;
+  $('#dashTopCh').innerHTML = chartHBars(D.top.slice(0, 7).map(x => ({label:x.t.name, v:Math.round(x.v), drill:'seller:' + x.t.no, tip:`${x.t.name}: ${x.n} receipts worth ${M(x.v)}. Click for details.`})), p, W('#dashTopCh'), M); }
+
+/* ---- Email reports and alerts (Reports & alerts page; server side in api/notify.js) ---- */
+const NOTIFY = {out:[], rules:[], data:null};
+const OUTSTATE = {sent:'Sent', not_sent:'Not sent: no email service set', failed:'Failed', skipped:'Skipped'};
+async function renderNotify() { if (!$('#ntRules')) return;
+  if (!API.online || !API.user) { $('#ntStatus').textContent = 'Emails need the live server and a signed-in officer.'; $('#ntRules').innerHTML = ''; $('#ntAlerts').innerHTML = mlRun().alerts.map((a, i) => `<li class="drill" data-drill="alert:${i}" tabindex="0"><span class="pill p-info">Forecast</span><div><b>${esc(a.t)}</b><div class="note">${esc(a.why)}</div></div></li>`).join(''); $('#ntOut').innerHTML = ''; $('#ntAddRow').hidden = true; return; }
+  let j; try { j = await api('notify', null, {quiet:true}); } catch (e) { $('#ntStatus').textContent = 'Could not load: ' + e.message; return; }
+  NOTIFY.data = j; NOTIFY.rules = j.rules; NOTIFY.out = j.outbox;
+  $('#ntStatus').innerHTML = (j.mail.configured ? `<span class="pill p-ok">Email on</span> Sent through ${esc(j.mail.provider)} from ${esc(j.mail.from)}.` : '<span class="pill p-warn">Email not connected</span> Emails are built and kept below, but not sent. Add <code>SMTP_URL</code> (or <code>RESEND_API_KEY</code>) and <code>MAIL_FROM</code> in Render to send them.')
+    + ` Scheduled emails go out from 06:00 Maseru time${j.cron ? '' : '; set <code>CRON_KEY</code> so an outside scheduler can wake the server (see the README)'}. ${j.ai ? 'Bohlale writes each summary.' : 'Summaries use the built-in wording (no AI key).'}`;
+  const F = j.freq; $('#ntFreq').innerHTML = Object.entries(F).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+  $('#ntUsers').innerHTML = (j.users || []).map(u => `<option value="${esc(u.email)}">${esc(u.name)}</option>`).join('');
+  const can = j.can;
+  $('#ntRules').innerHTML = '<tr><th>Email</th><th>How often</th><th>Sent to</th><th>On</th><th></th></tr>' + j.rules.map(r => `<tr><td><b>${esc(r.name)}</b><div class="note">${r.kind === 'report' ? 'Report' : 'Alerts'}${r.last_run ? ' · last ' + fT(Date.parse(r.last_run)) : ''}</div></td><td>${esc(F[r.frequency] || r.frequency)}</td>
+    <td class="note">${r.recipients.length ? r.recipients.map(esc).join('<br>') : '<span class="pill p-warn">No address yet</span>'}</td><td><input type="checkbox" data-nt-on="${r.id}" ${r.active ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="On"></td>
+    <td style="white-space:nowrap"><button class="btn small" data-nt-prev="${r.id}">Preview</button>${can ? ` <button class="btn small primary" data-nt-send="${r.id}">Send now</button> <button class="btn small" data-nt-edit="${r.id}">Edit</button> <button class="btn small" data-nt-del="${r.id}">Delete</button>` : ''}</td></tr>`).join('');
+  $('#ntAddRow').hidden = !can;
+  $('#ntAlerts').innerHTML = [...j.alerts.map(a => ({drill:a.drill, page:a.page, pill:`<span class="pill ${a.level === 'high' ? 'p-bad' : a.level === 'medium' ? 'p-warn' : 'p-info'}">${a.level === 'high' ? 'Act now' : a.level === 'medium' ? 'This week' : 'Info'}</span>`, t:a.title, d:a.detail}))]
+    .map(a => `<li class="drill" ${a.drill ? `data-drill="${esc(a.drill)}"` : `data-nt-go="${esc(a.page)}"`} tabindex="0">${a.pill}<div><b>${esc(a.t)}</b><div class="note">${esc(a.d)}</div></div></li>`).join('') || '<li class="note">Nothing needs action.</li>';
+  $('#ntOut').innerHTML = '<tr><th>When</th><th>Email</th><th>Status</th></tr>' + j.outbox.map(o => `<tr class="drill" data-drill="email:${o.id}" tabindex="0"><td style="white-space:nowrap">${fT(Date.parse(o.created_at))}</td><td>${esc(o.subject.replace(/^Rasiti · /, ''))}<div class="note">${o.recipients.length} recipient${o.recipients.length === 1 ? '' : 's'}</div></td><td><span class="pill ${o.status === 'sent' ? 'p-ok' : o.status === 'failed' ? 'p-bad' : 'p-warn'}">${esc(OUTSTATE[o.status] || o.status)}</span></td></tr>`).join('') || '<tr><td class="note">No emails yet.</td></tr>'; }
+function ntEdit(r) { const f = $('#ntForm'); f.hidden = false; $('#ntAddRow').hidden = true; $('#ntErr').textContent = '';
+  $('#ntId').value = r ? r.id : ''; $('#ntName').value = r ? r.name : ''; $('#ntKind').value = r ? r.kind : 'report'; $('#ntFreq').value = r ? r.frequency : 'monthly';
+  $('#ntTo').value = r ? r.recipients.join(', ') : ''; $('#ntAi').checked = r ? r.ai_summary !== false : true; $('#ntActive').checked = r ? r.active : true; $('#ntName').focus(); }
+function wireNotify() {
+  $('#ntAdd').addEventListener('click', () => ntEdit(null));
+  $('#ntCancel').addEventListener('click', () => { $('#ntForm').hidden = true; $('#ntAddRow').hidden = false; });
+  $('#ntForm').addEventListener('submit', async e => { e.preventDefault(); $('#ntErr').textContent = '';
+    try { await api('notify', {op:'save', id:$('#ntId').value || null, name:$('#ntName').value, kind:$('#ntKind').value, frequency:$('#ntFreq').value, recipients:$('#ntTo').value, ai_summary:$('#ntAi').checked, active:$('#ntActive').checked}); }
+    catch (er) { $('#ntErr').textContent = er.message; return; }
+    $('#ntForm').hidden = true; toast('Saved'); renderNotify(); });
+  $('#ntRules').addEventListener('click', async e => { const b = e.target.closest('button'); const on = e.target.closest('[data-nt-on]');
+    if (on) { const r = NOTIFY.rules.find(x => x.id === +on.dataset.ntOn); try { await api('notify', {op:'save', ...r, active:on.checked}); toast(on.checked ? 'On' : 'Off'); } catch (er) { toast(er.message); } renderNotify(); return; }
+    if (!b) return; const id = +(b.dataset.ntPrev || b.dataset.ntSend || b.dataset.ntEdit || b.dataset.ntDel); const r = NOTIFY.rules.find(x => x.id === id);
+    if (b.dataset.ntEdit) return ntEdit(r);
+    if (b.dataset.ntDel) { try { await api('notify', {op:'delete', id}); toast('Deleted'); } catch (er) { toast(er.message); } return renderNotify(); }
+    if (b.dataset.ntPrev) { try { const j = await api('notify', {op:'preview', id}); NOTIFY.out = [{id:'preview', subject:j.subject, recipients:r.recipients, created_at:new Date().toISOString(), status:'preview', html:j.html}, ...NOTIFY.out]; OUTSTATE.preview = 'Preview, not sent'; openDrill('email:preview'); } catch (er) { toast(er.message); } return; }
+    if (b.dataset.ntSend) { try { const j = await api('notify', {op:'send_now', id}); toast(j.status === 'sent' ? 'Email sent' : j.status === 'not_sent' ? 'Built and kept in the outbox: no email service set yet' : j.error || j.status); } catch (er) { toast(er.message); } return renderNotify(); } });
+  $('#ntAlerts').addEventListener('click', e => { const g = e.target.closest('[data-nt-go]'); if (g) location.hash = '#' + g.dataset.ntGo; });
+}
+
 /* ================= shell: nav, auth, routing ================= */
-const NAVICONS = {reports:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>', search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', dash:'<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>', logs:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>', guide:'<circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z"/>', phones:'<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>', shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>', watch:'<circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/>', officer:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>', draw:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>', bohlale:'<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>', agent:'<rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/>', users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>'};
-const TITLES = {guide:'Start here', phones:'Phones', shield:'Fraud Shield', watch:'Community watch', officer:'Officer console · General Clients', draw:'Monthly draw', bohlale:'Bohlale AI · officer assistant', users:'Users', logs:'System log', search:'Search · full history', reports:'Reports · every download', agent:'Mohlomi AI · test agent', dash:'Dashboard · bird\'s-eye view'};
-const RSL_VIEWS = ['dash', 'officer', 'shield', 'watch', 'draw', 'search', 'reports', 'bohlale', 'users', 'logs', 'agent'];
+const NAVICONS = {forecast:'<path d="M3 17l5-5 4 3 7-8"/><path d="M14 7h5v5"/><path d="M3 21h18" stroke-dasharray="2 3"/>', reports:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>', search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>', dash:'<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>', logs:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>', guide:'<circle cx="12" cy="12" r="9"/><path d="M10 8l6 4-6 4z"/>', phones:'<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>', shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>', watch:'<circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/>', officer:'<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>', draw:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>', bohlale:'<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>', agent:'<rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/>', users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>'};
+const TITLES = {guide:'Start here', phones:'Phones', shield:'Fraud Shield', watch:'Community watch', officer:'Officer console · General Clients', draw:'Monthly draw', bohlale:'Bohlale AI · officer assistant', users:'Users', logs:'System log', search:'Search · full history', reports:'Reports & alerts', forecast:'Forecasts · machine learning', agent:'Mohlomi AI · test agent', dash:'Overview'};
+const RSL_VIEWS = ['dash', 'officer', 'shield', 'watch', 'forecast', 'draw', 'search', 'reports', 'bohlale', 'users', 'logs', 'agent'];
 const VIEWS = ['guide', 'phones', ...RSL_VIEWS];
 function renderNav() {
   const ic = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NAVICONS[k]}</svg>`;
   const a = k => `<a href="#${k}">${k === 'bohlale' ? `<img class="nav-img" src="${BH_LOGO}" alt="">` : k === 'agent' ? `<img class="nav-img" src="${MH_LOGO}" alt="">` : ic(k)}${TITLES[k].split(' ·')[0]}</a>`;
   const showUsers = API.online && API.user && ['owner', 'admin'].includes(API.user.role);
-  $('#nav').innerHTML = '<div class="grp">Try it</div>' + a('guide') + a('phones') + '<div class="grp">RSL daily work' + (API.online && !API.user ? ' · sign in' : '') + '</div>' + a('dash') + a('officer') + a('shield') + a('watch') + a('draw') + '<div class="grp">Find and report</div>' + a('search') + a('reports') + a('bohlale') + (showUsers ? '<div class="grp">Admin</div>' + a('users') + a('logs') + a('agent') : '');
+  $('#nav').innerHTML = '<div class="grp">Try it</div>' + a('guide') + a('phones') + '<div class="grp">RSL daily work' + (API.online && !API.user ? ' · sign in' : '') + '</div>' + a('dash') + a('officer') + a('shield') + a('watch') + a('forecast') + a('draw') + '<div class="grp">Find and report</div>' + a('search') + a('reports') + a('bohlale') + (showUsers ? '<div class="grp">Admin</div>' + a('users') + a('logs') + a('agent') : '');
   const f = $('#sideFoot');
   if (!API.online) f.innerHTML = '<b>Offline demo</b>Not connected to the database.<br>Data resets on reload.';
   else if (API.user) f.innerHTML = `<b>${esc(API.user.name)}</b>${esc(API.user.role[0].toUpperCase() + API.user.role.slice(1))} · ${esc(API.user.email)}<br><button type="button" id="logoutBtn">Sign out</button>`;
@@ -2388,6 +2597,9 @@ function route() {
   if (show === 'watch') setTimeout(renderWatch, 0);
   if (show === 'officer') renderOfficer();
   if (show === 'dash') setTimeout(renderDash, 0);
+  if (show === 'forecast') setTimeout(renderForecast, 0);
+  if (show === 'reports') renderNotify();
+  closeDrill();
   if (show === 'users') renderUsers();
   if (show === 'logs') renderLogs(true);
   if (show === 'search') renderSearch(true);
@@ -2407,22 +2619,10 @@ function rslEvents() {
 function renderRsl() { const el = $('#rslTbl'); if (!el) return; const ev = rslEvents(); const n = w => ev.filter(e => e.what === w).length;
   $('#rslKpis').innerHTML = [[n('TIN check'), 'TIN checks'], [n('Return sent to RSL'), 'Returns acknowledged'], [n('Payment receipt from RSL'), 'Payments with RSL receipt'], ['0', 'Failed or waiting']].map(kpi).join('');
   el.innerHTML = '<tr><th>When</th><th>Seller</th><th>Exchange</th><th>Details</th><th>RSL reference</th><th>Status</th></tr>' + ev.slice(0, 12).map(e => `<tr><td>${fT(e.t)}</td><td>${esc((tByNo(e.no) || {}).name || e.no)}<div class="note">code ${esc(e.no)}</div></td><td>${e.what}</td><td>${esc(e.detail)}</td><td class="mono">${esc(e.ref)}</td><td><span class="pill p-ok">Accepted</span></td></tr>`).join('') + (ev.length ? '' : '<tr><td colspan="6" class="note">No exchanges yet.</td></tr>'); }
-/* Daily education message: today's tip in English and Sesotho, how it is sent, what it costs, and the next 7 days. */
-function eduAudience() { return { sellers:S.traders.filter(t => t.status === 'registered').length, enrolled:S.traders.length, customers:new Set(S.receipts.filter(r => r.ph).map(r => r.ph)).size }; }
-const M2 = n => 'M' + Number(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-function tipEconomics(n) { const days = 30, gross = n * TIPS.subPrice * days, share = gross * TIPS.networkShare, sms = n * TIPS.smsPrice * days; return {gross, share, sms, net:gross - share - sms}; }
-function renderTips() { const el = $('#tipToday'); if (!el) return; const t = TIPS.forDate(new Date(clock)); const n = S.tipSubs ?? Math.round(eduAudience().customers / 8); const e = tipEconomics(n);
-  el.innerHTML = `<div class="lang">English</div>${esc(t.en)}<div class="lang">Sesotho</div>${esc(t.st)}<div class="lang">Source</div><span class="note">${esc(t.src)}</span>`;
-  const rows = [['WhatsApp Channel post (anyone can follow)', 'Every day', 'Free'], ['Tip of the day in the USSD and WhatsApp menus', 'Every day', 'Free'], [`Daily SMS for subscribers (${n})`, 'Every day, optional', `${M2(TIPS.subPrice)} a day, paid by the subscriber`]];
-  $('#tipCost').innerHTML = '<tr><th>Channel</th><th>How often</th><th class="num">Cost</th></tr>' + rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td class="num">${r[2]}</td></tr>`).join('');
-  $('#tipNote').textContent = `Daily SMS is optional: people subscribe on USSD (*999# > 3 > 4) or by sending SUBSCRIBE on WhatsApp, and pay ${M2(TIPS.subPrice)} a day from airtime. With ${n} subscriber${n === 1 ? '' : 's'}, a month brings in ${M2(e.gross)}; the network keeps about ${Math.round(TIPS.networkShare * 100)}% for billing (${M2(e.share)}) and the SMS cost about ${M2(e.sms)}, leaving ${M2(e.net)}. All three figures are assumptions to agree with Econet and Vodacom.`;
-  $('#tipNext').innerHTML = '<tr><th>Date</th><th>For</th><th>Message (English)</th></tr>' + TIPS.schedule(new Date(clock + 86400000), 7).map(d => `<tr><td>${fD(d.date.getTime())}</td><td>${d.tip.for === 'seller' ? 'Sellers' : 'Everyone'}</td><td>${esc(d.tip.en)}</td></tr>`).join('');
-  const b = $('#tipSmsBtn'); if (b) { b.textContent = `Send today's SMS tip to subscribers (${n})`; b.hidden = API.online && !(API.user && ['owner', 'admin', 'officer'].includes(API.user.role)); } }
-async function sendTipSms() { const n = S.tipSubs ?? Math.round(eduAudience().customers / 8); const t = TIPS.forDate(new Date(clock)); const cost = n * TIPS.smsPrice;
-  if (!n) { toast('No subscribers yet. People subscribe on *999# > 3 > 4 or by sending SUBSCRIBE on WhatsApp.'); return; }
-  try { if (API.online && API.user) await api('admin', {op:'tip_sms', count:n, cost:Math.round(cost * 100) / 100, tip:t.en.slice(0, 160)}); } catch (e) { toast(e.message); return; }
-  log('ok', `Daily SMS tip sent to ${n} subscribers (SMS cost about ${M2(cost)}, income ${M2(n * TIPS.subPrice)}): "${t.en}"`); toast(`SMS tip sent to ${n} subscribers (simulated). Written to the system log.`); }
-function renderAll() { reEvalIfNeeded(); renderShield(); renderWatch(); renderOfficer(); renderRsl(); renderTips(); renderDraw(); if (currentView() === 'dash') renderDash(); }
+/* Daily education message: today's tip in English and Sesotho (free in the USSD and WhatsApp menus, and on the free Rasiti WhatsApp Channel). */
+function renderTips() { const el = $('#tipToday'); if (!el) return; const t = TIPS.forDate(new Date(clock));
+  el.innerHTML = `<div class="lang">English</div>${esc(t.en)}<div class="lang">Sesotho</div>${esc(t.st)}<div class="lang">Source</div><span class="note">${esc(t.src)}</span>`; }
+function renderAll() { reEvalIfNeeded(); renderShield(); renderWatch(); renderOfficer(); renderRsl(); renderTips(); renderDraw(); if (currentView() === 'dash') renderDash(); if (currentView() === 'forecast') renderForecast(); }
 function reEvalIfNeeded() { if (!S.eval || Object.keys(S.eval).length !== S.receipts.length) reEval(); }
 
 /* ================= events ================= */
@@ -2468,18 +2668,29 @@ function wire() {
   $('#bhTasks').addEventListener('click', e => { const b = e.target.closest('[data-task]'); if (b) bhRunTask(b.dataset.task); });
   $('#bhForm').addEventListener('submit', e => { e.preventDefault(); const i = $('#bhIn'); const v = i.value.trim(); if (!v) return; i.value = ''; bhAsk('ask', v, tByNo($('#bhSeller').value)); });
   $('#workTbl').addEventListener('click', e => { const a = e.target.closest('[data-ask]'); if (!a) return; location.hash = '#bohlale'; setTimeout(() => { $('#bhSeller').value = a.dataset.ask; bhRunTask('explain', a.dataset.ask); }, 150); });
-  $('#workTbl').addEventListener('click', async e => { const b = e.target.closest('[data-w]'); if (!b) return; const it = worklist().find(i => i.id === b.dataset.w); if (!it) return;
+  const doWork = async e => { const b = e.target.closest('[data-w]'); if (!b) return; const it = worklist().find(i => i.id === b.dataset.w); if (!it) return;
     try { await setAction(it, true); } catch (er) { toast(er.message); return; }
     pushHist({label:`"${it.btn}" for ${it.subj.name}`, undo:() => setAction(it, false), redo:() => setAction(it, true)});
     if (it.kind === 'invite') toast('Invitation SMS sent (simulated)');
     else if (it.kind === 'visit') toast(it.btn === 'Refer' ? 'Referred to the compliance team' : "Visit added to the market tax helper's route");
     else toast('Marked done');
-    log('info', `${it.act}: ${it.btn}`); renderAll(); });
+    log('info', `${it.act}: ${it.btn}`); renderAll(); if (!$('#drawer').hidden && DRW.stack.length) openDrill(DRW.stack[DRW.stack.length - 1], true); };
+  $('#workTbl').addEventListener('click', doWork);
+  /* the detail panel: every [data-drill] on any page opens it */
+  document.addEventListener('click', e => { const d = e.target.closest('[data-drill]'); if (d && !e.target.closest('button,a,input,select')) { openDrill(d.dataset.drill); return; } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#drawer').hidden) closeDrill(); const d = e.target.closest && e.target.closest('[data-drill]'); if (d && (e.key === 'Enter' || e.key === ' ') && d.tagName !== 'BUTTON') { e.preventDefault(); openDrill(d.dataset.drill); } });
+  wireNotify();
+  $('#drwX').addEventListener('click', closeDrill);
+  $('#drwBack').addEventListener('click', () => { DRW.stack.pop(); const prev = DRW.stack[DRW.stack.length - 1]; if (prev) openDrill(prev, true); });
+  $('#drawer').addEventListener('click', e => { doWork(e);
+    const a = e.target.closest('[data-ask]'); if (a) { closeDrill(); location.hash = '#bohlale'; setTimeout(() => { $('#bhSeller').value = a.dataset.ask; bhRunTask('explain', a.dataset.ask); }, 150); return; }
+    const g = e.target.closest('[data-go]'); if (!g) return; const v = g.dataset.go;
+    if (v === 'search') { ['#sxQ', '#sxFrom', '#sxTo'].forEach(id => { if ($(id)) $(id).value = ''; }); if (g.dataset.q) $('#sxQ').value = g.dataset.q; if (g.dataset.from) { $('#sxFrom').value = g.dataset.from; $('#sxTo').value = g.dataset.to; } }
+    closeDrill(); if (location.hash === '#' + v) route(); else location.hash = '#' + v; });
   $('#runTest').addEventListener('click', () => runTest(2026));
   $('#runTest2').addEventListener('click', () => runTest((Date.now() % 1e6) >>> 0));
   $('#runDraw').addEventListener('click', runDraw);
   $('#phBtn').addEventListener('click', toggleContacts);
-  $('#tipSmsBtn').addEventListener('click', sendTipSms);
   $('#remBtn').addEventListener('click', sendReminders);
   $('#dashFilters').addEventListener('click', e => { const b = e.target.closest('[data-dd]'); if (b) { DASHD = +b.dataset.dd; renderDash(); } });
   $('#dashPdf').addEventListener('click', dashPDF);
