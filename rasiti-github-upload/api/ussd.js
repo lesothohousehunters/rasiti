@@ -3,9 +3,11 @@
 // We reply in plain text starting with "CON " (show menu, wait for reply) or "END " (close session).
 // Optional: set USSD_KEY in the environment and add ?key=... to the callback URL to block other callers.
 import { db, audit } from './_lib/db.js';
+import { reqCtx, clientIp } from './_lib/ctx.js';
 import { mkCode, normCode } from './_lib/codes.js';
 import { checkPin, hashPin, pinProblem } from './_lib/pin.js';
 import { CASH, claimCash, pendingCash, decideCash } from './_lib/cash.js';
+import { places, moveShop } from './_lib/accounts.js';
 import { readFile } from 'node:fs/promises';
 
 // Questions and answers live in public/faq.js, shared with the on-screen phones and the WhatsApp chatbot.
@@ -235,7 +237,7 @@ async function respond(q, parts, phone, sessionId, ctx) {
     }
     // The seller records nothing: mobile money and card receipts come by themselves; cash sales only need a Yes.
     if (m === undefined) { const n = (await pendingCash(q, seller.no)).length;
-      return con(`${seller.name}\nCode ${seller.no} · ${seller.status === 'registered' ? 'Registered' : 'Not yet registered'}\n1. Confirm cash sales (${n})\n2. My sales book\n3. ${seller.status === 'registered' ? 'My tax & badge' : 'Register for tax'}\n4. Payment codes\n5. Questions & tax help` + BACK); }
+      return con(`${seller.name}\nCode ${seller.no} · ${seller.status === 'registered' ? 'Registered' : 'Not yet registered'}\n1. Confirm cash sales (${n})\n2. My sales book\n3. ${seller.status === 'registered' ? 'My tax & badge' : 'Register for tax'}\n4. Payment codes\n5. Questions & tax help\n6. My shop moved` + BACK); }
     if (m === '1') { // confirm cash sales the buyers claimed: one by one, or all at once
       const open = await pendingCash(q, seller.no);
       if (!open.length) return end('No cash sales to confirm.\nWhen a customer claims a cash sale, you get an SMS.');
@@ -281,6 +283,18 @@ async function respond(q, parts, phone, sessionId, ctx) {
       return end(`${net} code ${mc} linked.\n${opr} confirmed it is yours (simulated).\nPayments to this code now give your customers receipts by themselves.`);
     }
     if (m === '5') return con((await faq()).ussd('seller', p.slice(3), ctx.lang) + BACK);
+    if (m === '6') { // the shop changed place: pick a market (or type the place), then confirm. Code, PIN and payment codes stay the same.
+      const L = (await places()).LIST.filter(x => x !== seller.market);
+      if (a === undefined) return con('Where is your shop now?\n' + L.map((x, i) => `${i + 1}. ${x}`).join('\n') + `\n${L.length + 1}. Somewhere else`);
+      const i = Number(a); if (!(i >= 1 && i <= L.length + 1)) return end('Please choose a number from the list. Dial again to start.');
+      let to = L[i - 1], conf = b;
+      if (i === L.length + 1) { if (b === undefined) return con('Type the new place\n(e.g. Ha Abia market):'); to = b.trim().slice(0, 60); conf = c; }
+      if (conf === undefined) return con(`Move your shop to\n${to}?\n1. Yes, move it\n2. No, cancel`);
+      if (conf !== '1') return end('Nothing changed. Your shop is still at ' + (seller.market || 'the same place') + '.');
+      const r = await moveShop(q, seller, to, 'USSD'); if (!r.ok) return end(r.msg);
+      await audit(q, null, 'seller_moved', { actor:'Seller ' + seller.no, channel:'USSD', from: r.from, to: r.to });
+      return end(`Shop moved to ${r.to}.\nYour seller code, PIN and payment codes stay the same. Customers see the new place.`);
+    }
 
     if (m === '2') {
       const [t] = await q(`SELECT
@@ -352,7 +366,9 @@ function sameSite(req) {
   const from = req.headers.origin || req.headers.referer || '';
   try { return !!from && hosts.includes(new URL(from).host.toLowerCase()) && req.headers['x-rasiti-demo'] === '1'; } catch { return false; }
 }
-export default async function handler(req, res) {
+// Every log entry records the IP address of the gateway that called (the network or the bank).
+export default (req, res) => reqCtx.run({ ip: clientIp(req) }, () => handler(req, res));
+async function handler(req, res) {
   const send = (t) => { if (t.length > 182) t = t.slice(0, 181) + '…'; res.statusCode = 200; res.setHeader('Content-Type', 'text/plain; charset=utf-8'); res.setHeader('Cache-Control', 'no-store'); res.end(t); };
   if (req.method !== 'POST') return send(end('Rasiti USSD endpoint. Gateways must use POST.'));
   try {

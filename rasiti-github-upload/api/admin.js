@@ -4,11 +4,15 @@
 //   {op:'draw', seed, live, winners[]}                       officer+
 //   {op:'seed', data:{sellers,receipts,claims,reports,fakes,returns,payments}}       owner/admin, empty database only
 //   {op:'unreview', codes[]} · {op:'unaction', item_id} · {op:'undraw', id}   officer+: undo
+//   {op:'test_account', no, name?, market?}                   owner/admin: new PIN + dummy M-Pesa, EcoCash and card machine codes for that
+//                                                             seller code (a code not on Rasiti yet becomes a new test shop). Testing only.
+//   {op:'test_link_all'} · {op:'test_list'}                   owner/admin: link dummy payment codes to every seller · list test accounts
 //   {op:'reset'}                                              owner: deletes all demo data, keeps users and audit log
 //   {op:'clear', confirm:'CLEAR'}                             owner: deletes ALL data, the activity log and every other user
 import { db, audit } from './_lib/db.js';
 import { route, body, requireRole, bad } from './_lib/http.js';
 import { hashPin, DEMO_PIN } from './_lib/pin.js';
+import { testTools, testAccount, linkDummy, BANKS } from './_lib/accounts.js';
 
 const WORKERS = ['owner', 'admin', 'officer'];
 
@@ -106,17 +110,37 @@ export default route(async (req, res) => {
       fakes: await bulk(q, 'fakes', [['id', 'text'], ['code', 'text'], ['kind', 'text'], ['phone', 'text'], ['detail', 'text'], ['created_at', 'timestamptz']], d.fakes),
       returns: await bulk(q, 'returns', [['id', 'text'], ['seller_no', 'text'], ['period', 'text'], ['sales', 'numeric'], ['declared', 'numeric'], ['nil_reason', 'text'], ['tax_due', 'numeric'], ['channel', 'text'], ['filed_at', 'timestamptz']], d.returns),
       claims: await bulk(q, 'claims', [['id', 'text'], ['seller_no', 'text'], ['amount', 'numeric'], ['phone', 'text'], ['state', 'text'], ['created_at', 'timestamptz'], ['decided_at', 'timestamptz'], ['receipt_code', 'text']], (d.claims || []).filter(c => ['pending', 'confirmed', 'rejected'].includes(c.state))),
-      payments: await bulk(q, 'payments', [['id', 'text'], ['seller_no', 'text'], ['period', 'text'], ['amount', 'numeric'], ['ref', 'text'], ['channel', 'text'], ['paid_at', 'timestamptz']], d.payments)
+      payments: await bulk(q, 'payments', [['id', 'text'], ['seller_no', 'text'], ['period', 'text'], ['amount', 'numeric'], ['ref', 'text'], ['channel', 'text'], ['paid_at', 'timestamptz']], d.payments),
+      moves: await bulk(q, 'seller_moves', [['id', 'text'], ['seller_no', 'text'], ['from_market', 'text'], ['to_market', 'text'], ['from_lat', 'double precision'], ['from_lng', 'double precision'], ['to_lat', 'double precision'], ['to_lng', 'double precision'], ['channel', 'text'], ['created_at', 'timestamptz']], d.moves)
     };
     // Demo sellers all use the demo PIN (shown on the Start here page). Real sellers choose their own when they join.
-    await q('UPDATE sellers SET pin_hash=$1 WHERE pin_hash IS NULL', [await hashPin(DEMO_PIN)]);
+    await q('UPDATE sellers SET pin_hash=$1, test_pin=$2 WHERE pin_hash IS NULL', [await hashPin(DEMO_PIN), DEMO_PIN]);
+    // every demo seller gets dummy M-Pesa, EcoCash and card machine accounts (codes already in the dataset are kept)
+    for (const sl of await q('SELECT * FROM sellers WHERE mpesa_code IS NULL OR ecocash_code IS NULL OR card_terminal IS NULL')) await linkDummy(q, sl);
     await audit(q, me, 'demo_data_loaded', counts);
     return res.status(200).json({ ok: true, counts });
   }
 
+  if (b.op === 'test_account' || b.op === 'test_link_all' || b.op === 'test_list') {
+    const me = await requireRole(req, res, ['owner', 'admin']); if (!me) return;
+    if (!testTools()) throw bad('Test accounts are switched off on this server (TEST_TOOLS=off).');
+    if (b.op === 'test_account') {
+      const a = await testAccount(q, { no: b.no, name: b.name, market: b.market, trade: b.trade });
+      await audit(q, me, 'test_account_made', { seller: a.no, name: a.name, new_shop: a.created, mpesa: a.mpesa_code, ecocash: a.ecocash_code, bank: BANKS[a.card_bank][0], terminal: a.card_terminal });
+      return res.status(200).json({ ok: true, account: a });
+    }
+    if (b.op === 'test_link_all') {
+      let n = 0; for (const sl of await q('SELECT * FROM sellers ORDER BY no')) { const set = await linkDummy(q, sl); if (Object.keys(set).length) n++; }
+      await audit(q, me, 'test_codes_linked', { sellers: n });
+      return res.status(200).json({ ok: true, linked: n });
+    }
+    const rows = await q('SELECT no, name, market, status, test_pin, mpesa_code, ecocash_code, card_bank, card_terminal FROM sellers ORDER BY no');
+    return res.status(200).json({ ok: true, accounts: rows.map(r => ({ ...r, bank: r.card_bank && BANKS[r.card_bank] ? BANKS[r.card_bank][0] : null })) });
+  }
+
   if (b.op === 'reset') {
     const me = await requireRole(req, res, ['owner']); if (!me) return;
-    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'returns', 'payments', 'sellers', 'phone_prefs']) await q(`DELETE FROM ${t}`);
+    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'returns', 'payments', 'seller_moves', 'sellers', 'phone_prefs']) await q(`DELETE FROM ${t}`);
     await audit(q, me, 'demo_data_reset');
     return res.status(200).json({ ok: true });
   }
@@ -124,7 +148,7 @@ export default route(async (req, res) => {
   if (b.op === 'clear') {
     const me = await requireRole(req, res, ['owner']); if (!me) return;
     if (b.confirm !== 'CLEAR') throw bad('Type CLEAR to confirm.');
-    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'returns', 'payments', 'sellers', 'phone_prefs', 'audit_log']) await q(`DELETE FROM ${t}`);
+    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'returns', 'payments', 'seller_moves', 'sellers', 'phone_prefs', 'audit_log']) await q(`DELETE FROM ${t}`);
     const gone = await q('DELETE FROM admin_users WHERE id <> $1 RETURNING id', [me.uid]);
     await audit(q, me, 'all_data_cleared', { users_removed: gone.length });
     return res.status(200).json({ ok: true, users_removed: gone.length });

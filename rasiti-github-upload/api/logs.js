@@ -1,4 +1,4 @@
-// GET /api/logs — the full system log (who, what, when), for owners and admins.
+// GET /api/logs — the full system log (who, what, when and from which IP address), for owners and admins.
 //   ?who=&action=&days=&q=&limit=&offset=
 // Staff actions show the staff email; phone and USSD actions show a masked customer number or a seller code.
 import { db } from './_lib/db.js';
@@ -17,11 +17,11 @@ export default route(async (req, res) => {
   if (p.action) add('action = ?', String(p.action).slice(0, 60));
   const days = Number(p.days); if (days > 0) add("at > now() - (? || ' days')::interval", String(Math.min(3650, Math.floor(days))));
   if (p.q) { args.push('%' + String(p.q).slice(0, 80).replace(/[%_\\]/g, '') + '%'); const i = '$' + args.length;
-    where.push(`(action ILIKE ${i} OR detail::text ILIKE ${i} OR COALESCE(user_email,'') ILIKE ${i})`); }
+    where.push(`(action ILIKE ${i} OR detail::text ILIKE ${i} OR COALESCE(user_email,'') ILIKE ${i} OR COALESCE(ip,'') ILIKE ${i})`); }
   const W = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const limit = Math.min(5000, Math.max(1, Number(p.limit) || 100)), offset = Math.max(0, Number(p.offset) || 0);
   const [{ n }] = await q(`SELECT count(*)::int AS n FROM audit_log ${W}`, args);
-  const rows = await q(`SELECT id, at, user_email, detail->>'actor' AS actor, action, detail FROM audit_log ${W} ORDER BY at DESC, id DESC LIMIT ${limit} OFFSET ${offset}`, args);
+  const rows = await q(`SELECT id, at, user_email, detail->>'actor' AS actor, action, detail, ip FROM audit_log ${W} ORDER BY at DESC, id DESC LIMIT ${limit} OFFSET ${offset}`, args);
   const actions = (await q('SELECT action, count(*)::int AS n FROM audit_log GROUP BY action ORDER BY action')).map(r => r);
   const people = (await q("SELECT DISTINCT user_email FROM audit_log WHERE user_email IS NOT NULL ORDER BY 1")).map(r => r.user_email);
   return res.status(200).json({ total: n, rows, actions, people });

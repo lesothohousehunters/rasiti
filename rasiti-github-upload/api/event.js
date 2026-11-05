@@ -5,6 +5,7 @@ import { route, body, bad } from './_lib/http.js';
 import { validCode, PHONE, inLesotho } from './_lib/codes.js';
 import { checkPin, hashPin, pinProblem } from './_lib/pin.js';
 import { claimCash, decideCash, pendingCash } from './_lib/cash.js';
+import { moveShop } from './_lib/accounts.js';
 
 const ID = /^[a-z0-9-]{6,40}$/i;
 const txt = (v, n) => String(v ?? '').trim().slice(0, n);
@@ -167,6 +168,13 @@ export default route(async (req, res) => {
       await q(`UPDATE sellers SET ${col}=$1 WHERE no=$2`, [mc, sl.no]);
       await audit(q, null, 'merchant_code_linked', { actor: 'Seller ' + sl.no, channel: 'WhatsApp', network: NETN, merchant_code: mc, check: (net === 'mpesa' ? 'Vodacom' : 'Econet') + ' confirmed (simulated)' });
       break;
+    }
+    case 'seller_move': { // the seller's shop moved to another place; needs their PIN
+      const [sl] = await q('SELECT * FROM sellers WHERE no=$1', [String(b.no || '')]); if (!sl) throw bad('Unknown seller code.');
+      const r = await checkPin(q, sl, String(b.pin || '')); if (!r.ok) return res.status(403).json({ error: r.msg });
+      const m = await moveShop(q, sl, txt(b.market, 60), 'WhatsApp'); if (!m.ok) return res.status(200).json({ ok: false, msg: m.msg });
+      await audit(q, null, 'seller_moved', { actor: 'Seller ' + sl.no, channel: 'WhatsApp', from: m.from, to: m.to });
+      return res.status(200).json({ ok: true, id: m.id, to: m.to, known: m.known });
     }
     default: throw bad('Unknown event.');
   }

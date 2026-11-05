@@ -34,6 +34,7 @@ RSL Taxathon 2026, Challenge 1 prototype. Customers get receipts and prize-draw 
 | `MAIL_FROM` | Optional. Sender shown on emails, e.g. `Rasiti <rasiti@yourdomain.co.ls>` |
 | `CRON_KEY` | Optional. A random word; an outside scheduler calls `/api/notify?cron=1&key=THAT-WORD` to send scheduled emails (see below) |
 | `SITE_URL` | Optional. The site's address, used for the "Open Rasiti" links in emails, e.g. `https://rasiti.statspack.africa` |
+| `TEST_TOOLS` | Optional. Leave empty while testing. Set to `off` for the live pilot to switch off the test accounts on the Users page |
 
 ## 3A. Deploy on Vercel (recommended)
 
@@ -105,6 +106,7 @@ Sellers sign in to their menu with their **4-digit seller code and a 4-digit PIN
 - 3 wrong PINs lock the seller menu for 15 minutes; the lock is written to the system log.
 - Sellers who joined before PINs existed create one the first time they dial, and only from their own registered phone number.
 - Demo sellers loaded with the demo dataset all use PIN **2580** (shown on the Start here page).
+- **Test accounts** (Users page, owners and admins): type a seller code, the shop's unique identifier, and click **Generate test account**. Rasiti gives that seller a new 4-digit PIN and links dummy payment accounts to the seller: an M-Pesa merchant code (58xxxx), an EcoCash merchant code (2xxxx) and a bank card machine (speed point) terminal ID such as SLB330705. A code that is not on Rasiti yet becomes a new test shop (**Free code** picks an unused one). **Link codes for every seller** gives any seller without them all three accounts; every demo seller already has them. The table and **Test accounts CSV** list each seller's test PIN and codes. A seller's own PIN is never shown. Set `TEST_TOOLS=off` for the live pilot.
 - On WhatsApp the PIN is shown as •••• in the chat.
 
 ## Cash: the buyer claims, the seller confirms
@@ -165,6 +167,7 @@ POST /api/card?key=CARD_KEY
 ## What the seller does
 
 - **Once:** join (2 minutes, with a PIN) and link their M-Pesa, EcoCash or card machine.
+- **If the shop moves:** seller menu **6. My shop moved**: pick the new market or type the place, then confirm. The seller code, PIN and payment codes stay the same; the map, the area figures and the shop's details move with it, and the old place is kept in the history (seller details, Shop moves CSV, system log). At most 3 moves in 30 days; more needs the help line.
 - **For cash:** say Yes to real cash sales when a buyer claims one (one tap, or 9 to confirm all at the end of the day).
 - **Each quarter:** file from the sales book (prefilled) and pay by mobile money.
 - Mobile money and card receipts issue themselves. Every winner shows ID and the SIM registered to them before payout.
@@ -208,15 +211,18 @@ Menu **Search**, for every signed-in RSL role. One list holds every receipt (cas
 
 **Mohlomi AI** ("the wise one") is a test agent inside Rasiti, for owners and admins only (menu: Mohlomi AI). Type what to check in plain words, for example "check that a customer who pays by M-Pesa gets a receipt". Mohlomi plans the steps, opens Rasiti's pages and demo phones in your browser while you watch, and reports what passed and what failed (copy or PDF). Every run is written to the system log.
 
-- **Look only** (default, safe during judging): opens pages, reads them and checks downloads. Changes nothing.
-- **Allow test changes**: also uses the demo phones and buttons such as payments and the draw. These are real demo records; use Undo or reset the demo data afterwards.
-- Clearing or resetting data, switching users off and passwords are always blocked.
-- Planning uses the same AI settings as Bohlale (`AI_API_KEY`). Without them, Mohlomi uses five built-in tests: every page, every download, a cash sale (buyer claims, seller confirms), the phones (USSD, PIN, M-Pesa payment, WhatsApp) and show/hide contacts. Plans are kept short (25 steps at most).
+- **Full access** (default): every page, the demo phones, every button, the report filters and the test accounts, so every test runs to the end. These are real demo records; use Undo, or reset and load the demo data afterwards.
+- **Look only** (safe during judging): opens pages, reads them and checks downloads. Changes nothing.
+- Only "Clear entire data", switching users off or deleting them, signing out and passwords stay blocked: they would remove users or end Mohlomi's own session.
+- A **remember** step keeps a value shown on the page, such as the PIN of a new test account, and later steps use it as `{pin}`.
+- Planning uses the same AI settings as Bohlale (`AI_API_KEY`). Without them, Mohlomi uses its built-in tests: every page, every download, report filters, a cash sale (buyer claims, seller confirms), the phones (USSD, PIN, M-Pesa payment, WhatsApp), test accounts (new PIN, then M-Pesa, EcoCash and card machine payments), a shop move, show/hide contacts, and **Full test of every feature**, which runs them all. AI plans have at most 40 steps.
 - Bohlale remains the officers' AI assistant; Mohlomi only tests the platform.
 
 ## Reports (every download in one place)
 
-Menu **Reports & alerts** (also a button in the top bar of every RSL page): the dashboard PDF; officer worklist, review queue, complaints, and filing & payments as CSV, plus the officer PDF; the **cash claims CSV** (every claim and what the seller did); Fraud Shield receipts and fake codes CSV and PDF; community watch ratings, shops and areas CSV and PDF (with Bohlale's latest analysis); draw entries and winners CSV and the draw PDF. Each report uses the filters last set on its own page. Search results and the system log keep their own downloads. Customer phone numbers are masked in every download.
+Menu **Reports & alerts** (also a button in the top bar of every RSL page): the dashboard PDF; officer worklist, review queue, complaints, and filing & payments as CSV, plus the officer PDF; the **cash claims CSV** (every claim and what the seller did); Fraud Shield receipts and fake codes CSV and PDF; community watch ratings, shops and areas CSV and PDF (with Bohlale's latest analysis); draw entries and winners CSV and the draw PDF; the **Sellers CSV** (every seller with market, tax status and linked M-Pesa, EcoCash and card machine codes) and the **Shop moves CSV**.
+
+**Filters for the downloads** sit at the top of the page: period (today, last 7 or 30 days, this or last month, this or last quarter, this year, or any dates), seller, market or area, seller status (registered, not registered, shops not on Rasiti), paid by (M-Pesa, EcoCash, card, cash the seller confirmed), Fraud Shield result, cash-claim status, customer rating, and minimum and maximum amount. The summary shows how many records match. With a filter set, every CSV and PDF on the page holds only the matching data, is made as of the "To" date, names the filters at the top of the PDF and ends in `-filtered.csv`. With no filter, each report keeps the filters of its own page. Search results and the system log keep their own downloads. Customer phone numbers are masked in every download.
 
 ## Filing and paying (sustained compliance)
 
@@ -267,7 +273,7 @@ Menu **Reports & alerts**, section *Email reports and alerts* (owners and admins
 ## Privacy controls and the system log
 
 - Phone numbers are masked everywhere by default. Owners and admins can click **Show contacts** at the top of any RSL page to see full numbers; every switch is written to the system log. Bohlale AI and saved draw winners always stay masked.
-- **System log** (menu, owners and admins): every action with who, what and when. Staff appear by email; customers and sellers using the phones appear with a masked number or seller code. Filter by person, action, date or search, and download as CSV or PDF.
+- **System log** (menu, owners and admins): every action with who, what, when and the IP address it came from (on Render, the first address in X-Forwarded-For; "server" for scheduled jobs). Staff appear by email; customers and sellers using the phones appear with a masked number or seller code. Filter by person, action, date or search, and download as CSV or PDF.
 
 ## Simulated RSL e-services link
 
@@ -349,6 +355,7 @@ public/rsl-mock.js  Simulated RSL e-services link: TIN check, return acknowledge
 public/i18n.js      Sesotho for every phone screen (USSD, WhatsApp, on-screen phones)
 public/app.js       Phones, Fraud Shield, maps, officer console, draw, Bohlale AI, users
 public/agent.js     Mohlomi AI test agent (runs the steps in the browser)
+public/places.js    Markets and their map positions (browser and server), used when a shop moves
 public/ml.js        Machine learning: forecasts, accuracy test, late-payment risk, unusual weeks (browser and server)
 public/vendor/      Leaflet maps and jsPDF (served locally)
 public/img/         Login photo, Bohlale AI and Mohlomi AI logos
@@ -366,7 +373,7 @@ api/bohlale.js      Bohlale AI: sends masked data to an OpenAI-compatible model
 api/notify.js       Email reports and alerts: rules, outbox, scheduled sending (/api/notify?cron=1&key=CRON_KEY)
 api/logs.js         Full system log (who, what, when) for owners and admins
 api/tile.js         Map tiles for PDF reports (satellite, street map as backup; Lesotho only)
-api/_lib/           Database, sessions, schema, receipt code checks, seller PINs, cash claims (cash.js), email (mail.js), report and alert builder (insights.js)
+api/_lib/           Database, sessions, schema, receipt code checks, seller PINs, cash claims (cash.js), email (mail.js), report and alert builder (insights.js), test accounts and shop moves (accounts.js), request IP for the system log (ctx.js)
 schema.sql          Same tables as the app creates automatically
 dev-server.mjs      Server used by Render (npm start) and for local testing
 vercel.json         Vercel settings
@@ -381,6 +388,7 @@ All colours are at the top of `public/index.html`. To switch to RSL brand colour
 
 This build is for the competition and uses mock data only. Before live taxpayer data:
 
+- Set `TEST_TOOLS=off` so no test accounts can be made.
 - Split `/api/state` into a public endpoint without phone numbers and an officer-only endpoint.
 - Store phone numbers hashed, and follow the Data Protection Act 2011.
 - Add rate limiting to `/api/event` and sign-in.

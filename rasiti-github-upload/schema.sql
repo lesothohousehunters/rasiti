@@ -86,3 +86,12 @@ CREATE TABLE IF NOT EXISTS email_outbox(
   id SERIAL PRIMARY KEY, rule_id INT, kind TEXT, subject TEXT, recipients TEXT[], html TEXT, text TEXT, status TEXT NOT NULL,
   error TEXT, alerts INT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
 CREATE TABLE IF NOT EXISTS alert_seen(key TEXT PRIMARY KEY, first_at TIMESTAMPTZ NOT NULL DEFAULT now(), last_sent TIMESTAMPTZ);
+-- Shop moves: when a seller's shop changes place, the seller tells Rasiti on *999# (or WhatsApp); the old and new place are kept.
+CREATE TABLE IF NOT EXISTS seller_moves(
+  id TEXT PRIMARY KEY, seller_no TEXT NOT NULL, from_market TEXT, to_market TEXT NOT NULL, from_lat DOUBLE PRECISION, from_lng DOUBLE PRECISION,
+  to_lat DOUBLE PRECISION, to_lng DOUBLE PRECISION, channel TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE INDEX IF NOT EXISTS seller_moves_seller ON seller_moves(seller_no, created_at);
+-- Test accounts (testing only; switch off with TEST_TOOLS=off): the PIN an admin generated for a test seller, shown on the Users page.
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS test_pin TEXT;
+-- System log: the IP address each logged request came from (empty for the server's own scheduled jobs).
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS ip TEXT;

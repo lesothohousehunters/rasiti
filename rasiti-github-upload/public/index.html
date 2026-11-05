@@ -418,6 +418,11 @@ button.homebar{border:0;background:transparent;width:100%;padding:0;cursor:point
 @media (max-width:640px){.wf label{flex:1 1 140px}.wf select,.wf input{min-width:0;width:100%}}
 .dl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 .nt-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0;padding:14px;border:1px solid var(--line);border-radius:12px}.nt-form label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;font-weight:600}.nt-form .nt-wide{grid-column:1/-1}.nt-form .nt-check{flex-direction:row;align-items:center;gap:8px;font-weight:500}.nt-btns{display:flex;gap:8px;align-items:end}.nt-form .err{grid-column:1/-1;margin:0}
+.rf-sum{margin:12px 0 0;font-size:.86rem}
+.ta-out{margin:12px 0;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--soft,rgba(127,127,127,.06))}
+.ta-grid{display:grid;grid-template-columns:max-content 1fr;gap:6px 12px;align-items:center;margin:10px 0}
+.ta-grid span{color:var(--muted);font-size:.82rem}
+.ta-grid b{justify-self:start}
 .rp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:16px;align-items:stretch}
 .rp-card{display:flex;flex-direction:column;gap:10px}.rp-card h3{margin:0}.rp-card p{margin:0}
 .rp-btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
@@ -630,10 +635,10 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
           <tr><td class="mono">5140</td><td>Mme 'Mathabo · cooked food</td><td>Nil return, and rejects most cash claims: a visit, not a bill.</td></tr>
           <tr><td class="mono">2264</td><td>Ntate Lebohang · shoe repair</td><td>Nil return that matches real inactivity. No action.</td></tr>
           <tr><td class="mono">6018</td><td>Mme Lineo · hair salon</td><td>Card machine. One phone claiming many cards: held.</td></tr>
-          <tr><td class="mono">7735</td><td>Ntate Teboho · phone repairs</td><td>Bought from himself: blocked.</td></tr>
+          <tr><td class="mono">7735</td><td>Ntate Teboho · phone repairs</td><td>Bought from himself: blocked. Moved his shop to Kingsway.</td></tr>
           <tr><td class="mono">3902</td><td>Mme Nthabiseng · clothes</td><td>Overdue tax, and 6 new phones paying exactly M100.</td></tr>
         </table></div>
-        <p class="note" style="margin-bottom:0">PIN for every test seller: <span class="codebox">2580</span>. Sellers sign in with seller code and PIN. All codes and numbers are fictional.</p>
+        <p class="note" style="margin-bottom:0">PIN for every test seller: <span class="codebox">2580</span>. Sellers sign in with seller code and PIN. Each one has dummy M-Pesa, EcoCash and card machine codes. Admins make more test accounts on the Users page. All codes and numbers are fictional.</p>
       </div>
       <div class="panel">
         <h3>Questions for testers</h3>
@@ -821,10 +826,29 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 </section>
 
 <section data-view="reports" hidden>
-  <p class="lede">Every report in one place, and the emails Rasiti sends by itself. CSV files open in Excel; PDFs are ready to print or email. Each report uses the filters last set on its own page. Phone numbers stay masked unless an admin shows contacts.</p>
+  <p class="lede">Every report in one place, and the emails Rasiti sends by itself. Choose what you need with the filters, then click a download: every CSV and PDF below holds only the matching data. CSV files open in Excel; PDFs are ready to print or email. Phone numbers stay masked unless an admin shows contacts.</p>
+  <div class="panel wf-bar" id="rfBar"><h3>Filters for the downloads</h3>
+    <div class="wf">
+      <label>Period<select id="rfPeriod"><option value="all">All time</option><option value="today">Today</option><option value="d7">Last 7 days</option><option value="d30">Last 30 days</option><option value="month">This month</option><option value="lmonth">Last month</option><option value="quarter">This quarter</option><option value="lquarter">Last quarter</option><option value="year">This year</option><option value="custom">Choose dates</option></select></label>
+      <label>From<input id="rfFrom" type="date"></label>
+      <label>To<input id="rfTo" type="date"></label>
+      <label>Seller<select id="rfSeller"><option value="">All sellers</option></select></label>
+      <label>Market or area<select id="rfArea"><option value="">All areas</option></select></label>
+      <label>Seller status<select id="rfStatus"><option value="">Everyone</option><option value="registered">Registered for tax</option><option value="enrolled">On Rasiti, not registered</option><option value="off">Shops not on Rasiti</option></select></label>
+      <label>Paid by<select id="rfPaid"><option value="">Any way</option><option value="momo">Mobile money (any)</option><option value="mpesa">M-Pesa</option><option value="ecocash">EcoCash</option><option value="card">Card</option><option value="cash">Cash (seller confirmed)</option></select></label>
+      <label>Fraud Shield<select id="rfShield"><option value="">Any result</option><option value="clear">Clear</option><option value="held">Held for an officer</option><option value="blocked">Blocked or rejected</option><option value="approved">Approved by an officer</option></select></label>
+      <label>Cash claims<select id="rfCash"><option value="">Any status</option><option value="pending">Waiting for the seller</option><option value="confirmed">Confirmed</option><option value="rejected">Rejected</option><option value="expired">Ignored (expired)</option></select></label>
+      <label>Customer rating<select id="rfRating"><option value="">Any rating</option></select></label>
+      <label>Min (M)<input id="rfMin" type="number" min="0" inputmode="numeric" placeholder="0"></label>
+      <label>Max (M)<input id="rfMax" type="number" min="0" inputmode="numeric" placeholder="any"></label>
+      <button class="btn small" id="rfReset" type="button">Reset filters</button>
+    </div>
+    <p class="note rf-sum" id="rfSum"></p>
+  </div>
   <div class="rp-grid">
     <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><h3>Dashboard</h3></div><p class="note">One-page overview: receipts, sellers, Fraud Shield, draw, filing and what needs attention.</p><div class="rp-btns"><button class="btn small primary" type="button" id="dashPdf">Dashboard PDF</button></div></div>
     <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5h6M9 3h6v4H9z"/><rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 12h6M9 16h4"/></svg><h3>Officer console</h3></div><p class="note">The worklist, held draw entries, customer complaints, filing and payments.</p><div class="rp-btns"><button class="btn small" type="button" data-dl="work-csv">Worklist CSV</button><button class="btn small" type="button" data-dl="review-csv">Review queue CSV</button><button class="btn small" type="button" data-dl="complaints-csv">Complaints CSV</button><button class="btn small" type="button" data-dl="tax-csv">Filing &amp; payments CSV</button><button class="btn small primary" type="button" data-dl="officer-pdf">Officer PDF</button></div></div>
+    <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l1.5-5h15L21 9"/><path d="M4 9v11h16V9"/><path d="M3 9h18"/><path d="M10 20v-6h4v6"/></svg><h3>Sellers</h3></div><p class="note">Every seller with market, tax status, linked M-Pesa, EcoCash and card machine codes, and every shop move.</p><div class="rp-btns"><button class="btn small" type="button" data-dl="moves-csv">Shop moves CSV</button><button class="btn small primary" type="button" data-dl="sellers-csv">Sellers CSV</button></div></div>
     <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg><h3>Cash claims</h3></div><p class="note">Every cash sale a buyer claimed, and what the seller did: confirmed, rejected, ignored or still waiting.</p><div class="rp-btns"><button class="btn small primary" type="button" data-dl="cash-csv">Cash claims CSV</button></div></div>
     <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg><h3>Fraud Shield</h3></div><p class="note">Every receipt with its score and reasons, and the fake or misused codes that were stopped.</p><div class="rp-btns"><button class="btn small" type="button" data-dl="shield-csv">Fraud Shield receipts CSV</button><button class="btn small" type="button" data-dl="fakes-csv">Fake codes CSV</button><button class="btn small primary" type="button" data-dl="shield-pdf">Fraud Shield PDF</button></div></div>
     <div class="panel rp-card"><div class="rp-head"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg><h3>Community watch</h3></div><p class="note">Customer ratings by shop and area, with Bohlale's latest analysis in the PDF.</p><div class="rp-btns"><button class="btn small" type="button" data-csv="ratings">Ratings CSV</button><button class="btn small" type="button" data-csv="shops">Shops CSV</button><button class="btn small" type="button" data-csv="areas">Areas CSV</button><button class="btn small primary" type="button" id="wfPdf">Community watch PDF</button></div></div>
@@ -883,8 +907,8 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
         <textarea id="agQ" placeholder="Type what to test…"></textarea>
         <div class="ag-row">
           <div class="ag-mode" role="radiogroup" aria-label="What the agent may do">
-            <label><input type="radio" name="agMode" value="look" checked> Look only (safe during judging)</label>
-            <label><input type="radio" name="agMode" value="change"> Allow test changes (phones, buttons)</label>
+            <label><input type="radio" name="agMode" value="change" checked> Full access (phones, buttons, test accounts)</label>
+            <label><input type="radio" name="agMode" value="look"> Look only (safe during judging)</label>
           </div>
         </div>
         <div class="ag-row"><button class="btn primary" type="button" id="agRun">Run test</button><button class="btn" type="button" id="agStop" hidden>Stop</button><span class="note" id="agStatus"></span></div>
@@ -900,9 +924,9 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
     <div class="stack">
       <div class="panel"><h3>Rules Mohlomi AI follows</h3>
         <ul class="note" style="padding-left:18px;margin:0">
+          <li><b>Full access</b> (the default) uses every page, the demo phones, every button, the report filters and the test accounts, so every test can run to the end. Its changes are real demo data: use Undo, or reset and load the demo data afterwards.</li>
           <li><b>Look only</b> opens pages, reads them and checks downloads. It changes nothing.</li>
-          <li><b>Allow test changes</b> also uses the demo phones and buttons such as the draw. Those changes are real demo data: use Undo or reset the demo data afterwards.</li>
-          <li>Clearing or resetting data, switching users off and passwords are always blocked.</li>
+          <li>Only "Clear entire data", switching users off or deleting them, signing out and passwords stay blocked, because they would remove users or end Mohlomi's own session.</li>
           <li>Downloads are checked but not saved to your computer.</li>
           <li>Without the AI service, Mohlomi AI uses its built-in test plans.</li>
         </ul></div>
@@ -937,13 +961,13 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 </section>
 
 <section data-view="logs" hidden>
-  <p class="lede">Every action in Rasiti is recorded here: who did it, what they did and when. RSL staff appear by email. Customers and sellers using the phones appear with a masked number or their seller code. Entries cannot be changed from the platform.</p>
+  <p class="lede">Every action in Rasiti is recorded here: who did it, what they did, when, and the IP address it came from. RSL staff appear by email. Customers and sellers using the phones appear with a masked number or their seller code. Entries cannot be changed from the platform.</p>
   <div class="panel wf-bar">
     <div class="wf">
       <label>Who<select id="lgWho"><option value="">Everyone</option></select></label>
       <label>What<select id="lgAct"><option value="">All actions</option></select></label>
       <label>When<select id="lgDays"><option value="1">Last 24 hours</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="" selected>All time</option></select></label>
-      <label>Search<input id="lgQ" type="text" placeholder="e.g. 3307, draw, lineo@" autocomplete="off"></label>
+      <label>Search<input id="lgQ" type="text" placeholder="e.g. 3307, draw, lineo@, 102." autocomplete="off"></label>
     </div>
     <div class="dl"><span>Download</span><button class="btn small" type="button" id="lgCsv">Log CSV</button><button class="btn small primary" type="button" id="lgPdf">Log PDF</button></div>
   </div>
@@ -965,6 +989,19 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
     <p class="err" id="userErr"></p>
   </div>
   <div class="panel mt"><h3>Users</h3><div class="tbl-wrap"><table id="usersTbl"></table></div></div>
+  <div class="panel mt" id="taPanel"><h3>Test accounts</h3>
+    <p class="note" style="margin-top:0">For testing only. Type a seller code (each shop's unique identifier) and Rasiti gives that seller a new PIN and links dummy payment accounts to it: an M-Pesa merchant code, an EcoCash merchant code and a bank card machine (speed point). A code that is not on Rasiti yet becomes a new test shop. Switch this off for the live pilot with TEST_TOOLS=off.</p>
+    <form id="taForm" class="form-grid">
+      <label for="taNo">Seller code (shop identifier)<input id="taNo" type="text" inputmode="numeric" maxlength="4" placeholder="e.g. 8123" autocomplete="off" required></label>
+      <label for="taName">Shop name (new shops only)<input id="taName" type="text" maxlength="60" placeholder="Test shop" autocomplete="off"></label>
+      <label for="taMarket">Market (new shops only)<select id="taMarket"></select></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn" id="taFree">Free code</button><button class="btn primary" type="submit">Generate test account</button></div>
+    </form>
+    <p class="err" id="taErr"></p>
+    <div class="ta-out" id="taOut" hidden></div>
+    <div class="dl" style="margin-top:6px"><button class="btn small" type="button" id="taAll">Link codes for every seller</button><button class="btn small primary" type="button" data-dl="test-csv">Test accounts CSV</button></div>
+    <div class="tbl-wrap mt"><table id="taTbl"></table></div>
+  </div>
   <div class="two mt">
       <div class="panel"><h3>My password</h3>
         <form id="pwForm" class="form-grid">
@@ -1002,12 +1039,13 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 <aside class="drawer" id="drawer" hidden aria-label="Details"><div class="drw-head"><button type="button" class="btn small" id="drwBack" hidden>← Back</button><h2 id="drwTitle"></h2><button type="button" class="drw-x" id="drwX" aria-label="Close">×</button></div><div id="drwBody"></div></aside>
 <div class="toast" id="toast" hidden></div>
 <script src="vendor/leaflet.js"></script>
-<script src="i18n.js?v=20261104d"></script>
-<script src="faq.js?v=20261104d"></script>
-<script src="rsl-mock.js?v=20261104d"></script>
-<script src="tips.js?v=20261104d"></script>
-<script src="ml.js?v=20261104d"></script>
-<script src="app.js?v=20261104d"></script>
-<script src="agent.js?v=20261104d"></script>
+<script src="i18n.js?v=20261105b"></script>
+<script src="faq.js?v=20261105b"></script>
+<script src="rsl-mock.js?v=20261105b"></script>
+<script src="tips.js?v=20261105b"></script>
+<script src="ml.js?v=20261105b"></script>
+<script src="places.js?v=20261105b"></script>
+<script src="app.js?v=20261105b"></script>
+<script src="agent.js?v=20261105b"></script>
 </body>
 </html>

@@ -198,6 +198,14 @@
     ['*999# > 2 > seller code {}', '*999# > 2 > khoutu ea morekisi {}'],
     ['Tax due: {} ({} is overdue)', 'Lekhetho le lokelang: {} ({} e fetile nako)'], ['Pay part now (pay a little', 'Lefa karolo joale (lefa hanyane'], ['each week before the date)', 'beke le beke pele ho letsatsi)'],
     ['Your {} merchant code (5 to 7 digits, from {}):', 'Khoutu ea hau ea mohoebi ea {} (linomoro tse 5 ho isa ho 7, ho tsoa ho {}):'],
+    // the seller's shop moved to another place
+    ['My shop moved', 'Lebenkele le fallile'], ['Where is your shop now?', 'Lebenkele la hau le hokae joale?'], ['Somewhere else', 'Sebaka se seng'],
+    ['Type the new place (e.g. Ha Abia market):', 'Ngola sebaka se secha (mohlala, mmaraka oa Ha Abia):'], ['Move your shop to', 'Fallisetsa lebenkele ho'],
+    ['Yes, move it', 'E, le fallise'], ['No, cancel', 'Che, hlakola'], ['Nothing changed. Your shop is still at {}.', 'Ha ho se fetohileng. Lebenkele le ntse le le {}.'],
+    ['Shop moved to {}.', 'Lebenkele le fallisetsoe {}.'], ['Your shop is already at {}.', 'Lebenkele la hau le se le le {}.'],
+    ['Your seller code, PIN and payment codes stay the same. Customers see the new place.', 'Khoutu ea morekisi, PIN le likhoutu tsa tefo li sala li tšoana. Bareki ba bona sebaka se secha.'],
+    ['Your shop moved 3 times in 30 days. Call the Rasiti help line 6808 8101 to move it again.', 'Lebenkele le fallile makhetlo a 3 ka matsatsi a 30. Letsetsa mohala oa thuso oa Rasiti 6808 8101 ho le fallisa hape.'],
+    ['Type the name of the new place.', 'Ngola lebitso la sebaka se secha.'], ['Please choose a number from the list. Dial again to start.', 'Ka kopo khetha nomoro lenaneng. Letsetsa hape ho qala.'],
     // values that appear inside lines
     ['Registered seller', 'Morekisi ea ngolisitseng'],
   ];

@@ -1,6 +1,7 @@
 // Small helpers shared by the API routes: sessions, cookies, roles and error handling.
 import { SignJWT, jwtVerify } from 'jose';
 import { db } from './db.js';
+import { reqCtx, clientIp } from './ctx.js';
 
 const COOKIE = 'rasiti_session';
 const SESSION_HOURS = 8;
@@ -58,14 +59,14 @@ export function body(req) {
 }
 
 export function route(handler) {
-  return async (req, res) => {
+  return async (req, res) => reqCtx.run({ ip: clientIp(req) }, async () => {
     res.setHeader('Cache-Control', 'no-store');
     try { await handler(req, res); }
     catch (e) {
       if (!e.status) console.error(e);
       if (!res.headersSent) res.status(e.status || 500).json({ error: e.status ? e.message : 'Something went wrong on the server. Check the logs.' });
     }
-  };
+  });
 }
 
 export const bad = (msg) => Object.assign(new Error(msg), { status: 400 });

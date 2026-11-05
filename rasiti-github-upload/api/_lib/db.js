@@ -1,6 +1,7 @@
 // Database access for Neon (production) or any Postgres (local development).
 // q(text, params) runs one parameterised statement and returns rows.
 import { SCHEMA } from './schema.js';
+import { currentIp } from './ctx.js';
 
 let _q = null;
 let _ready = null;
@@ -27,6 +28,7 @@ export async function db() {
 }
 
 export async function audit(q, user, action, detail = {}) {
-  await q('INSERT INTO audit_log(user_id, user_email, action, detail) VALUES ($1,$2,$3,$4::jsonb)',
-    [user ? user.uid : null, user ? user.email : null, action, JSON.stringify(detail)]);
+  // ip = the address the request came from (none for the server's own scheduled jobs)
+  await q('INSERT INTO audit_log(user_id, user_email, action, detail, ip) VALUES ($1,$2,$3,$4::jsonb,$5)',
+    [user ? user.uid : null, user ? user.email : null, action, JSON.stringify(detail), currentIp()]);
 }

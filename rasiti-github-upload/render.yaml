@@ -32,3 +32,5 @@ services:
         sync: false
       - key: SITE_URL
         sync: false
+      - key: TEST_TOOLS
+        sync: false

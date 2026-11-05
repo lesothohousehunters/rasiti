@@ -1,15 +1,18 @@
 /* Mohlomi AI: Rasiti's test agent (owners and admins only). Mohlomi means "the wise one".
    You type what to test; the AI (or a built-in plan) turns it into steps; this file runs the steps on Rasiti's own pages
    and demo phones while you watch, then reports what passed and failed and writes the run to the system log.
-   Safety: "Look only" never uses the phones or buttons that change data; clearing, resetting, switching users off
-   and passwords are always blocked. Downloads are produced and checked, but not saved. */
+   Access: "Full access" (the default) may use every page, the demo phones, every button, the report filters and the test
+   accounts, so every test can run to the end. "Look only" never uses the phones or buttons that change data. Only clearing all
+   data, switching users off or deleting them, signing out and passwords stay blocked: they would remove users or end
+   Mohlomi's own session. Downloads are produced and checked, but not saved.
+   Values: a "remember" step keeps a value shown on the page (e.g. the PIN of a new test account) and later steps use it as {name}. */
 (function () {
   const A = window.RASITI_APP; if (!A) return;
   const {TITLES, PH, RASITI_CODE, currentView, setMode, uNav, uRender, uDial, ussdSend, openChat, waSend, api, esc, fT, stamp, makePdf, withBusy, toast} = A;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const norm = s => String(s || '').toLowerCase().replace(/[’'"“”]/g, '').replace(/\s+/g, ' ').trim();
   const q = s => document.querySelector(s);
-  const ALWAYS_BLOCK = /clear entire|clear all|reset demo|reset password|switch off|delete|change password|sign out|my password/i;
+  const ALWAYS_BLOCK = /clear entire|clear all|reset password|switch off|^\s*delete\s*$|delete user|change password|sign out|my password/i;
   const CHANGES = /draw \d|draw winners|pay as|pay now|approve|reject|send|add user|generate|mark contacted|book visit|refer|load demo|subscribe|confirm|show contacts|hide contacts|undo|redo|reminder/i;
   const PHONE = {customer:'c', seller:'t'};
   const PAGE_NAME = v => (TITLES[v] || v).split(' ·')[0];
@@ -18,6 +21,14 @@
   const go = (page, say) => ({do:'go', page, say:say || `Open ${PAGE_NAME(page)}`});
   const see = (text, say, where) => ({do:'expect', text, where:where || 'page', say:say || `Check that "${text}" is shown`});
   const dl = (text, say) => ({do:'download', text, say:say || `Download "${text}"`});
+  const mem = (name, from, say) => ({do:'remember', name, from, say});
+  // a new test shop with its own PIN and dummy M-Pesa, EcoCash and card machine codes (Users page), used by the next steps as {code}, {pin}, {mp}, {ec}, {pos}
+  const newShop = () => [go('users', 'Open Users, where admins make test accounts'), see('Test accounts', 'The test accounts panel is there'),
+    {do:'click', text:'Free code', say:'Ask for a seller code (shop identifier) nobody uses yet'}, mem('code', 'taNo', 'Remember the new shop identifier'),
+    {do:'type', field:'taName', value:'Mohlomi test shop', say:'Name the test shop'},
+    {do:'click', text:'Generate test account', say:'Generate the test account: PIN and payment codes'}, {do:'wait', seconds:1}, see('New test shop ready', 'The account is ready'),
+    mem('pin', 'taPin', 'Remember its PIN'), mem('mp', 'taMp', 'Remember its M-Pesa merchant code'), mem('ec', 'taEc', 'Remember its EcoCash merchant code'), mem('pos', 'taPos', 'Remember its card machine (speed point)'),
+    see('{pos}', 'The list shows the card machine linked to the seller')];
   const BUILTIN = {
     health: {title:'Quick health check of every page', changes:false, steps:[
       go('dash'), see('Needs attention', 'Overview shows the "Needs attention" list'),
@@ -58,13 +69,47 @@
       {do:'select', field:'mmSeller', option:'Ntate Thabo', say:'Choose seller Ntate Thabo'}, {do:'select', field:'mmNet', option:'M-Pesa', say:'Choose M-Pesa'},
       {do:'click', text:'Pay as the customer', say:'Customer pays M30 to a seller\'s M-Pesa merchant code'}, see('Rasiti receipt', 'The receipt arrives by itself', 'customer'),
       {do:'whatsapp', phone:'customer', message:'TIP', say:'Customer sends TIP on WhatsApp'}, see('Tip of the day', 'Rasiti replies with the tip', 'customer')]},
+    accounts: {title:'Test accounts: PIN, M-Pesa, EcoCash and card machine', changes:true, steps:[...newShop(),
+      go('phones'),
+      {do:'ussd', phone:'seller', inputs:['2', '{code}', '{pin}'], say:'The new seller signs in on *999# with the code and the generated PIN'}, see('My sales book', 'The seller menu opens', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '{code}', '{pin}', '4'], say:'The seller opens Payment codes'}, see('{mp}', 'The M-Pesa merchant code is linked', 'seller'), see('{ec}', 'The EcoCash merchant code is linked', 'seller'), see('{pos}', 'The card machine is linked', 'seller'),
+      {do:'select', field:'mmSeller', option:'{code}', say:'Choose the new seller in the payment panel'}, {do:'select', field:'mmNet', option:'M-Pesa', say:'Pay with M-Pesa'},
+      {do:'click', text:'Pay as the customer', say:'Customer pays the M-Pesa merchant code'}, see('Rasiti receipt', 'The M-Pesa receipt arrives by itself', 'customer'),
+      {do:'select', field:'mmNet', option:'EcoCash', say:'Pay with EcoCash'}, {do:'click', text:'Pay as the customer', say:'Customer pays the EcoCash merchant code'}, see('Rasiti receipt', 'The EcoCash receipt arrives by itself', 'customer'),
+      {do:'select', field:'mmNet', option:'Card (speed point)', say:'Pay by card at the speed point'}, {do:'type', field:'mmL4', value:'4471', say:'Card ending 4471'},
+      {do:'click', text:'Pay as the customer', say:'Customer taps the card on the card machine'}, see('Card payment approved', 'The bank approves the card payment', 'customer'),
+      {do:'ussd', phone:'customer', inputs:['1', '2', '{code}', '30', '4471'], say:'Customer claims the card receipt on *999#'}, see('Receipt RS-{code}', 'The card receipt is claimed', 'customer')]},
+    move: {title:'Shop moved: the seller changes the shop\'s place', changes:true, steps:[...newShop(),
+      go('phones'),
+      {do:'ussd', phone:'seller', inputs:['2', '{code}', '{pin}'], say:'The seller signs in'}, see('My shop moved', 'The menu has "My shop moved"', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '{code}', '{pin}', '6'], say:'The seller chooses 6. My shop moved'}, see('Where is your shop now', 'Rasiti asks for the new place', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '{code}', '{pin}', '6', '1'], say:'The seller picks the first market'}, see('Yes, move it', 'Rasiti asks to confirm', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '{code}', '{pin}', '6', '1', '1'], say:'The seller confirms'}, see('Shop moved to', 'The shop is moved', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '{code}', '{pin}', '4'], say:'Payment codes stay the same after the move'}, see('{mp}', 'The same M-Pesa code is still linked', 'seller'),
+      go('reports'), {do:'select', field:'rfSeller', option:'{code}', say:'Filter the reports on the new seller'}, see('1 shop moves', 'The move is counted'),
+      dl('Shop moves CSV'), {do:'click', text:'Reset filters', say:'Clear the filters'},
+      go('logs'), see('Seller moved the shop', 'The system log recorded the move')]},
+    filters: {title:'Reports: filter, then download', changes:true, steps:[
+      go('reports'), see('Filters for the downloads', 'The Reports page has the filters'), see('No filters', 'No filter is set yet'),
+      {do:'select', field:'rfPeriod', option:'Last 30 days', say:'Period: last 30 days'}, see('Filters on', 'The filters are on'),
+      {do:'select', field:'rfPaid', option:'Cash (seller confirmed)', say:'Paid by: cash the seller confirmed'}, dl('Cash claims CSV'), dl('Fraud Shield receipts CSV'),
+      {do:'select', field:'rfSeller', option:'Ntate Thabo', say:'Seller: Ntate Thabo'}, see('Ntate Thabo', 'The summary names the seller'), dl('Dashboard PDF'), dl('Officer PDF'), dl('Sellers CSV'),
+      {do:'select', field:'rfPaid', option:'Any way', say:'Paid by: any way'}, {do:'select', field:'rfArea', option:'Kingsway', say:'Area: Kingsway'}, dl('Ratings CSV'), dl('Community watch PDF'),
+      {do:'select', field:'rfStatus', option:'Registered for tax', say:'Only registered sellers'}, {do:'select', field:'rfShield', option:'Held for an officer', say:'Fraud Shield: held'}, dl('Review queue CSV'),
+      {do:'select', field:'rfCash', option:'Confirmed', say:'Cash claims: confirmed'}, {do:'type', field:'rfMin', value:'20', say:'Amount from M20'}, dl('Draw entries CSV'), dl('Filing & payments CSV'),
+      {do:'click', text:'Reset filters', say:'Clear every filter'}, see('No filters', 'All filters are cleared')]},
     privacy: {title:'Check show and hide contacts', changes:true, steps:[
       go('draw'), {do:'click', text:'Show contacts', say:'Admin clicks Show contacts'}, see('Hide contacts', 'Full numbers are now shown'),
       go('logs'), see('Showed full phone numbers', 'The system log recorded it'),
       go('draw'), {do:'click', text:'Hide contacts', say:'Admin hides the numbers again'}, see('Show contacts', 'Numbers are hidden again')]}
   };
+  BUILTIN.all = {title:'Full test of every feature', changes:true, steps:['health', 'downloads', 'filters', 'cash', 'phones', 'accounts', 'move', 'privacy'].flatMap(k => BUILTIN[k].steps)};
   function pickBuiltin(text, allow) {
     const t = norm(text);
+    if (/everything|every feature|full test|all features|whole system|all tests/.test(t)) return allow ? 'all' : 'health';
+    if (/test account|password|pin|merchant|speed ?point|terminal|dummy/.test(t)) return allow ? 'accounts' : 'health';
+    if (/move|moved|location|relocat|new place/.test(t)) return allow ? 'move' : 'health';
+    if (/filter/.test(t)) return 'filters';
     if (/contact|privacy|phone number|mask/.test(t)) return allow ? 'privacy' : 'health';
     if (/cash|confirm|claim/.test(t)) return allow ? 'cash' : 'health';
     if (/ussd|whatsapp|\*999|phone|customer|seller|tip|sms|receipt/.test(t)) return allow ? 'phones' : 'health';
@@ -129,8 +174,12 @@
   async function needPhones() { if (currentView() !== 'phones') { location.hash = '#phones'; await sleep(700); } }
   const short = s => String(s || '').replace(/\s*\n\s*/g, ' | ').slice(0, 220);
 
-  async function runStep(st) {
+  const sub = v => typeof v === 'string' ? v.replace(/\{(\w+)\}/g, (m, k) => RUN.vars[k] != null ? RUN.vars[k] : m) : v;
+  async function runStep(st0) {
     const allow = RUN.allow;
+    const st = Object.fromEntries(Object.entries(st0).map(([k, v]) => [k, Array.isArray(v) ? v.map(sub) : sub(v)]));
+    const left = Object.entries(st).filter(([k]) => k !== 'say').map(([, v]) => v).flat().find(v => typeof v === 'string' && /\{\w+\}/.test(v));
+    if (left && st.do !== 'remember') { const k = left.match(/\{(\w+)\}/)[1]; if (!(k in RUN.vars)) throw new Error(`No value for {${k}} yet: add a "remember" step before this one.`); }
     switch (st.do) {
       case 'go': {
         location.hash = '#' + st.page; await sleep(800);
@@ -141,7 +190,7 @@
       }
       case 'click': {
         if (ALWAYS_BLOCK.test(st.text)) return {blocked:`"${st.text}" is always blocked for Mohlomi AI.`};
-        if (!allow && CHANGES.test(st.text)) return {blocked:`"${st.text}" changes data. Choose "Allow test changes" to let Mohlomi AI press it.`};
+        if (!allow && CHANGES.test(st.text)) return {blocked:`"${st.text}" changes data. Choose "Full access" to let Mohlomi AI press it.`};
         const e = findClick(st.text); if (!e) throw new Error(`Could not find "${st.text}" on this page.`);
         if (ALWAYS_BLOCK.test(e.textContent)) return {blocked:`"${e.textContent.trim()}" is always blocked for Mohlomi AI.`};
         flash(e); await sleep(250); e.click(); await sleep(900);
@@ -158,7 +207,7 @@
         return st.do === 'select' ? `Chose "${st.option}"` : `Typed "${st.value}"`;
       }
       case 'ussd': {
-        if (!allow) return {blocked:'Phone tests can create demo records. Choose "Allow test changes" to run them.'};
+        if (!allow) return {blocked:'Phone tests can create demo records. Choose "Full access" to run them.'};
         await needPhones(); const k = PHONE[st.phone] || 'c';
         setMode(k, 'ussd'); uNav(k, 'end'); await sleep(200);
         const p = PH[k]; p.u = 'dial'; p.dial = RASITI_CODE; uRender(k);
@@ -170,7 +219,7 @@
         return `Screen: ${short(txt)}`;
       }
       case 'whatsapp': {
-        if (!allow) return {blocked:'Phone tests can create demo records. Choose "Allow test changes" to run them.'};
+        if (!allow) return {blocked:'Phone tests can create demo records. Choose "Full access" to run them.'};
         await needPhones(); const k = PHONE[st.phone] || 'c';
         setMode(k, 'wa'); if (PH[k].w !== 'chat') { openChat(k, true); await sleep(600); }
         const n = q('#' + k + 'Log').querySelectorAll('.bb.bot').length; waSend(k, st.message);
@@ -194,12 +243,18 @@
         await sleep(300); return `Produced ${RUN.files[RUN.files.length - 1]}`;
       }
       case 'wait': await sleep((st.seconds || 1) * 1000); return `Waited ${st.seconds || 1} s`;
+      case 'remember': {
+        const e = findField(st.from) || (/^[\w-]+$/.test(st.from) && document.getElementById(st.from)) || null;
+        const v = e ? String(('value' in e && e.tagName !== 'BUTTON' ? e.value : e.textContent) || '').trim() : '';
+        if (!v) throw new Error(`Nothing to remember in "${st.from}".`);
+        RUN.vars[st.name || 'value'] = v; return `Remembered {${st.name || 'value'}} = ${v}`;
+      }
     }
     throw new Error('Unknown step.');
   }
 
   /* ---------- a run: hooks for downloads, toasts and errors, then the steps ---------- */
-  const RUN = {on:false, stop:false, files:[], toasts:[], errors:[], allow:false};
+  const RUN = {on:false, stop:false, files:[], toasts:[], errors:[], allow:false, vars:{}};
   function hooks(on) {
     if (on) {
       A.HOOK.save = name => RUN.files.push(name);
@@ -243,15 +298,16 @@
         catch (e) { note = e.message + '. Using a built-in test plan.'; }
         if (!plan) { const k = pickBuiltin(instruction, allow); plan = BUILTIN[k]; note = (note ? note + ' ' : '') + `Built-in plan: ${plan.title}.`; }
       }
-      if (plan.changes && !allow) note += ' This plan uses the phones or changes data, so those steps are blocked in "Look only".';
+      if (plan.changes && !allow) note += ' This plan uses the phones or changes data, so those steps are blocked in "Look only". Choose "Full access" to run every step.';
       plan = {title:plan.title, steps:plan.steps.map(s => ({...s}))};
-      RUN.files = []; RUN.toasts = []; RUN.errors = []; RUN.allow = allow; hooks(true);
+      RUN.files = []; RUN.toasts = []; RUN.errors = []; RUN.vars = {}; RUN.allow = allow; hooks(true);
       const t0 = Date.now(); live(plan); status('Running… you can watch it work.');
       for (const s of plan.steps) {
         if (RUN.stop) { s.st = 'blk'; s.det = 'Stopped by you.'; continue; }
         const prev = plan.steps[plan.steps.indexOf(s) - 1];
         if (prev && prev.st === 'blk' && /^expect/.test(s.do)) { s.st = 'blk'; s.det = 'Skipped: the step before it was blocked.'; live(plan); continue; }
         s.st = 'run'; live(plan); const a = Date.now(); const errs = RUN.errors.length;
+        if (s.say) s.say = sub(s.say);
         try { const r = await runStep(s); if (r && r.blocked) { s.st = 'blk'; s.det = r.blocked; } else { s.st = 'ok'; s.det = r || ''; } }
         catch (e) { s.st = 'bad'; s.det = e.message; }
         if (RUN.errors.length > errs) { s.st = 'bad'; s.det = (s.det ? s.det + '\n' : '') + 'Page error: ' + RUN.errors.slice(errs).join('; ').slice(0, 200); }
@@ -274,23 +330,23 @@
   const HIST = [];
   function render() {
     const ch = q('#agChips'); if (ch && !ch.children.length) ch.innerHTML = '<span class="note" style="align-self:center">Quick tests:</span>' + Object.entries(BUILTIN).map(([k, b]) => `<button type="button" class="btn small" data-b="${k}">${esc(b.title)}${b.changes ? ' *' : ''}</button>`).join('')
-      + '<span class="note" style="align-self:center">* needs "Allow test changes"</span>';
+      + '<span class="note" style="align-self:center">* needs "Full access"</span>';
     const r = q('#agResult');
     if (LAST) { r.hidden = false; q('#agTitle').textContent = LAST.title;
-      q('#agSum').innerHTML = `<span class="pill p-ok">${LAST.passed} passed</span><span class="pill ${LAST.failed ? 'p-bad' : 'p-mute'}">${LAST.failed} failed</span><span class="pill ${LAST.blocked ? 'p-warn' : 'p-mute'}">${LAST.blocked} blocked</span><span class="pill p-info">${LAST.secs} s</span><span class="pill p-mute">${LAST.allow ? 'Test changes allowed' : 'Look only'}</span>`;
+      q('#agSum').innerHTML = `<span class="pill p-ok">${LAST.passed} passed</span><span class="pill ${LAST.failed ? 'p-bad' : 'p-mute'}">${LAST.failed} failed</span><span class="pill ${LAST.blocked ? 'p-warn' : 'p-mute'}">${LAST.blocked} blocked</span><span class="pill p-info">${LAST.secs} s</span><span class="pill p-mute">${LAST.allow ? 'Full access' : 'Look only'}</span>`;
       q('#agNote').textContent = LAST.note; q('#agSteps').innerHTML = stepsHtml(LAST.steps); }
     const h = q('#agHist');
     if (h) h.innerHTML = HIST.length ? '<tr><th>When</th><th>Test</th><th>Result</th></tr>' + HIST.map(x => `<tr><td>${fT(x.at.getTime())}</td><td>${esc(x.title)}</td><td>${x.failed ? `<span class="pill p-bad">${x.failed} failed</span>` : '<span class="pill p-ok">Passed</span>'}</td></tr>`).join('')
       : '<tr><td class="note">No runs yet in this session. Past runs are in the system log ("Ran Mohlomi AI tests").</td></tr>';
   }
   function reportText(x) {
-    return `Mohlomi AI test report (Rasiti)\n${x.title}\nAsked: ${x.instruction}\nWhen: ${x.at.toLocaleString()} · ${x.secs} s · ${x.allow ? 'test changes allowed' : 'look only'}\nResult: ${x.passed} passed, ${x.failed} failed, ${x.blocked} blocked\n${x.note}\n\n`
+    return `Mohlomi AI test report (Rasiti)\n${x.title}\nAsked: ${x.instruction}\nWhen: ${x.at.toLocaleString()} · ${x.secs} s · ${x.allow ? 'full access' : 'look only'}\nResult: ${x.passed} passed, ${x.failed} failed, ${x.blocked} blocked\n${x.note}\n\n`
       + x.steps.map((s, i) => `${i + 1}. [${s.st === 'ok' ? 'PASS' : s.st === 'bad' ? 'FAIL' : 'BLOCKED'}] ${s.say || s.do}${s.det ? '\n   ' + s.det.replace(/\n/g, '\n   ') : ''}`).join('\n');
   }
   function pdf(x) {
     return withBusy(() => makePdf(`rasiti-mohlomi-test-${stamp()}.pdf`, 'Mohlomi AI test report', [
       {t:'h', v:x.title},
-      {t:'p', v:`Asked: ${x.instruction}. Run on ${x.at.toLocaleString()} in ${x.secs} seconds (${x.allow ? 'test changes allowed' : 'look only'}). ${x.note}`},
+      {t:'p', v:`Asked: ${x.instruction}. Run on ${x.at.toLocaleString()} in ${x.secs} seconds (${x.allow ? 'full access' : 'look only'}). ${x.note}`},
       {t:'kpis', v:[[x.passed, 'Passed'], [x.failed, 'Failed'], [x.blocked, 'Blocked'], [x.steps.length, 'Steps']]},
       {t:'table', cols:[['#', 10], ['Result', 22], ['Step', 70], ['Details', 80]], rows:x.steps.map((s, i) => [String(i + 1), s.st === 'ok' ? 'Passed' : s.st === 'bad' ? 'Failed' : 'Blocked', s.say || s.do, (s.det || '').slice(0, 220)])}
     ]), 'PDF downloaded');

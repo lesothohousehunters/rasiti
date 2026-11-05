@@ -9,6 +9,7 @@
 // Either one takes the receipt out of the draw and out of the seller's sales book.
 // Optional: set MOMO_KEY and give the networks .../api/momo?key=MOMO_KEY. The demo panel on the Phones page is allowed without the key.
 import { db, audit } from './_lib/db.js';
+import { reqCtx, clientIp } from './_lib/ctx.js';
 import { mkCode } from './_lib/codes.js';
 
 const NET = { mpesa: 'M-Pesa', ecocash: 'EcoCash' };
@@ -26,7 +27,9 @@ async function readBody(req) {
 }
 const json = (res, code, o) => { res.statusCode = code; res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'no-store'); res.end(JSON.stringify(o)); };
 
-export default async function handler(req, res) {
+// Every log entry records the IP address of the gateway that called (the network or the bank).
+export default (req, res) => reqCtx.run({ ip: clientIp(req) }, () => handler(req, res));
+async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
   if (process.env.MOMO_KEY) {
     const key = new URL(req.url, 'http://x').searchParams.get('key');

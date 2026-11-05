@@ -6,6 +6,7 @@
 // A reversal or refund voids the receipt: {type:'reversal', bank, txn}.
 // Optional: set CARD_KEY and give the banks .../api/card?key=CARD_KEY. The demo panel on the Phones page is allowed without the key.
 import { db, audit } from './_lib/db.js';
+import { reqCtx, clientIp } from './_lib/ctx.js';
 import { mkCode } from './_lib/codes.js';
 
 export const BANKS = { slb: 'Standard Lesotho Bank', fnb: 'FNB Lesotho', nedbank: 'Nedbank Lesotho', postbank: 'Lesotho PostBank' };
@@ -23,7 +24,9 @@ async function readBody(req) {
 }
 const json = (res, code, o) => { res.statusCode = code; res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'no-store'); res.end(JSON.stringify(o)); };
 
-export default async function handler(req, res) {
+// Every log entry records the IP address of the gateway that called (the network or the bank).
+export default (req, res) => reqCtx.run({ ip: clientIp(req) }, () => handler(req, res));
+async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
   if (process.env.CARD_KEY) {
     const key = new URL(req.url, 'http://x').searchParams.get('key');

@@ -27,4 +27,4 @@ export async function checkPin(q, seller, pin) {
   return { ok: false, msg: `Wrong PIN. ${3 - fails} ${3 - fails === 1 ? 'try' : 'tries'} left.` };
 }
 // The data sent to the browser never includes PIN details.
-export const publicSeller = ({ pin_hash, pin_fails, pin_lock_until, ...s }) => ({ ...s, has_pin: !!pin_hash });
+export const publicSeller = ({ pin_hash, pin_fails, pin_lock_until, test_pin, ...s }) => ({ ...s, has_pin: !!pin_hash });

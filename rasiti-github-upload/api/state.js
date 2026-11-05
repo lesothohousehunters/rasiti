@@ -9,7 +9,7 @@ export default route(async (req, res) => {
   const q = await db();
   const [{ n }] = await q('SELECT count(*)::int AS n FROM sellers');
   if (n === 0) return res.status(200).json({ empty: true, now: new Date().toISOString() });
-  const [sellers, receipts, claims, reports, fakes, reviews, actions, draws, returns, payments] = await Promise.all([
+  const [sellers, receipts, claims, reports, fakes, reviews, actions, draws, returns, payments, moves] = await Promise.all([
     q('SELECT * FROM sellers ORDER BY created_at'),
     q("SELECT code, seller_no, amount::float AS amount, channel, phone, issued_at, note, source, card_last4, flag FROM receipts WHERE issued_at > now() - interval '120 days' ORDER BY issued_at"),
     // cash claims: pending ones older than 3 days are shown as expired (ignored by the seller)
@@ -20,7 +20,8 @@ export default route(async (req, res) => {
     q('SELECT item_id, kind, target FROM actions'),
     q('SELECT id, seed, live_entries, winners, run_at FROM draws ORDER BY run_at DESC LIMIT 5'),
     q("SELECT id, seller_no, period, sales::float AS sales, declared::float AS declared, nil_reason, tax_due::float AS tax_due, channel, filed_at FROM returns WHERE filed_at > now() - interval '400 days' ORDER BY period"),
-    q("SELECT id, seller_no, period, amount::float AS amount, ref, channel, paid_at FROM payments WHERE paid_at > now() - interval '400 days' ORDER BY paid_at")
+    q("SELECT id, seller_no, period, amount::float AS amount, ref, channel, paid_at FROM payments WHERE paid_at > now() - interval '400 days' ORDER BY paid_at"),
+    q('SELECT id, seller_no, from_market, to_market, channel, created_at FROM seller_moves ORDER BY created_at')
   ]);
-  res.status(200).json({ empty: false, now: new Date().toISOString(), sellers: sellers.map(publicSeller), receipts, claims, reports, fakes, reviews, actions, draws, returns, payments });
+  res.status(200).json({ empty: false, now: new Date().toISOString(), sellers: sellers.map(publicSeller), receipts, claims, reports, fakes, reviews, actions, draws, returns, payments, moves });
 });
