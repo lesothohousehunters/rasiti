@@ -95,3 +95,29 @@ CREATE INDEX IF NOT EXISTS seller_moves_seller ON seller_moves(seller_no, create
 ALTER TABLE sellers ADD COLUMN IF NOT EXISTS test_pin TEXT;
 -- System log: the IP address each logged request came from (empty for the server's own scheduled jobs).
 ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS ip TEXT;
+-- Sellers who move, sell from home or deliver; owners with several shops (branches); payments to a personal number or bank account.
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS sell_type TEXT NOT NULL DEFAULT 'fixed'; -- fixed (one place), mobile (moves around), home, delivery
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS usual_places TEXT;     -- mobile sellers: up to 3 usual places, separated by ' | '
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS owner_no TEXT;         -- a branch: the seller code of the owner's main shop
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS keeper_pin_hash TEXT;  -- a branch: the shop-keeper's PIN (can only confirm cash sales for that branch)
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS keeper_test_pin TEXT;  -- demo and test accounts only
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS pay_personal TEXT;     -- the seller's personal M-Pesa or EcoCash number (266 + 8 digits)
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS pay_personal_net TEXT; -- mpesa or ecocash
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS pay_bank TEXT;         -- the seller's bank (slb, fnb, nedbank, postbank)
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS pay_bank_acct TEXT;    -- last 4 digits of the account only
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS id_hash TEXT;          -- one ID number, one owner (a hash; the ID number itself is not kept)
+ALTER TABLE sellers ADD COLUMN IF NOT EXISTS join_sid TEXT;         -- the USSD session that created the account
+CREATE INDEX IF NOT EXISTS sellers_owner ON sellers(owner_no);
+CREATE INDEX IF NOT EXISTS sellers_id_hash ON sellers(id_hash);
+-- A claim is cash, or money sent to the seller's personal number ('p2p') or bank account ('bank'), with the transaction ID or reference.
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS method TEXT NOT NULL DEFAULT 'cash';
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS ref TEXT;
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS verified BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE UNIQUE INDEX IF NOT EXISTS claims_method_ref ON claims(method, ref) WHERE ref IS NOT NULL AND state <> 'rejected';
+-- Ratings: what kind of seller it was, and the seller's name or number if the customer knows it (to join reports of one moving seller).
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS seller_type TEXT;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS seller_hint TEXT;
+-- Simulated mobile-money network: person-to-person transfers, so Rasiti can check a transaction ID (the real network answers this in the pilot).
+CREATE TABLE IF NOT EXISTS net_txns(
+  ref TEXT PRIMARY KEY, network TEXT NOT NULL, from_msisdn TEXT NOT NULL, to_msisdn TEXT NOT NULL, amount NUMERIC NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now());

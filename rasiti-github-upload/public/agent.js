@@ -98,16 +98,51 @@
       {do:'select', field:'rfStatus', option:'Registered for tax', say:'Only registered sellers'}, {do:'select', field:'rfShield', option:'Held for an officer', say:'Fraud Shield: held'}, dl('Review queue CSV'),
       {do:'select', field:'rfCash', option:'Confirmed', say:'Cash claims: confirmed'}, {do:'type', field:'rfMin', value:'20', say:'Amount from M20'}, dl('Draw entries CSV'), dl('Filing & payments CSV'),
       {do:'click', text:'Reset filters', say:'Clear every filter'}, see('No filters', 'All filters are cleared')]},
+    kinds: {title:'Sellers who move, sell from home or deliver', changes:true, steps:[
+      go('phones'),
+      {do:'ussd', phone:'seller', inputs:['2', '0', 'Mohlomi mover'], say:'A new seller joins on *999# and types a name'}, see('Where do you usually sell', 'Rasiti asks where they usually sell', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '0', 'Mohlomi mover', '2'], say:'They choose 2. I move around'}, see('Where do you sell most', 'Rasiti asks for the main place', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '0', 'Mohlomi mover', '2', 'Sefika rank'], say:'Main place: Sefika rank'}, see('Other places you sell', 'Rasiti asks for up to 2 other places', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '0', 'Mohlomi mover', '2', 'Sefika rank', 'Pitso, Kingsway', 'Sweets', '3579', '3579'], say:'Other places, goods and PIN'}, see('never your wallet', 'The welcome says RSL never sees the wallet', 'seller'), see('Get a merchant code', 'Rasiti offers a merchant code', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '0', 'Mohlomi home', '3'], say:'Another seller chooses 3. From home'}, see('never show your home', 'Home sellers are told only the area is shown', 'seller'),
+      {do:'ussd', phone:'customer', inputs:['1', '4', '4', 'Mohlomi sweets man Pitso'], say:'A customer reports a seller not on Rasiti'}, see('Was it', 'Rasiti asks what kind of seller it was', 'customer'),
+      {do:'ussd', phone:'customer', inputs:['1', '4', '4', 'Mohlomi sweets man Pitso', '2'], say:'It was a moving seller'}, see("Seller's name or phone", 'Rasiti asks for the name, so one moving seller is not counted as many shops', 'customer'),
+      go('dash'), see('Moving seller', 'The Overview map shows moving sellers'), see('From home (area only)', 'Home sellers are shown by area only'),
+      go('officer'), see('Possibly the same moving seller', 'The worklist suggests joining leads of one moving seller'),
+      go('reports'), {do:'select', field:'rfStype', option:'Moves around', say:'Filter: sellers who move around'}, see('moves around', 'The filter is on'), dl('Sellers CSV'), {do:'click', text:'Reset filters', say:'Clear the filters'}]},
+    transfers: {title:'Paid to a personal number or bank', changes:true, steps:[
+      go('phones'),
+      {do:'ussd', phone:'customer', inputs:['1'], say:'Customer opens the customer menu'}, see('Paid to a number or bank', 'The menu has 7. Paid to a number or bank', 'customer'),
+      {do:'ussd', phone:'customer', inputs:['1', '7', '8261', '40', '1', 'WRONG1234'], say:'Customer claims a transfer with a made-up transaction ID'}, see('has no payment', 'The network check refuses a fake ID', 'customer'),
+      {do:'click', text:"Paid to a home seller's number", say:'Guided case: the customer sends M40 to a home seller and claims it with the real ID'}, {do:'wait', seconds:2}, see('confirmed it', 'The network confirms the real ID: receipt and 1 entry', 'customer'),
+      {do:'ussd', phone:'customer', inputs:['1', '7', '8261', '150', '2', 'FNB778899'], say:'Customer claims a bank transfer'}, see('by bank', 'A bank transfer waits for the seller', 'customer'),
+      {do:'ussd', phone:'seller', inputs:['2', '8261', '2580', '1'], say:'The home seller opens her claims'}, see('bank', 'She sees the bank transfer to confirm', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '8261', '2580', '4'], say:'She opens Payment codes'}, see('My personal number', 'Personal number and bank account can be linked', 'seller'),
+      go('reports'), {do:'select', field:'rfPaid', option:'Mobile money to a personal number', say:'Filter: paid to a personal number'}, dl('Cash claims CSV'), {do:'click', text:'Reset filters', say:'Clear the filters'},
+      go('shield'), see('Phones paying each other back and forth', 'The Fraud Shield has the back-and-forth rule')]},
+    shops: {title:'Owner with several shops', changes:true, steps:[
+      go('phones'),
+      {do:'ussd', phone:'seller', inputs:['2', '8480', '2580'], say:'The owner signs in to her main shop'}, see('My shops', 'The menu has 7. My shops', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '8480', '2580', '7'], say:'She opens My shops'}, see('Add a shop', 'She can add a shop and set a shop-keeper PIN', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '8480', '2580', '7', '2'], say:"She checks today's sales per shop"}, see('Total', 'Each shop and the total are shown', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '8481'], say:'The shop-keeper dials in to branch 8481'}, see('Shop-keeper PIN', 'Rasiti asks for the shop-keeper PIN', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '8481', '1357'], say:'The shop-keeper signs in'}, see('Confirm cash sales', 'The shop-keeper can confirm cash sales', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '8481', '1357', '3'], say:'The shop-keeper tries the tax menu'}, see('only confirm cash', 'Everything else is for the owner only', 'seller'),
+      {do:'ussd', phone:'seller', inputs:['2', '8480', '2580', '3'], say:'The owner opens her tax menu'}, see('My tax', 'One tax menu for all her shops', 'seller'),
+      go('officer'), see('Possibly one business', 'The worklist flags separate shops that look like one business')]},
     privacy: {title:'Check show and hide contacts', changes:true, steps:[
       go('draw'), {do:'click', text:'Show contacts', say:'Admin clicks Show contacts'}, see('Hide contacts', 'Full numbers are now shown'),
       go('logs'), see('Showed full phone numbers', 'The system log recorded it'),
       go('draw'), {do:'click', text:'Hide contacts', say:'Admin hides the numbers again'}, see('Show contacts', 'Numbers are hidden again')]}
   };
-  BUILTIN.all = {title:'Full test of every feature', changes:true, steps:['health', 'downloads', 'filters', 'cash', 'phones', 'accounts', 'move', 'privacy'].flatMap(k => BUILTIN[k].steps)};
+  BUILTIN.all = {title:'Full test of every feature', changes:true, steps:['health', 'downloads', 'filters', 'cash', 'phones', 'accounts', 'move', 'kinds', 'transfers', 'shops', 'privacy'].flatMap(k => BUILTIN[k].steps)};
   function pickBuiltin(text, allow) {
     const t = norm(text);
     if (/everything|every feature|full test|all features|whole system|all tests/.test(t)) return allow ? 'all' : 'health';
     if (/test account|password|pin|merchant|speed ?point|terminal|dummy/.test(t)) return allow ? 'accounts' : 'health';
+    if (/branch|several shops|many shops|owner|keeper|one business/.test(t)) return allow ? 'shops' : 'health';
+    if (/personal number|bank transfer|transfer|transaction id|wallet/.test(t)) return allow ? 'transfers' : 'health';
+    if (/moving seller|move around|from home|home seller|deliver|runner|kind of seller/.test(t)) return allow ? 'kinds' : 'health';
     if (/move|moved|location|relocat|new place/.test(t)) return allow ? 'move' : 'health';
     if (/filter/.test(t)) return 'filters';
     if (/contact|privacy|phone number|mask/.test(t)) return allow ? 'privacy' : 'health';

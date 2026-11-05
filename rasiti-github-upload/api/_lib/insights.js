@@ -50,12 +50,12 @@ export async function build(q, win, now) {
 
   // ---------- actions needed now ----------
   const alerts = []; const add = (key, level, title, detail, page, drill) => alerts.push({ key, level, title, detail, page: page || 'officer', drill: drill || null });
-  const sellers = await q('SELECT no, name, market, status, phone, helper, registered_at FROM sellers'); const byNo = Object.fromEntries(sellers.map(s => [s.no, s]));
+  const sellers = await q('SELECT no, name, market, status, phone, helper, registered_at, owner_no FROM sellers'); const byNo = Object.fromEntries(sellers.map(s => [s.no, s]));
   const rets = await q('SELECT seller_no, period, declared::float AS declared, tax_due::float AS tax_due, nil_reason, filed_at FROM returns');
   const pays = await q('SELECT seller_no, period, sum(amount)::float AS paid FROM payments GROUP BY 1,2'); const paidOf = (no, p) => (pays.find(x => x.seller_no === no && x.period === p) || {}).paid || 0;
   for (const r of rets) { const owe = r.tax_due - paidOf(r.seller_no, r.period); if (owe > 0.5 && qDue(r.period) < now && byNo[r.seller_no])
     add(`overdue:${r.seller_no}:${r.period}`, 'high', `${byNo[r.seller_no].name}: ${M(owe)} tax overdue`, `For ${qName(r.period)}, due ${fD(qDue(r.period))}. Offer a payment plan; small weekly payments are allowed.`, 'officer', 'seller:' + r.seller_no); }
-  const lp = qPrev(qOf(now)), due = qDue(lp); const regs = sellers.filter(s => s.status === 'registered' && (!s.registered_at || Date.parse(s.registered_at) < qStart(qNext(lp))));
+  const lp = qPrev(qOf(now)), due = qDue(lp); const regs = sellers.filter(s => s.status === 'registered' && !s.owner_no && (!s.registered_at || Date.parse(s.registered_at) < qStart(qNext(lp))));
   const notFiled = regs.filter(s => !rets.some(r => r.seller_no === s.no && r.period === lp));
   if (due < now) for (const s of notFiled) add(`missing:${s.no}:${lp}`, 'high', `${s.name}: ${qName(lp)} return not filed`, `It was due ${fD(due)}. Send a reminder or call; the return is prefilled from the sales book.`, 'officer', 'seller:' + s.no);
   for (const r of rets.filter(r => r.period === lp && r.declared === 0)) { const [x] = await q('SELECT COALESCE(sum(amount),0)::float AS v FROM receipts WHERE seller_no=$1 AND flag IS NULL AND issued_at >= $2 AND issued_at < $3', [r.seller_no, iso(qStart(lp)), iso(qStart(qNext(lp)))]);
@@ -79,6 +79,13 @@ export async function build(q, win, now) {
   for (const x of self) add(`self:${x.seller_no}`, 'medium', `${byNo[x.seller_no].name}: ${x.n} receipt${x.n === 1 ? '' : 's'} bought from their own phone`, 'Blocked from the draw by the Fraud Shield. Review it in the officer console.', 'shield', 'seller:' + x.seller_no);
   const vel = await q(`SELECT seller_no, count(*)::int AS n FROM (SELECT seller_no, phone, date_trunc('day', issued_at) d, count(*) c FROM receipts WHERE phone IS NOT NULL AND issued_at > now() - interval '7 days' GROUP BY 1,2,3 HAVING count(*) >= 6) z GROUP BY 1`);
   for (const x of vel) if (byNo[x.seller_no]) add(`vel:${x.seller_no}:${fD(now)}`, 'medium', `${byNo[x.seller_no].name}: one phone with 6 or more receipts in a day`, 'Draw entries are held for an officer. A reseller stocking up, or someone farming entries?', 'officer', 'seller:' + x.seller_no);
+  // Separate sellers sharing one phone or personal number: possibly one business split up (one ID, one owner: the second shop becomes a branch).
+  const twins = await q(`SELECT a.no AS a, b.no AS b FROM sellers a JOIN sellers b ON a.no < b.no AND a.owner_no IS NULL AND b.owner_no IS NULL
+    AND ((a.phone IS NOT NULL AND a.phone = b.phone) OR (a.pay_personal IS NOT NULL AND a.pay_personal = b.pay_personal))`);
+  for (const t of twins) if (byNo[t.a] && byNo[t.b]) add(`onebiz:${t.a}:${t.b}`, 'medium', `Possibly one business: ${byNo[t.a].name} (${t.a}) and ${byNo[t.b].name} (${t.b})`, 'They use the same phone or personal number. Ask if one owner runs both; if so, the second shop becomes a branch with one tax return. Not a bill.', 'officer', 'seller:' + t.a);
+  // Payments to personal numbers: transaction IDs the network did not know (someone trying fake transfer claims).
+  const [xm] = await q("SELECT count(*)::int AS n, count(DISTINCT phone)::int AS p FROM fakes WHERE kind='transfermiss' AND created_at > now() - interval '7 days'");
+  if (xm.n >= 3) add(`xfermiss:${qOf(now)}:${Math.floor((now + TZ) / (7 * DAY))}`, 'info', `${xm.n} transfer claims refused this week`, `${xm.p} phone${xm.p === 1 ? '' : 's'} typed transaction IDs the network did not know. Nothing counted; see the Fraud Shield.`, 'shield');
   const [fk] = await q("SELECT count(*)::int AS n FROM fakes WHERE created_at > now() - interval '7 days' AND kind IN ('forged','unknown','tampered')");
   if (fk.n) add(`fakes:${qOf(now)}:${Math.floor((now + TZ) / (7 * DAY))}`, 'info', `${fk.n} fake or altered receipt code${fk.n === 1 ? '' : 's'} caught this week`, 'Customers checked them on *999#. See the Fraud Shield.', 'shield');
   const d = L(now), ms = fromLocal(d.getUTCFullYear(), d.getUTCMonth(), 1);

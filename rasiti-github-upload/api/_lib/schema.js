@@ -82,5 +82,25 @@ export const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS audit_log(
      id SERIAL PRIMARY KEY, user_id INT, user_email TEXT, action TEXT NOT NULL,
      detail JSONB, at TIMESTAMPTZ NOT NULL DEFAULT now())`,
-  `ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS ip TEXT`
+  `ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS ip TEXT`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS sell_type TEXT NOT NULL DEFAULT 'fixed'`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS usual_places TEXT`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS owner_no TEXT`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS keeper_pin_hash TEXT`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS keeper_test_pin TEXT`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS pay_personal TEXT`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS pay_personal_net TEXT`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS pay_bank TEXT`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS pay_bank_acct TEXT`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS id_hash TEXT`,
+  `ALTER TABLE sellers ADD COLUMN IF NOT EXISTS join_sid TEXT`,
+  `CREATE INDEX IF NOT EXISTS sellers_owner ON sellers(owner_no)`,
+  `CREATE INDEX IF NOT EXISTS sellers_id_hash ON sellers(id_hash)`,
+  `ALTER TABLE claims ADD COLUMN IF NOT EXISTS method TEXT NOT NULL DEFAULT 'cash'`,
+  `ALTER TABLE claims ADD COLUMN IF NOT EXISTS ref TEXT`,
+  `ALTER TABLE claims ADD COLUMN IF NOT EXISTS verified BOOLEAN NOT NULL DEFAULT FALSE`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS claims_method_ref ON claims(method, ref) WHERE ref IS NOT NULL AND state <> 'rejected'`,
+  `ALTER TABLE reports ADD COLUMN IF NOT EXISTS seller_type TEXT`,
+  `ALTER TABLE reports ADD COLUMN IF NOT EXISTS seller_hint TEXT`,
+  `CREATE TABLE IF NOT EXISTS net_txns( ref TEXT PRIMARY KEY, network TEXT NOT NULL, from_msisdn TEXT NOT NULL, to_msisdn TEXT NOT NULL, amount NUMERIC NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`
 ];

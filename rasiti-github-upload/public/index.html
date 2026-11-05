@@ -684,7 +684,7 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
   <div class="dash-grid">
     <div class="panel dash-wide"><h3>Receipted sales per day, and the forecast for the next 14 days</h3><div class="chart" id="dashChart"></div><p class="note" id="dashChartNote"></p></div>
     <div class="panel dash-map"><h3>Sellers and leads on the map</h3><div class="map small" id="dashMap"></div>
-      <div class="legend"><span><i style="background:#1d9e57"></i>Registered seller</span><span><i style="background:#3b82f6"></i>On Rasiti, not registered</span><span><i style="background:#d93025"></i>New lead</span><span><i style="background:#f0a020"></i>Low receipts</span></div></div>
+      <div class="legend"><span><i style="background:#1d9e57"></i>Registered seller</span><span><i style="background:#3b82f6"></i>On Rasiti, not registered</span><span><i style="background:#0ea5a4;border-radius:50%;outline:2px dashed #0ea5a4"></i>Moving seller</span><span><i style="background:#8b5cf6;opacity:.5;border-radius:50%"></i>From home (area only)</span><span><i style="background:#f97316;border-radius:50%;outline:2px dashed #f97316"></i>Runner (area)</span><span><i style="background:#d93025"></i>New lead</span><span><i style="background:#f0a020"></i>Low receipts</span></div></div>
     <div class="panel"><h3>Needs attention</h3><ul class="attn" id="dashAttn"></ul></div>
     <div class="panel"><h3>Top sellers</h3><div class="chart" id="dashTopCh"></div></div>
     <div class="stack"><div class="panel"><h3>Widening the tax net</h3><div class="funnel" id="dashFunnel"></div></div>
@@ -835,7 +835,8 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
       <label>Seller<select id="rfSeller"><option value="">All sellers</option></select></label>
       <label>Market or area<select id="rfArea"><option value="">All areas</option></select></label>
       <label>Seller status<select id="rfStatus"><option value="">Everyone</option><option value="registered">Registered for tax</option><option value="enrolled">On Rasiti, not registered</option><option value="off">Shops not on Rasiti</option></select></label>
-      <label>Paid by<select id="rfPaid"><option value="">Any way</option><option value="momo">Mobile money (any)</option><option value="mpesa">M-Pesa</option><option value="ecocash">EcoCash</option><option value="card">Card</option><option value="cash">Cash (seller confirmed)</option></select></label>
+      <label>Kind of seller<select id="rfStype"><option value="">Every kind</option><option value="fixed">Sells in one place</option><option value="mobile">Moves around</option><option value="home">Sells from home</option><option value="delivery">Delivers (runner)</option><option value="owner">Owner with several shops</option><option value="branch">Branch of an owner</option></select></label>
+      <label>Paid by<select id="rfPaid"><option value="">Any way</option><option value="momo">Mobile money (any)</option><option value="mpesa">M-Pesa</option><option value="ecocash">EcoCash</option><option value="card">Card</option><option value="cash">Cash (seller confirmed)</option><option value="p2p">Mobile money to a personal number</option><option value="bank">Bank transfer</option><option value="stock">Stock purchases (seller paying a shop)</option></select></label>
       <label>Fraud Shield<select id="rfShield"><option value="">Any result</option><option value="clear">Clear</option><option value="held">Held for an officer</option><option value="blocked">Blocked or rejected</option><option value="approved">Approved by an officer</option></select></label>
       <label>Cash claims<select id="rfCash"><option value="">Any status</option><option value="pending">Waiting for the seller</option><option value="confirmed">Confirmed</option><option value="rejected">Rejected</option><option value="expired">Ignored (expired)</option></select></label>
       <label>Customer rating<select id="rfRating"><option value="">Any rating</option></select></label>
@@ -941,7 +942,7 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
     <div class="wf">
       <label class="sx-q">Search<input id="sxQ" type="search" placeholder="e.g. RS-3307, Thabo, 118, PY4K2" autocomplete="off"></label>
       <label>Type<select id="sxKind"><option value="">Everything</option><option value="receipt">Receipts</option><option value="return">Tax returns</option><option value="payment">Tax payments</option></select></label>
-      <label>Paid by<select id="sxPaid"><option value="">Any way</option><option value="momo">Mobile money (any)</option><option value="mpesa">M-Pesa</option><option value="ecocash">EcoCash</option><option value="card">Card</option><option value="cash">Cash (confirmed by the seller)</option></select></label>
+      <label>Paid by<select id="sxPaid"><option value="">Any way</option><option value="momo">Mobile money (any)</option><option value="mpesa">M-Pesa</option><option value="ecocash">EcoCash</option><option value="card">Card</option><option value="cash">Cash (confirmed by the seller)</option><option value="p2p">Mobile money to a personal number</option><option value="bank">Bank transfer</option></select></label>
       <label>Reported by<select id="sxRec"><option value="">Anyone</option><option value="network">Network (M-Pesa or EcoCash)</option><option value="bank">Bank (card machine)</option><option value="seller">Seller (cash confirmed, returns, payments)</option></select></label>
       <label>Network notice<select id="sxFlag"><option value="">Any</option><option value="any">Reversed or paid back</option><option value="reversed">Payment reversed</option><option value="payback">Money sent back to the payer</option></select></label>
       <label>Seller<select id="sxSeller"><option value="">All sellers</option></select></label>
@@ -1039,13 +1040,13 @@ a.kpi.dk:hover{box-shadow:0 4px 14px rgba(0,0,0,.08);transform:translateY(-1px)}
 <aside class="drawer" id="drawer" hidden aria-label="Details"><div class="drw-head"><button type="button" class="btn small" id="drwBack" hidden>← Back</button><h2 id="drwTitle"></h2><button type="button" class="drw-x" id="drwX" aria-label="Close">×</button></div><div id="drwBody"></div></aside>
 <div class="toast" id="toast" hidden></div>
 <script src="vendor/leaflet.js"></script>
-<script src="i18n.js?v=20261105b"></script>
-<script src="faq.js?v=20261105b"></script>
-<script src="rsl-mock.js?v=20261105b"></script>
-<script src="tips.js?v=20261105b"></script>
-<script src="ml.js?v=20261105b"></script>
-<script src="places.js?v=20261105b"></script>
-<script src="app.js?v=20261105b"></script>
-<script src="agent.js?v=20261105b"></script>
+<script src="i18n.js?v=20261105c"></script>
+<script src="faq.js?v=20261105c"></script>
+<script src="rsl-mock.js?v=20261105c"></script>
+<script src="tips.js?v=20261105c"></script>
+<script src="ml.js?v=20261105c"></script>
+<script src="places.js?v=20261105c"></script>
+<script src="app.js?v=20261105c"></script>
+<script src="agent.js?v=20261105c"></script>
 </body>
 </html>

@@ -59,7 +59,8 @@ export async function moveShop(q, seller, market, channel) {
   if (to.toLowerCase() === String(seller.market || '').toLowerCase()) return { ok: false, msg: `Your shop is already at ${to}.` };
   const [{ n }] = await q("SELECT count(*)::int AS n FROM seller_moves WHERE seller_no=$1 AND created_at > now() - interval '30 days'", [seller.no]);
   if (n >= 3) return { ok: false, msg: 'Your shop moved 3 times in 30 days. Call the Rasiti help line 6808 8101 to move it again.' };
-  const ll = P.latLng('T' + seller.no + '-' + to, area || '');
+  // a home seller is shown at the centre of the area only, never at the home
+  const ll = seller.sell_type === 'home' && area ? P.AREAS[area] : P.latLng('T' + seller.no + '-' + to, area || '');
   const lat = area ? ll[0] : null, lng = area ? ll[1] : null;
   const id = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
   await q('INSERT INTO seller_moves(id,seller_no,from_market,to_market,from_lat,from_lng,to_lat,to_lng,channel) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',

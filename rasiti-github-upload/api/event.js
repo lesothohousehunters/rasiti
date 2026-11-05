@@ -4,7 +4,8 @@ import { db, audit } from './_lib/db.js';
 import { route, body, bad } from './_lib/http.js';
 import { validCode, PHONE, inLesotho } from './_lib/codes.js';
 import { checkPin, hashPin, pinProblem } from './_lib/pin.js';
-import { claimCash, decideCash, pendingCash } from './_lib/cash.js';
+import { claimCash, decideCash, pendingCash, shopGroup } from './_lib/cash.js';
+import { claimTransfer, linkPersonal, linkBank, openMerchant, addBranch, setKeeperPin, branchSummary, idHash, placeFor } from './_lib/more.js';
 import { moveShop } from './_lib/accounts.js';
 
 const ID = /^[a-z0-9-]{6,40}$/i;
@@ -18,6 +19,10 @@ export default route(async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const b = body(req);
   const q = await db();
+  // The seller's own PIN, or (keeper:true) the shop-keeper PIN of a branch. Returns the seller row, or sends 403.
+  const signed = async () => { const [sl] = await q('SELECT * FROM sellers WHERE no=$1', [String(b.no || '')]); if (!sl) throw bad('Unknown seller code.');
+    const k = !!b.keeper && sl.owner_no; const r = await checkPin(q, k ? { ...sl, pin_hash: sl.keeper_pin_hash } : sl, String(b.pin || ''));
+    if (!r.ok) { res.status(403).json({ error: r.msg }); return null; } return k ? { ...sl, keeper: true } : sl; };
   const seller = async (no) => { const [s] = await q('SELECT no, status FROM sellers WHERE no=$1', [String(no)]); if (!s) throw bad('Unknown seller code.'); return s; };
 
   switch (b.kind) {
@@ -44,18 +49,22 @@ export default route(async (req, res) => {
       const r = await claimCash(q, { phone: ph, seller: sl, amount: b.amount, channel: 'WhatsApp' });
       return res.status(200).json(r.ok ? { ok: true, id: r.id, amount: r.amount } : { ok: false, msg: r.msg });
     }
-    case 'cash_pending': { // the seller's list of cash claims to answer; needs their PIN
-      const [sl] = await q('SELECT * FROM sellers WHERE no=$1', [String(b.no || '')]); if (!sl) throw bad('Unknown seller code.');
-      const r = await checkPin(q, sl, String(b.pin || '')); if (!r.ok) return res.status(403).json({ error: r.msg });
-      return res.status(200).json({ ok: true, claims: (await pendingCash(q, sl.no)).map(c => ({ ...c, phone: mkp(c.phone) })) });
+    case 'cash_pending': { // the seller's list of cash claims to answer (an owner: all their shops); needs their PIN (or the shop-keeper PIN)
+      const sl = await signed(); if (!sl) return;
+      return res.status(200).json({ ok: true, claims: (await pendingCash(q, await shopGroup(q, sl))).map(c => ({ ...c, phone: mkp(c.phone) })) });
     }
-    case 'cash_decide': { // the seller confirms or rejects cash claims (ids, or "all"); needs their PIN
-      const [sl] = await q('SELECT * FROM sellers WHERE no=$1', [String(b.no || '')]); if (!sl) throw bad('Unknown seller code.');
-      const r = await checkPin(q, sl, String(b.pin || '')); if (!r.ok) return res.status(403).json({ error: r.msg });
+    case 'cash_decide': { // the seller confirms or rejects cash claims (ids, or "all"); needs their PIN (or the shop-keeper PIN)
+      const sl = await signed(); if (!sl) return;
       if (!['confirm', 'reject'].includes(b.decision)) throw bad('Decision must be confirm or reject.');
       const ids = b.ids === 'all' ? 'all' : Array.isArray(b.ids) ? b.ids.map(x => txt(x, 40)).slice(0, 200) : null; if (!ids) throw bad('ids must be a list or "all".');
       const done = await decideCash(q, sl, ids, b.decision, 'WhatsApp');
       return res.status(200).json({ ok: true, done: done.map(d => ({ id: d.id, code: d.code, amount: d.amount })) });
+    }
+    case 'report_more': { // after a rating: what kind of seller it was, and their name or number if the customer knows it
+      if (!ID.test(b.id || '')) throw bad('Bad id.');
+      const st = ['shop', 'mobile', 'delivery'].includes(b.seller_type) ? b.seller_type : null;
+      await q('UPDATE reports SET seller_type=COALESCE($1, seller_type), seller_hint=COALESCE($2, seller_hint) WHERE id=$3', [st, txt(b.seller_hint, 60) || null, b.id]);
+      break;
     }
     case 'report': {
       if (!ID.test(b.id || '')) throw bad('Bad id.');
@@ -79,8 +88,11 @@ export default route(async (req, res) => {
       const name = txt(b.name, 60); if (!name) throw bad('Name required.');
       const [lat, lng] = coords(b);
       const pp = pinProblem(b.pin); if (pp) throw bad(pp);
-      const rows = await q("INSERT INTO sellers(no,name,trade,market,status,joined_at,phone,lat,lng,pin_hash) VALUES ($1,$2,$3,$4,'enrolled',now(),$5,$6,$7,$8) ON CONFLICT DO NOTHING RETURNING no",
-        [b.no, name, txt(b.trade, 60), txt(b.market, 60), phoneOrNull(b.phone), lat, lng, await hashPin(b.pin)]);
+      const type = ['fixed', 'mobile', 'home', 'delivery'].includes(b.sell_type) ? b.sell_type : 'fixed';
+      // A home seller is shown at the centre of the area only, never at the home.
+      const pl = type === 'home' ? await placeFor('home', txt(b.market, 60), 'T' + b.no) : { lat, lng };
+      const rows = await q("INSERT INTO sellers(no,name,trade,market,status,joined_at,phone,lat,lng,pin_hash,sell_type,usual_places) VALUES ($1,$2,$3,$4,'enrolled',now(),$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING RETURNING no",
+        [b.no, name, txt(b.trade, 60), txt(b.market, 60), phoneOrNull(b.phone), pl.lat ?? null, pl.lng ?? null, await hashPin(b.pin), type, type === 'mobile' ? txt(b.usual_places, 200) || null : null]);
       if (!rows.length) return res.status(409).json({ error: 'That seller code is taken. Try again.' });
       break;
     }
@@ -88,7 +100,12 @@ export default route(async (req, res) => {
       const s = await seller(b.no);
       if (s.status === 'registered') break;
       if (!/^200-\d{3}-\d{3}$/.test(b.tin || '')) throw bad('Bad TIN format.');
-      await q("UPDATE sellers SET status='registered', tin=$1, via_rasiti=TRUE, registered_at=now(), declared_last=NULL WHERE no=$2", [b.tin, b.no]);
+      // One ID, one owner: the same ID cannot own separate seller accounts (only a hash of the ID is kept).
+      const h = String(b.id_number || '').replace(/\D/g, '').length >= 6 ? idHash(b.id_number) : null;
+      if (h) { const [twin] = await q('SELECT no FROM sellers WHERE id_hash=$1 AND no<>$2 AND owner_no IS NULL', [h, b.no]);
+        if (twin) { await audit(q, null, 'id_already_used', { actor: 'Seller ' + b.no, channel: 'WhatsApp', owner_of_id: twin.no }); return res.status(409).json({ error: `This ID already has a Rasiti shop (code ${twin.no}). Add this shop as a branch from shop ${twin.no}, option 7.`, twin: twin.no }); } }
+      await q("UPDATE sellers SET status='registered', tin=$1, via_rasiti=TRUE, registered_at=now(), declared_last=NULL, id_hash=COALESCE($3, id_hash) WHERE no=$2", [b.tin, b.no, h]);
+      await q("UPDATE sellers SET status='registered', tin=$1, via_rasiti=TRUE, registered_at=now() WHERE owner_no=$2", [b.tin, b.no]);
       break;
     }
     case 'seller_helper': {
@@ -176,6 +193,28 @@ export default route(async (req, res) => {
       await audit(q, null, 'seller_moved', { actor: 'Seller ' + sl.no, channel: 'WhatsApp', from: m.from, to: m.to });
       return res.status(200).json({ ok: true, id: m.id, to: m.to, known: m.known });
     }
+    case 'transfer_claim': { // the buyer sent money to the seller's personal number or bank account and claims it
+      const ph = phoneOrNull(b.phone); if (!ph) throw bad('Phone required.');
+      const [sl] = await q('SELECT * FROM sellers WHERE no=$1', [String(b.seller_no || '')]); if (!sl) throw bad('Unknown seller code.');
+      const r = await claimTransfer(q, { phone: ph, seller: sl, amount: b.amount, method: b.method, ref: b.ref, channel: 'WhatsApp' });
+      return res.status(200).json(r);
+    }
+    case 'pay_personal': { const sl = await signed(); if (!sl) return; if (sl.keeper) throw bad('Only the owner can do this.');
+      const r = await linkPersonal(q, sl, b.number, b.network, 'WhatsApp'); return res.status(200).json(r); }
+    case 'pay_bank': { const sl = await signed(); if (!sl) return; if (sl.keeper) throw bad('Only the owner can do this.');
+      const r = await linkBank(q, sl, b.bank, b.account, 'WhatsApp'); return res.status(200).json(r); }
+    case 'merchant_open': { const sl = await signed(); if (!sl) return; const r = await openMerchant(q, sl, b.network, 'WhatsApp'); return res.status(200).json(r); }
+    case 'branch_add': { const sl = await signed(); if (!sl) return; if (sl.keeper) throw bad('Only the owner can do this.');
+      const r = await addBranch(q, sl, b.place, 'WhatsApp'); return res.status(200).json(r); }
+    case 'keeper_pin': { const sl = await signed(); if (!sl) return; if (sl.keeper) throw bad('Only the owner can do this.');
+      const r = await setKeeperPin(q, sl, b.branch, String(b.kpin || ''), 'WhatsApp'); return res.status(200).json(r); }
+    case 'keeper_signin': { // a shop-keeper signs in to a branch with the limited PIN
+      const [sl] = await q('SELECT * FROM sellers WHERE no=$1', [String(b.no || '')]); if (!sl || !sl.owner_no || !sl.keeper_pin_hash) throw bad('No shop-keeper PIN for this shop.');
+      const r = await checkPin(q, { ...sl, pin_hash: sl.keeper_pin_hash }, String(b.pin || ''));
+      if (r.lockedNow) await audit(q, null, 'keeper_pin_locked', { actor: 'Shop-keeper ' + sl.no, channel: 'WhatsApp' });
+      return res.status(200).json({ ok: r.ok, msg: r.ok ? '' : r.msg });
+    }
+    case 'branch_summary': { const sl = await signed(); if (!sl) return; return res.status(200).json({ ok: true, ...(await branchSummary(q, sl)) }); }
     default: throw bad('Unknown event.');
   }
   // Every public action is written to the system log with a masked phone, so admins can see who did what and when.

@@ -35,6 +35,7 @@ RSL Taxathon 2026, Challenge 1 prototype. Customers get receipts and prize-draw 
 | `CRON_KEY` | Optional. A random word; an outside scheduler calls `/api/notify?cron=1&key=THAT-WORD` to send scheduled emails (see below) |
 | `SITE_URL` | Optional. The site's address, used for the "Open Rasiti" links in emails, e.g. `https://rasiti.statspack.africa` |
 | `TEST_TOOLS` | Optional. Leave empty while testing. Set to `off` for the live pilot to switch off the test accounts on the Users page |
+| `P2P_CHECK` | Optional. Leave empty: Rasiti checks a transaction ID with the (simulated) network before a payment to a personal number counts. Set to `off` to send every such claim to the seller to confirm instead, like cash |
 
 ## 3A. Deploy on Vercel (recommended)
 
@@ -169,6 +170,10 @@ POST /api/card?key=CARD_KEY
 - **Once:** join (2 minutes, with a PIN) and link their M-Pesa, EcoCash or card machine.
 - **If the shop moves:** seller menu **6. My shop moved**: pick the new market or type the place, then confirm. The seller code, PIN and payment codes stay the same; the map, the area figures and the shop's details move with it, and the old place is kept in the history (seller details, Shop moves CSV, system log). At most 3 moves in 30 days; more needs the help line.
 - **For cash:** say Yes to real cash sales when a buyer claims one (one tap, or 9 to confirm all at the end of the day).
+- **Sellers who move, sell from home or deliver:** when joining, the seller says where they usually sell (1 one place, 2 I move around, 3 from home, 4 I deliver). Moving sellers give up to 3 usual places; home sellers are shown on maps and in downloads by **area only, never the home**; runners show the area they serve. Officers can print a **code card** (seller details > Code card) for a lanyard, cooler box, trolley or bag. The worklist suggests "phone first, then meet on the usual market day" instead of a stall visit (a home seller: at a market or the RSL office, never at home).
+- **Paid on a personal number or bank account:** seller menu **4 > 4 My personal number** or **4 > 5 My bank account** (only the last 4 digits of the account are kept). Rasiti never reads the wallet or statement: only payments a buyer claims count (customer menu **7. Paid to a number or bank**: seller code, amount, 1 mobile money or 2 bank, then the transaction ID or reference). Mobile money: the network checks the transaction ID (simulated; a made-up or reused ID is refused, a buyer can never claim a payment to their own number). Bank: the seller confirms it, like cash. These claims give 1 entry (2 at a registered seller), like cash, so a merchant code (amount-based entries) stays the better deal. At joining, Rasiti offers to open an M-Pesa or EcoCash merchant code (simulated).
+- **Owners with several shops:** seller menu **7. My shops**: 1 add a shop (its own seller code, sticker, place on the map and payment codes), 2 today's sales per shop, 3 a **shop-keeper PIN** for a branch. The shop-keeper signs in with the branch code and that PIN and can only confirm cash sales there. The owner sees every shop's claims and sales and files **one return** for all shops; branches follow the owner's tax status. One ID, one owner: registering a second, separate account with the same ID is refused (only a hash of the ID is kept). The owner gets a summary SMS for every shop each evening at 19:00 (simulated, in the system log). Officers see "Possibly one business" when separate sellers share a phone, a personal number or most of their buyers.
+- **Runners and stock:** a payment from a Rasiti seller's own number to another shop is a **stock purchase**: recorded, but no draw entries. A runner's delivery fee is claimed as its own sale.
 - **Each quarter:** file from the sales book (prefilled) and pay by mobile money.
 - Mobile money and card receipts issue themselves. Every winner shows ID and the SIM registered to them before payout.
 
@@ -190,7 +195,8 @@ A fake digital sale means really paying the seller, and a fake cash sale needs t
 1. **Payment reversed or paid back** (60 points, blocked): the network or bank reports a reversal or refund (`{"type":"reversal",...}`), or that the seller's wallet sent the same amount back to the payer within 24 hours (`{"type":"payback",...}` on `/api/momo`). The receipt leaves the draw and the seller's sales book.
 2. **New phones paying the same amount** (40 points): 5 or more phones that never paid anyone before each pay one seller the same amount within an hour (a SIM-card farm).
 3. **One phone claims many cards** (30 points): one phone claims card payments made with 3 or more different cards in 7 days.
-4. The existing rules still run: seller buying from their own phone, one phone with many receipts in a day, a purchase split into small payments, a burst of new heavy buyers, and a sale far larger than usual.
+4. **Phones paying each other back and forth** (40 points): a buyer pays a seller and that seller's own number pays a shop of the buyer, 2 or more times each way in 14 days (friends farming entries with transfers).
+5. The existing rules still run: seller buying from their own phone, one phone with many receipts in a day, a purchase split into small payments, a burst of new heavy buyers, and a sale far larger than usual.
 
 Faking sales costs the network fee (digital) or raises the seller's taxable sales (every confirmed sale). Confirmed collusion: the prize is lost and both are barred from draws for 12 months. The demo data includes each pattern (sellers 4821, 3902 and 6018), so they show on the Fraud Shield page. The prototype runs the monthly draw (3 cash, 5 smartphones, 20 airtime) and shows the other draws with their live entry counts on the Monthly draw page.
 
@@ -212,6 +218,7 @@ Menu **Search**, for every signed-in RSL role. One list holds every receipt (cas
 **Mohlomi AI** ("the wise one") is a test agent inside Rasiti, for owners and admins only (menu: Mohlomi AI). Type what to check in plain words, for example "check that a customer who pays by M-Pesa gets a receipt". Mohlomi plans the steps, opens Rasiti's pages and demo phones in your browser while you watch, and reports what passed and what failed (copy or PDF). Every run is written to the system log.
 
 - **Full access** (default): every page, the demo phones, every button, the report filters and the test accounts, so every test runs to the end. These are real demo records; use Undo, or reset and load the demo data afterwards.
+- Built-in tests also cover sellers who move, sell from home or deliver; payments to a personal number or bank (fake transaction ID refused, real one verified); and owners with several shops (shop-keeper PIN, one tax menu, "Possibly one business").
 - **Look only** (safe during judging): opens pages, reads them and checks downloads. Changes nothing.
 - Only "Clear entire data", switching users off or deleting them, signing out and passwords stay blocked: they would remove users or end Mohlomi's own session.
 - A **remember** step keeps a value shown on the page, such as the PIN of a new test account, and later steps use it as `{pin}`.
@@ -222,7 +229,7 @@ Menu **Search**, for every signed-in RSL role. One list holds every receipt (cas
 
 Menu **Reports & alerts** (also a button in the top bar of every RSL page): the dashboard PDF; officer worklist, review queue, complaints, and filing & payments as CSV, plus the officer PDF; the **cash claims CSV** (every claim and what the seller did); Fraud Shield receipts and fake codes CSV and PDF; community watch ratings, shops and areas CSV and PDF (with Bohlale's latest analysis); draw entries and winners CSV and the draw PDF; the **Sellers CSV** (every seller with market, tax status and linked M-Pesa, EcoCash and card machine codes) and the **Shop moves CSV**.
 
-**Filters for the downloads** sit at the top of the page: period (today, last 7 or 30 days, this or last month, this or last quarter, this year, or any dates), seller, market or area, seller status (registered, not registered, shops not on Rasiti), paid by (M-Pesa, EcoCash, card, cash the seller confirmed), Fraud Shield result, cash-claim status, customer rating, and minimum and maximum amount. The summary shows how many records match. With a filter set, every CSV and PDF on the page holds only the matching data, is made as of the "To" date, names the filters at the top of the PDF and ends in `-filtered.csv`. With no filter, each report keeps the filters of its own page. Search results and the system log keep their own downloads. Customer phone numbers are masked in every download.
+**Filters for the downloads** sit at the top of the page: period (today, last 7 or 30 days, this or last month, this or last quarter, this year, or any dates), seller, market or area, seller status (registered, not registered, shops not on Rasiti), kind of seller (one place, moves around, from home, runner, owner with several shops, branch), paid by (M-Pesa, EcoCash, card, cash the seller confirmed, mobile money to a personal number, bank transfer, stock purchases), Fraud Shield result, cash-claim status, customer rating, and minimum and maximum amount. The summary shows how many records match. With a filter set, every CSV and PDF on the page holds only the matching data, is made as of the "To" date, names the filters at the top of the PDF and ends in `-filtered.csv`. With no filter, each report keeps the filters of its own page. Search results and the system log keep their own downloads. Customer phone numbers are masked in every download.
 
 ## Filing and paying (sustained compliance)
 
@@ -373,7 +380,7 @@ api/bohlale.js      Bohlale AI: sends masked data to an OpenAI-compatible model
 api/notify.js       Email reports and alerts: rules, outbox, scheduled sending (/api/notify?cron=1&key=CRON_KEY)
 api/logs.js         Full system log (who, what, when) for owners and admins
 api/tile.js         Map tiles for PDF reports (satellite, street map as backup; Lesotho only)
-api/_lib/           Database, sessions, schema, receipt code checks, seller PINs, cash claims (cash.js), email (mail.js), report and alert builder (insights.js), test accounts and shop moves (accounts.js), request IP for the system log (ctx.js)
+api/_lib/           Database, sessions, schema, receipt code checks, seller PINs, cash claims (cash.js), email (mail.js), report and alert builder (insights.js), test accounts and shop moves (accounts.js), request IP for the system log (ctx.js), kinds of seller, personal-number and bank claims, branches and shop-keeper PINs (more.js)
 schema.sql          Same tables as the app creates automatically
 dev-server.mjs      Server used by Render (npm start) and for local testing
 vercel.json         Vercel settings

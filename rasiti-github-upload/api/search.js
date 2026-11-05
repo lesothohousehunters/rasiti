@@ -2,7 +2,7 @@
 // One list holds every receipt (M-Pesa, EcoCash, card, and cash sales the seller confirmed), every tax return and every tax payment, with filters:
 //   ?q=        receipt code, seller code or name, market, tax period, payment reference, or the last digits of a phone
 //   &kind=     receipt | return | payment
-//   &paid=     momo (any mobile money) | mpesa | ecocash | card | cash (confirmed by the seller)
+//   &paid=     momo (any mobile money) | mpesa | ecocash | card | cash (confirmed by the seller) | p2p (to a personal number) | bank (bank transfer)
 //   &rec=      network (M-Pesa/EcoCash told Rasiti) | bank (a card machine) | seller (cash the seller confirmed, returns, payments)
 //   &flag=     reversed | payback | any   (the network or bank said the payment was reversed, or the money went back to the payer)
 //   &seller=   seller code      &market=  market or area
@@ -14,15 +14,15 @@ import { db } from './_lib/db.js';
 import { route, requireRole } from './_lib/http.js';
 
 const KINDS = ['receipt', 'return', 'payment'];
-const PAID = { cash: ["paid = 'cash'"], momo: ["paid IN ('momo','mpesa','ecocash')"], mpesa: ["paid = 'mpesa'"], ecocash: ["paid = 'ecocash'"], card: ["paid = 'card'"] };
+const PAID = { cash: ["paid = 'cash'"], momo: ["paid IN ('momo','mpesa','ecocash')"], mpesa: ["paid = 'mpesa'"], ecocash: ["paid = 'ecocash'"], card: ["paid = 'card'"], p2p: ["paid = 'p2p'"], bank: ["paid = 'bank'"] };
 const SORT = { new: 'at DESC', old: 'at ASC', big: 'amount DESC, at DESC', small: 'amount ASC, at DESC' };
 const maskPh = p => p ? '+266 ' + String(p).slice(3, 4) + '••• •' + String(p).slice(-3) : null;
 
 const BASE = `WITH t AS (
   SELECT 'receipt'::text AS kind, r.code AS ref, r.seller_no, r.amount::float AS amount, r.issued_at AS at,
-    CASE WHEN r.channel = 'cash' THEN 'cash' WHEN r.channel = 'card' THEN 'card' WHEN r.source IN ('mpesa','ecocash') THEN r.source
+    CASE WHEN r.channel = 'cash' THEN 'cash' WHEN r.channel = 'card' THEN 'card' WHEN r.channel IN ('p2p','bank') THEN r.channel WHEN r.source IN ('mpesa','ecocash') THEN r.source
          WHEN r.note LIKE 'mpesa:%' THEN 'mpesa' WHEN r.note LIKE 'ecocash:%' THEN 'ecocash' ELSE 'momo' END AS paid,
-    CASE WHEN r.channel = 'momo' THEN 'network' WHEN r.channel = 'card' THEN 'bank' ELSE 'seller' END AS rec,
+    CASE WHEN r.channel = 'momo' OR (r.channel = 'p2p' AND r.note ~ '^(mpesa|ecocash):') THEN 'network' WHEN r.channel = 'card' THEN 'bank' ELSE 'seller' END AS rec,
     r.flag, r.card_last4, r.phone, NULL::text AS period, CASE WHEN r.note ~ '^(mpesa|ecocash|card|claim):' OR r.note IN ('confirmed','disputed') THEN NULL ELSE r.note END AS note
   FROM receipts r
   UNION ALL

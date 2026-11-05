@@ -10,6 +10,7 @@ import { route, body, requireRole, bad } from './_lib/http.js';
 import { build, periodOf, renderEmail, templateSummary, FREQ } from './_lib/insights.js';
 import { sendMail, mailStatus } from './_lib/mail.js';
 import { KEY, complete } from './bohlale.js';
+import { branchSms } from './_lib/more.js';
 
 const EMAIL = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]{2,}$/;
 const KINDS = { report: 'Report', alerts: 'Alerts' };
@@ -64,6 +65,8 @@ export async function runDue(req) {
     if (!due) continue;
     try { out.push({ rule: r.name, ...(await runRule(q, r, { req })) }); } catch (e) { console.error('notify', r.name, e.message); out.push({ rule: r.name, error: e.message }); }
   }
+  // Owners with several shops get one SMS a day (from 19:00 Maseru time) with each shop's sales (simulated SMS, in the system log).
+  if (hour >= 19) try { for (const x of await branchSms(q)) out.push({ rule: 'Branch summary SMS', owner: x.owner, status: 'sent (simulated)' }); } catch (e) { console.error('branch sms', e.message); }
   return out;
 }
 

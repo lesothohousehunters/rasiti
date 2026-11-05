@@ -68,7 +68,7 @@ const randPin = () => { let p; do { p = String(Math.floor(Math.random() * 1e4)).
 // A buyer's cash claim is only pending until the seller says yes, so nobody can put a sale into a seller's book from home.
 // A reversed payment, or one paid back to the buyer, does not count.
 const counts = r => !r.flag;
-const PAYNAME = r => r.ch === 'card' ? 'Card' : r.ch === 'cash' ? 'Cash (seller confirmed)' : r.net ? NETNAME[r.net] : 'Mobile money';
+const PAYNAME = r => r.ch === 'card' ? 'Card' : r.ch === 'cash' ? 'Cash (seller confirmed)' : r.ch === 'p2p' ? 'Mobile money to a personal number' : r.ch === 'bank' ? 'Bank transfer (seller confirmed)' : r.net ? NETNAME[r.net] : 'Mobile money';
 /* Cash claims: the buyer says "I paid cash" (seller code + amount). Pending claims are not in the sales book, not taxed and give no
    entry. The seller confirms (receipt + 1 entry, 2 at a registered seller) or rejects. Unanswered for 3 days = expired. */
 const CASH = {maxAmount:5000, perPhoneDay:5, expireDays:3};
@@ -170,6 +170,64 @@ function seed() {
   S.traders.forEach(t => linkDummy(t));
   // Ntate Teboho (7735) moved his phone-repair stall from Ha Thetsane to Kingsway 9 days ago (*999# > 2 > 6 My shop moved).
   S.moves = [{id:rid(), no:'7735', from:'Ha Thetsane', to:'Kingsway', ch:'USSD', t:NOW - 9 * DAY}];
+  seedMore();
+}
+/* Demo sellers added for sellers who move, sell from home or deliver, owners with several shops, and payments to a personal
+   number or bank account. They use their own random numbers, so the earlier demo data stays exactly as it was. */
+function seedMore() {
+  const rnd = mulberry32(5151); S.net = []; S.merges = {};
+  const add = t => { S.traders.push(t); const ll = t.type === 'home' ? AREAS[t.market] : placeLatLng('T' + t.no, t.market); t.lat = ll[0]; t.lng = ll[1]; t.joinedAt = NOW - t.joined * DAY; return t; };
+  const buyers = []; for (let i = 0; i < 160; i++) buyers.push('2665' + String(8300000 + i * 613 + Math.floor(rnd() * 600)).padStart(7, '0'));
+  const pick = k => buyers[(k || 0) * 25 + Math.floor(rnd() * 25)]; // each demo seller has its own customers
+  const sale = (no, ch, amt, ph, t, extra) => { const r = {code:mkCode(no, rnd), no, amt, ch, ph, t, ...(extra || {})}; S.receipts.push(r); return r; };
+  const claimed = (no, m, amt, ph, t, state, extra) => { const id = rid(); const c = {id, no, amt, ph, t, state, m, dt:state === 'pending' ? null : t + Math.floor(rnd() * 3 * 3600000), ...(extra || {})};
+    if (state === 'confirmed') { c.code = mkCode(no, rnd); S.receipts.push({code:c.code, no, amt, ch:m, ph, t:c.dt, note:'claim:' + id + (c.ref ? ' ref:' + c.ref : '')}); } S.claims.push(c); return c; };
+  const txid = n => (n === 'ecocash' ? 'E' : 'Q') + Math.floor(rnd() * 36 ** 8).toString(36).toUpperCase().padStart(8, '0');
+  // A mobile seller: sweets and airtime at the taxi ranks, three usual places; M-Pesa merchant code and cash.
+  const ms = add({no:'8150', name:'Ntate Sello P.', trade:'Sweets & airtime', market:'Sefika taxi rank', type:'mobile', places:['Sefika taxi rank', 'Pitso Ground', 'Kingsway'], status:'enrolled', joined:60, ph:'26658455120', mp:'587150'});
+  // A home seller: fat cakes and bread from home in Ha Hoohlo, paid on her personal M-Pesa number, a bank account and cash.
+  const hs = add({no:'8261', name:"Mme Dineo T.", trade:'Fat cakes & bread (home)', market:'Ha Hoohlo', type:'home', status:'enrolled', joined:45, ph:'26662411309', pp:'26662411309', ppNet:'mpesa', pb:'fnb', pbAcct:'4417'});
+  // A runner: buys groceries for customers and delivers them, paid on his personal EcoCash number and cash.
+  const rn = add({no:'8372', name:'Ntate Katleho S.', trade:'Grocery delivery', market:'Ha Thetsane', type:'delivery', status:'enrolled', joined:30, ph:'26659077342', pp:'26659077342', ppNet:'ecocash'});
+  // An owner with 3 spaza shops: the main shop and 2 branches; one shop-keeper PIN (demo 1357) at Ha Thetsane.
+  const ow = add({no:'8480', name:"Mme Masechaba L.", trade:'Spaza shop', market:'Ha Hoohlo', type:'fixed', status:'registered', tin:'200-480-116', joined:110, via:true, ph:'26663480112', mp:'587480', ec:'27480', regAt:NOW - 80 * DAY});
+  add({no:'8481', name:ow.name, trade:ow.trade, market:'Ha Thetsane', type:'fixed', status:'registered', tin:ow.tin, joined:70, via:true, ph:ow.ph, owner:'8480', kpin:'1357', hasKeeper:true, mp:'587481', regAt:NOW - 70 * DAY});
+  add({no:'8482', name:ow.name, trade:ow.trade, market:'Kingsway', type:'fixed', status:'registered', tin:ow.tin, joined:40, via:true, ph:ow.ph, owner:'8480', mp:'587482', regAt:NOW - 40 * DAY});
+  // Two "separate" spaza shops that look like one business split up: the same phone, the same buyers.
+  add({no:'8590', name:'Ntate Mpho K.', trade:'Spaza shop', market:'Pitso Ground', type:'fixed', status:'enrolled', joined:90, ph:'26658590441', mp:'587590'});
+  add({no:'8591', name:"Mme 'Mamello K.", trade:'Spaza shop', market:'Maseru Main Market', type:'fixed', status:'enrolled', joined:85, ph:'26658590441', mp:'587591'});
+  const twinBuyers = buyers.slice(125, 137);
+  for (let d = 60; d >= 0; d--) {
+    const day = NOW - d * DAY - 7 * 3600000;
+    const t = k => Math.min(NOW - MIN, day + Math.floor(rnd() * 10 * 3600000) + k);
+    if (rnd() < .8) { for (let i = 0; i < 1 + Math.floor(rnd() * 3); i++) sale('8150', 'momo', 5 + Math.round(rnd() * 20), pick(0), t(i), {net:'mpesa'}); if (rnd() < .5) claimed('8150', 'cash', 5 + Math.round(rnd() * 10), pick(0), t(9), 'confirmed'); }
+    if (d <= 45 && rnd() < .7) { const ph = pick(1), amt = 10 + Math.round(rnd() * 40), ref = txid('mpesa'); const tt = t(0);
+      S.net.push({ref, net:'mpesa', from:ph, to:hs.pp, amt, t:tt - MIN}); claimed('8261', 'p2p', amt, ph, tt, 'confirmed', {ref, ver:true});
+      if (rnd() < .3) claimed('8261', 'cash', 10 + Math.round(rnd() * 20), pick(1), t(5), 'confirmed'); }
+    if (d <= 30 && rnd() < .75) { const ph = pick(2), amt = 80 + Math.round(rnd() * 220), ref = txid('ecocash'); const tt = t(0);
+      S.net.push({ref, net:'ecocash', from:ph, to:rn.pp, amt, t:tt - MIN}); claimed('8372', 'p2p', amt, ph, tt, 'confirmed', {ref, ver:true});
+      if (rnd() < .4) claimed('8372', 'cash', 20, ph, t(3), 'confirmed');                              // the delivery fee, claimed as its own sale
+      if (rnd() < .5) sale('4821', 'momo', amt - 20, rn.ph, tt - 40 * MIN, {net:'mpesa', note:'mpesa:stock' + d}); } // he buys the stock at Mme Palesa's stall
+    if (d <= 110) for (const no of ['8480', '8481', '8482']) { if (no === '8481' && d > 70 || no === '8482' && d > 40) continue;
+      for (let i = 0; i < 2 + Math.floor(rnd() * 4); i++) { const x = rnd(); if (x < .35) claimed(no, 'cash', 5 + Math.round(rnd() * 60), pick(3), t(i), 'confirmed'); else sale(no, 'momo', 8 + Math.round(rnd() * 90), pick(3), t(i), {net:rnd() < .6 ? 'mpesa' : 'ecocash'}); } }
+    for (const no of ['8590', '8591']) if (rnd() < .7) sale(no, 'momo', 10 + Math.round(rnd() * 60), twinBuyers[Math.floor(rnd() * twinBuyers.length)], t(2), {net:'mpesa'});
+  }
+  // Waiting for the seller today: a bank transfer to Mme Dineo, and cash at the owner's Ha Thetsane branch (the shop-keeper confirms it).
+  claimed('8261', 'bank', 150, buyers[40], NOW - 50 * MIN, 'pending', {ref:'FNB' + String(Math.floor(rnd() * 1e6)).padStart(6, '0')});
+  claimed('8481', 'cash', 35, buyers[80], NOW - 30 * MIN, 'pending');
+  // One quarter filed and paid by the owner for all 3 shops.
+  const lp = lastPer(); const sales = Math.round(perSales('8480', lp)); const tax = Math.round(sales * TAXRATE);
+  S.returns.push({id:rid(), no:'8480', period:lp, sales, declared:sales, nil:null, tax, ch:'USSD', t:Math.min(NOW - DAY, perDueT(lp) - 3 * DAY)});
+  if (tax) S.payments.push({id:rid(), no:'8480', period:lp, amt:tax, ref:'PY' + rid().slice(0, 6).toUpperCase(), ch:'USSD', t:Math.min(NOW - DAY, perDueT(lp) - 2 * DAY)});
+  ow.declared = sales;
+  // Community watch: one moving sweets seller reported at two places by customers who knew his name: an officer can join them.
+  const rep = (t, ph, place, label, area, stype, hint) => { const ll = placeLatLng(place + rid(), area); S.reports.push({id:rid(), t, ph, type:'unlisted', target:{place, label, area, kind:'Informal'}, lat:ll[0], lng:ll[1], stype, hint}); };
+  rep(NOW - 9 * DAY, buyers[140], 'u-sweets-man-sefika', 'Sweets seller, Sefika rank', 'Sefika taxi rank', 'mobile', 'Ntate Thabang');
+  rep(NOW - 6 * DAY, buyers[141], 'u-sweets-man-sefika', 'Sweets seller, Sefika rank', 'Sefika taxi rank', 'mobile', 'Thabang');
+  rep(NOW - 4 * DAY, buyers[142], 'u-sweets-pitso', 'Man selling sweets, Pitso Ground', 'Pitso Ground', 'mobile', 'Ntate Thabang');
+  rep(NOW - 2 * DAY, buyers[143], 'u-sweets-pitso', 'Man selling sweets, Pitso Ground', 'Pitso Ground', 'mobile', 'Thabang sweets');
+  rep(NOW - 3 * DAY, buyers[144], 'u-veg-delivery', 'Vegetable delivery, Ha Abia', 'Elsewhere in Lesotho', 'delivery', null);
+  S.receipts.sort((a, b) => a.t - b.t); S.claims.sort((a, b) => a.t - b.t);
 }
 // A card buyer always pays with the same card: a stable last 4 digits for each phone (demo).
 function cardOf(ph) { const per = PERSONAS.find(x => x.ph === ph); if (per) return per.card; let h = 7; for (const ch of String(ph || 'x')) h = (h * 31 + ch.charCodeAt(0)) % 9973; return String(1000 + h % 9000); }
@@ -199,18 +257,20 @@ function loadState(st) {
   NOW = Date.now(); clock = NOW;
   S.traders = st.sellers.map(s => ({no:s.no, name:s.name, trade:s.trade, market:s.market, status:s.status, tin:s.tin, joinedAt:Date.parse(s.joined_at || s.created_at),
     joined:Math.max(0, Math.round((NOW - Date.parse(s.joined_at || s.created_at)) / DAY)), via:s.via_rasiti, ph:s.phone,
-    declared:s.declared_last == null ? null : Number(s.declared_last), helper:s.helper, regAt:s.registered_at ? Date.parse(s.registered_at) : null, lat:s.lat, lng:s.lng, mp:s.mpesa_code || null, ec:s.ecocash_code || null, pos:s.card_terminal || null, bank:s.card_bank || null}));
+    declared:s.declared_last == null ? null : Number(s.declared_last), helper:s.helper, regAt:s.registered_at ? Date.parse(s.registered_at) : null, lat:s.lat, lng:s.lng, mp:s.mpesa_code || null, ec:s.ecocash_code || null, pos:s.card_terminal || null, bank:s.card_bank || null,
+    type:s.sell_type || 'fixed', places:s.usual_places ? s.usual_places.split(' | ') : null, owner:s.owner_no || null, hasKeeper:!!s.has_keeper, pp:s.pay_personal || null, ppNet:s.pay_personal_net || null, pb:s.pay_bank || null, pbAcct:s.pay_bank_acct || null}));
   S.receipts = st.receipts.map(r => { const x = {code:r.code, no:r.seller_no, amt:Number(r.amount), ch:r.channel, ph:r.phone, t:Date.parse(r.issued_at), note:r.note, live:['tester', 'ussd', 'mpesa', 'ecocash', 'card'].includes(r.source)};
     const m = /^(mpesa|ecocash):/.exec(r.note || ''); if (m) x.net = m[1]; else if (r.source === 'mpesa' || r.source === 'ecocash') x.net = r.source;
     if (r.card_last4) x.c4 = r.card_last4; if (r.flag) x.flag = r.flag; return x; });
   S.receipts.forEach(r => used.add(r.code));
-  S.claims = (st.claims || []).map(c => ({id:c.id, no:c.seller_no, amt:Number(c.amount), ph:c.phone, t:Date.parse(c.created_at), state:c.state === 'expired' ? 'pending' : c.state, dt:c.decided_at ? Date.parse(c.decided_at) : null, code:c.receipt_code || null}));
-  S.reports = st.reports.map(r => ({id:r.id, t:Date.parse(r.created_at), ph:r.phone, type:r.type, lat:r.lat, lng:r.lng,
+  S.claims = (st.claims || []).map(c => ({id:c.id, no:c.seller_no, amt:Number(c.amount), ph:c.phone, t:Date.parse(c.created_at), state:c.state === 'expired' ? 'pending' : c.state, dt:c.decided_at ? Date.parse(c.decided_at) : null, code:c.receipt_code || null, m:c.method || 'cash', ref:c.ref || null, ver:!!c.verified}));
+  S.reports = st.reports.map(r => ({id:r.id, t:Date.parse(r.created_at), ph:r.phone, type:r.type, lat:r.lat, lng:r.lng, stype:r.seller_type || null, hint:r.seller_hint || null,
     target:r.seller_no ? {no:r.seller_no} : {place:r.place_key, label:r.place_label, area:r.area, kind:r.kind}}));
   S.fakes = st.fakes.map(f => ({id:f.id, t:Date.parse(f.created_at), code:f.code, kind:f.kind, by:f.phone, detail:f.detail}));
   S.reviews = {}; st.reviews.forEach(r => S.reviews[r.code] = r.decision);
   S.invited = new Set(); S.visits = new Set(); S.done = new Set();
-  st.actions.forEach(a => { if (a.kind === 'invite') S.invited.add(a.target); else if (a.kind === 'visit') S.visits.add(a.target); else S.done.add(a.item_id); });
+  S.merges = {}; // community-watch leads an officer joined: "same seller" (lead key -> the lead it was joined to)
+  st.actions.forEach(a => { if (a.kind === 'invite') S.invited.add(a.target); else if (a.kind === 'visit') S.visits.add(a.target); else if (a.kind === 'merge') S.merges[a.item_id.slice(6)] = a.target; else S.done.add(a.item_id); });
   S.draws = st.draws || [];
   S.returns = (st.returns || []).map(r => ({id:r.id, no:r.seller_no, period:r.period, sales:Number(r.sales) || 0, declared:Number(r.declared), nil:r.nil_reason, tax:Number(r.tax_due), ch:r.channel, t:Date.parse(r.filed_at)}));
   S.payments = (st.payments || []).map(x => ({id:x.id, no:x.seller_no, period:x.period, amt:Number(x.amount), ref:x.ref, ch:x.channel, t:Date.parse(x.paid_at)}));
@@ -230,13 +290,15 @@ async function refresh(quiet) {
 function exportSeed() {
   const iso = t => new Date(t).toISOString();
   return {
-    sellers: S.traders.map(t => ({no:t.no, name:t.name, trade:t.trade, market:t.market, status:t.status, tin:t.tin || null, joined_at:iso(t.joinedAt || NOW), via_rasiti:!!t.via, phone:t.ph, declared_last:t.declared ?? null, lat:t.lat, lng:t.lng, mpesa_code:t.mp || null, ecocash_code:t.ec || null, card_terminal:t.pos || null, card_bank:t.bank || null})),
+    sellers: S.traders.map(t => ({no:t.no, name:t.name, trade:t.trade, market:t.market, status:t.status, tin:t.tin || null, joined_at:iso(t.joinedAt || NOW), via_rasiti:!!t.via, phone:t.ph, declared_last:t.declared ?? null, lat:t.lat, lng:t.lng, mpesa_code:t.mp || null, ecocash_code:t.ec || null, card_terminal:t.pos || null, card_bank:t.bank || null,
+      sell_type:t.type || 'fixed', usual_places:t.places ? t.places.join(' | ') : null, owner_no:t.owner || null, pay_personal:t.pp || null, pay_personal_net:t.ppNet || null, pay_bank:t.pb || null, pay_bank_acct:t.pbAcct || null, keeper_pin:t.kpin || null, registered_at:t.regAt ? iso(t.regAt) : null})),
     receipts: S.receipts.map(r => ({code:r.code, seller_no:r.no, amount:r.amt, channel:r.ch, phone:r.ph, issued_at:iso(r.t), note:r.note || null, source:'demo', card_last4:r.c4 || null, flag:r.flag || null})),
-    reports: S.reports.map(r => ({id:r.id, phone:r.ph, type:r.type, seller_no:r.target.no || null, place_key:r.target.place || null, place_label:r.target.label || null, area:r.target.area || null, kind:r.target.kind || null, lat:r.lat ?? null, lng:r.lng ?? null, created_at:iso(r.t)})),
+    reports: S.reports.map(r => ({id:r.id, phone:r.ph, type:r.type, seller_no:r.target.no || null, place_key:r.target.place || null, place_label:r.target.label || null, area:r.target.area || null, kind:r.target.kind || null, lat:r.lat ?? null, lng:r.lng ?? null, created_at:iso(r.t), seller_type:r.stype || null, seller_hint:r.hint || null})),
     fakes: S.fakes.map(f => ({id:f.id, code:f.code, kind:f.kind, phone:f.by, detail:f.detail, created_at:iso(f.t)})),
     returns: S.returns.map(r => ({id:r.id, seller_no:r.no, period:r.period, sales:r.sales, declared:r.declared, nil_reason:r.nil, tax_due:r.tax, channel:r.ch, filed_at:iso(r.t)})),
     payments: S.payments.map(x => ({id:x.id, seller_no:x.no, period:x.period, amount:x.amt, ref:x.ref, channel:x.ch, paid_at:iso(x.t)})),
-    claims: S.claims.map(c => ({id:c.id, seller_no:c.no, amount:c.amt, phone:c.ph, state:c.state, created_at:iso(c.t), decided_at:c.dt ? iso(c.dt) : null, receipt_code:c.code || null})),
+    claims: S.claims.map(c => ({id:c.id, seller_no:c.no, amount:c.amt, phone:c.ph, state:c.state, created_at:iso(c.t), decided_at:c.dt ? iso(c.dt) : null, receipt_code:c.code || null, method:c.m || 'cash', ref:c.ref || null, verified:!!c.ver})),
+    net_txns: (S.net || []).map(x => ({ref:x.ref, network:x.net, from_msisdn:x.from, to_msisdn:x.to, amount:x.amt, created_at:iso(x.t)})),
     moves: S.moves.map(m => ({id:m.id, seller_no:m.no, from_market:m.from, to_market:m.to, channel:m.ch, created_at:iso(m.t)}))
   };
 }
@@ -257,7 +319,10 @@ const perName = p => perShort(p) + ' ' + String(p).slice(0, 4);
 const perDueT = p => { if (!isQ(p)) { const [y, m] = String(p).split('-').map(Number); return new Date(y, m, 20, 23, 59).getTime(); } const [y, q] = perYQ(p); return new Date(y, q * 3, 20, 23, 59).getTime(); };
 const perDue = p => fD(perDueT(p));
 const perStart = p => { const [y, q] = perYQ(p); return new Date(y, (q - 1) * 3, 1).getTime(); };
-const perSales = (no, p) => { const a = perStart(p), b = perStart(perOfNext(p)); return S.receipts.filter(r => r.no === no && counts(r) && r.t >= a && r.t < b).reduce((x, r) => x + r.amt, 0); };
+// An owner with several shops files one return for all of them: the sales of every branch count in the owner's book.
+const groupOf = no => [no, ...S.traders.filter(t => t.owner === no).map(t => t.no)];
+const taxpayer = t => t.status === 'registered' && !t.owner; // a branch is a shop, not a separate taxpayer
+const perSales = (no, p) => { const a = perStart(p), b = perStart(perOfNext(p)), g = new Set(groupOf(no)); return S.receipts.filter(r => g.has(r.no) && counts(r) && r.t >= a && r.t < b).reduce((x, r) => x + r.amt, 0); };
 const perOfNext = p => { const [y, q] = perYQ(p); return perOf(new Date(y, q * 3, 1)); };
 // Receipts may cover only part of a quarter (the demo keeps about 100 days): scale up to a full-quarter estimate.
 const perEstimate = (no, p) => { const a = perStart(p), b = Math.min(perStart(perOfNext(p)), clock); const rs = S.receipts.filter(r => r.no === no);
@@ -289,7 +354,7 @@ function taxOf(no) {
   const onTimeFile = r => r.t <= perDueT(r.period);
   const onTimePay = r => r.tax <= 0 || (paid(r.period) >= r.tax - 0.5 && pays.filter(x => x.period === r.period).every(x => x.t <= perDueT(r.period)));
   let streak = 0; for (let i = rets.length - 1; i >= 0; i--) { const r = rets[i]; if (perDueT(r.period) > clock && owedOf(r) > 0) continue; if (onTimeFile(r) && onTimePay(r)) streak++; else break; }
-  const lp = lastPer(); const missing = S.traders.find(t => t.no === no && t.status === 'registered') && !rets.some(r => r.period === lp) && perDueT(lp) < clock ? lp : null;
+  const lp = lastPer(); const missing = S.traders.find(t => t.no === no && taxpayer(t)) && !rets.some(r => r.period === lp) && perDueT(lp) < clock ? lp : null;
   return {rets, pays, paid, owedOf, owed, overdue, overdueAmt, streak, onTimeFile, onTimePay, last:rets.find(r => r.period === lp), missing, oldest:rets.find(r => owedOf(r) > 0.5)};
 }
 function fileReturn(no, declared, nil, ch) { const tr = tByNo(no); const per = lastPer(); const tax = Math.round(declared * TAXRATE); const sales = Math.round(perSales(no, per));
@@ -314,7 +379,9 @@ const RULES = [
   // phones made only to farm entries, and people claiming other people's card payments.
   {id:'reversed', name:'Payment reversed or paid back', pts:60, what:'The network or the bank told Rasiti the payment was reversed or refunded, or the seller sent the same money back to the payer within 24 hours (a round trip). The receipt leaves the draw and the sales book.'},
   {id:'farm', name:'New phones paying the same amount', pts:40, what:'5 or more phones that never paid any seller before each pay one seller the same amount within an hour (a SIM-card farm).'},
-  {id:'cardclaims', name:'One phone claims many cards', pts:30, what:'One phone claims card payments made with 3 or more different cards in 7 days.'}
+  {id:'cardclaims', name:'One phone claims many cards', pts:30, what:'One phone claims card payments made with 3 or more different cards in 7 days.'},
+  // Money sent to personal numbers: two phones paying each other's shops again and again (friends farming draw entries).
+  {id:'swap', name:'Phones paying each other back and forth', pts:40, what:"A buyer pays a seller, and that seller's own number pays a shop of the buyer, 2 or more times each way in 14 days."}
 ];
 const RULE = Object.fromEntries(RULES.map(r => [r.id, r]));
 function evaluate(list, traderPhones, now) {
@@ -331,7 +398,7 @@ function evaluate(list, traderPhones, now) {
     const day = {}; const byPh = {};
     for (const r of rs) {
       if (!r.ph) continue;
-      if (r.ph === traderPhones[no]) add(r, 'self', "Paid from the seller's own phone.");
+      if (r.ph === traderPhones[no] || (PPHONE[no] && r.ph === PPHONE[no])) add(r, 'self', "Paid from the seller's own phone.");
       if (r.flag) add(r, 'reversed', r.flag === 'reversed' ? 'The network or bank reversed this payment after the receipt was sent.' : 'The seller sent the same amount back to this phone within 24 hours.');
       const k = r.ph + '|' + new Date(r.t).toDateString(); (day[k] = day[k] || []).push(r); (byPh[r.ph] = byPh[r.ph] || []).push(r);
       if (ringSet.has(r.ph) && r.t > now - 30 * DAY) add(r, 'ring', `${heavy.length} new customers each bought ${Math.min(...heavy.map(x => x[1]))}+ times here within their first 30 days.`);
@@ -350,20 +417,30 @@ function evaluate(list, traderPhones, now) {
   // One phone claiming card payments made with many different cards (someone trying to collect other people's card receipts).
   const cards = {}; list.forEach(r => { if (r.ch === 'card' && r.ph && r.c4 && r.t > now - 7 * DAY) (cards[r.ph] = cards[r.ph] || []).push(r); });
   for (const ph in cards) { const n = new Set(cards[ph].map(r => r.c4)).size; if (n >= 3) cards[ph].forEach(r => add(r, 'cardclaims', `This phone claimed card payments from ${n} different cards in 7 days.`)); }
+  // Back and forth: phone A pays a shop of seller B, and B's own number pays a shop of A, 2+ times each way in 14 days.
+  const own = {}; for (const no in traderPhones) { const ow = OWNER[no] || no; [traderPhones[no], PPHONE[no]].forEach(ph => { if (ph) own[ph] = ow; }); }
+  const pairs = {}; list.forEach(r => { if (!r.ph || r.t < now - 14 * DAY) return; const from = own[r.ph], to = OWNER[r.no] || r.no; if (!from || from === to) return; (pairs[from + '>' + to] = pairs[from + '>' + to] || []).push(r); });
+  for (const k in pairs) { const [a, b] = k.split('>'); const back = pairs[b + '>' + a]; if (back && pairs[k].length >= 2 && back.length >= 2) pairs[k].forEach(r => add(r, 'swap', `Sellers ${a} and ${b} paid each other's shops ${pairs[k].length} and ${back.length} times in 14 days.`)); }
   for (const c in out) { const e = out[c]; e.state = e.score >= 60 ? 'blocked' : e.score >= 30 ? 'held' : 'clear'; }
   return out;
 }
-function reEval() { const tp = {}; S.traders.forEach(t => tp[t.no] = t.ph); S.eval = evaluate(S.receipts, tp, clock); }
+let PPHONE = {}, OWNER = {}, SELLERPH = new Set();
+function reEval() { const tp = {}; PPHONE = {}; OWNER = {}; SELLERPH = new Set();
+  S.traders.forEach(t => { tp[t.no] = t.ph; if (t.pp) PPHONE[t.no] = t.pp; if (t.owner) OWNER[t.no] = t.owner; if (t.ph) SELLERPH.add(t.ph); if (t.pp) SELLERPH.add(t.pp); });
+  S.eval = evaluate(S.receipts, tp, clock); }
+// Stock purchase: a Rasiti seller's own number paying another shop is buying stock. The receipt is recorded, but gives no draw entries.
+const isStock = r => { if (!r.ph || !SELLERPH.has(r.ph)) return false; const tr = tByNo(r.no); return !!tr && r.ph !== tr.ph && r.ph !== tr.pp; };
 function shieldState(r) { const e = S.eval[r.code] || {state:'clear'}; const rv = S.reviews[r.code]; if (rv === 'approved') return 'approved'; if (rv === 'rejected') return 'rejected'; return e.state; }
 // 1 entry per M10 by mobile money or card (1 to 5 a receipt); a cash receipt the seller confirmed is always 1 entry, so inflating a cash amount wins nothing.
-const baseEntries = r => !r.ph ? 0 : r.ch === 'cash' ? 1 : Math.max(1, Math.min(5, Math.floor(r.amt / 10)));
+// Money sent to a personal number or bank account counts like cash (1 entry), so a merchant code wins buyers more entries.
+const baseEntries = r => !r.ph || isStock(r) ? 0 : ['cash', 'p2p', 'bank'].includes(r.ch) ? 1 : Math.max(1, Math.min(5, Math.floor(r.amt / 10)));
 const entriesFor = r => { const tr = tByNo(r.no); return baseEntries(r) * (tr && tr.status === 'registered' ? 2 : 1); };
 /* Only the seller's own confirmation, the seller's own return, or a payment a network or bank saw can create tax. Everything a buyer says
    (a cash claim, a rating) is evidence for review, never a bill. So a person at home who claims cash sales at many shops changes nothing:
    each claim waits for the seller, and a rejected or ignored claim never reaches the sales book. A seller who confirms fake cash sales for
    friends pays tax on them, and each one is worth only 1 entry. Every prize is paid only after the payout check (ID and the SIM registered). */
-const verifyLabel = r => r.ch === 'card' ? 'Card: confirmed by the bank' : r.ch === 'momo' ? 'Confirmed by the network' : 'Cash: confirmed by the seller';
-function drawStatus(r) { const s = shieldState(r); if (!r.ph) return 'none'; if (r.flag) return 'excluded'; if (s === 'blocked' || s === 'rejected') return 'excluded'; if (s === 'held') return 'held'; return 'active'; }
+const verifyLabel = r => r.ch === 'card' ? 'Card: confirmed by the bank' : r.ch === 'momo' ? 'Confirmed by the network' : r.ch === 'p2p' ? (/^(mpesa|ecocash):/.test(r.note || '') ? 'Transfer to a personal number: confirmed by the network' : 'Transfer to a personal number: confirmed by the seller') : r.ch === 'bank' ? 'Bank transfer: confirmed by the seller' : 'Cash: confirmed by the seller';
+function drawStatus(r) { const s = shieldState(r); if (!r.ph) return 'none'; if (isStock(r)) return 'stock'; if (r.flag) return 'excluded'; if (s === 'blocked' || s === 'rejected') return 'excluded'; if (s === 'held') return 'held'; return 'active'; }
 
 /* ================= feed / toast ================= */
 function log(kind, text) { S.feed.unshift({t:clock, kind, text}); renderFeed(); }
@@ -452,19 +529,21 @@ function addReport(ph, type, target, ll) {
   const r = {id:rid(), t:tick(), ph, type, target, lat:ll ? ll[0] : (target.place ? placeLatLng(target.place + rid(), target.area)[0] : null), lng:ll ? ll[1] : null};
   if (!ll && target.place) { const p = placeLatLng(target.place + r.id, target.area); r.lat = p[0]; r.lng = p[1]; }
   S.reports.push(r);
-  persist({kind:'report', id:r.id, phone:ph, type, seller_no:target.no || null, place_key:target.place, place_label:target.label, area:target.area, place_kind:target.kind, lat:r.lat, lng:r.lng}).catch(() => {});
-  log('info', `Customer rating: ${REPTYPE[type]} · ${target.no ? tByNo(target.no).name : target.label}`); renderAll();
+  r.saved = persist({kind:'report', id:r.id, phone:ph, type, seller_no:target.no || null, place_key:target.place, place_label:target.label, area:target.area, place_kind:target.kind, lat:r.lat, lng:r.lng}).catch(() => {});
+  log('info', `Customer rating: ${REPTYPE[type]} · ${target.no ? tByNo(target.no).name : target.label}`); renderAll(); return r;
 }
 
 /* ================= report analysis ================= */
 function spamPhones() { const by = {}; S.reports.forEach(r => (by[r.ph] = by[r.ph] || []).push(r)); const out = new Set();
   for (const p in by) { const rs = by[p].filter(x => x.type !== 'got').sort((a, b) => a.t - b.t); for (let i = 0; i < rs.length; i++) { const win = rs.filter(x => x.t >= rs[i].t && x.t - rs[i].t <= DAY);
     const tg = new Set(win.map(x => x.target.no || x.target.place)); if (win.length >= 5 && tg.size >= 3) { out.add(p); break; } } } return out; }
+// Leads an officer joined ("same seller": one moving seller reported at several places) count as one lead.
+const leadKey = k => { const M0 = S.merges || {}; let i = 0; while (M0[k] && i++ < 9) k = M0[k]; return k; };
 function reportGroups() { const spam = spamPhones(); const g = {};
-  for (const r of S.reports) { const k = r.target.no ? 'T' + r.target.no : 'P' + r.target.place;
-    const e = g[k] = g[k] || {key:k, target:r.target, list:[], phones:new Set(), discounted:0, pos:0, lls:[]}; e.list.push(r); if (r.lat != null) e.lls.push([r.lat, r.lng]);
+  for (const r of S.reports) { const k0 = r.target.no ? 'T' + r.target.no : 'P' + r.target.place, k = leadKey(k0);
+    const e = g[k] = g[k] || {key:k, target:r.target, list:[], phones:new Set(), discounted:0, pos:0, lls:[], places:new Set()}; if (k0 === k) e.target = r.target; e.list.push(r); if (r.lat != null) e.lls.push([r.lat, r.lng]); if (r.target.label) e.places.add(r.target.label);
     if (spam.has(r.ph)) e.discounted++; else if (r.type === 'got') e.pos++; else e.phones.add(r.ph); }
-  return Object.values(g).map(e => ({...e, indep:e.phones.size})); }
+  return Object.values(g).map(e => ({...e, indep:e.phones.size, moving:e.list.filter(x => x.stype === 'mobile' || x.stype === 'delivery').length > e.list.length / 2})); }
 function matchPlace(text) { const stop = new Set(['the','and','near','stall','seller','rank','by','at','of','shop']);
   const toks = s => s.toLowerCase().split(/[^a-z0-9']+/).filter(w => (w.length >= 3 && !stop.has(w)) || /^\d+$/.test(w));
   const tw = new Set(toks(text)); let best = null, bs = 0;
@@ -591,7 +670,7 @@ function phoneToast(k, m) { const t = $('#' + k + 'Toast'); t.textContent = m; t
 function nowLabel() { const d = new Date(); return [pad(d.getHours()) + ':' + pad(d.getMinutes()), DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + ['January','February','March','April','May','June','July','August','September','October','November','December'][d.getMonth()]]; }
 function resetPhone(k, who) {
   const p = PH[k]; if (k === 't') p.who = who; else p.who = who;
-  p.st = 'home'; p.d = {}; p.live = null; p.u = 'idle'; p.dial = ''; p.auth = false; p.pin = null; p.pinFails = 0;
+  p.st = 'home'; p.d = {}; p.live = null; p.u = 'idle'; p.dial = ''; p.auth = false; p.keeper = false; p.pin = null; p.pinFails = 0;
   $('#' + k + 'Log').innerHTML = ''; uRender(k); waView(k, 'home');
 }
 
@@ -730,7 +809,10 @@ function tipMsg(k) { const p = PH[k]; const t = TIPS.forDate(new Date(clock), k 
 function home(k) { PH[k].st = 'home'; PH[k].d = {};
   if (PH[k].mode === 'wa' && PH[k].tipDay !== new Date(clock).toDateString() && (k === 't' ? tByNo(PH.t.who) : isCustomer(PH.c.who))) tipMsg(k);
   if (k === 'c' && !isCustomer(PH.c.who)) { PH.c.st = 'c_reg0'; show('c', regPrompt()); return; }
-  if (k === 't' && tByNo(PH.t.who) && !PH.t.auth) { PH.t.st = 't_pin'; const tr = tByNo(PH.t.who); show('t', `${tr.name}\nSeller code ${tr.no}\n\nEnter your 4-digit PIN:`); return; }
+  if (k === 't' && tByNo(PH.t.who) && !PH.t.auth) { const tr = tByNo(PH.t.who);
+    if (tr.owner) { if (!tr.hasKeeper && !tr.kpin) { PH.t.st = 'end'; show('t', `Shop ${tr.no} is a branch of shop ${tr.owner}.\nThe owner signs in with code ${tr.owner}. Ask the owner for a shop-keeper PIN (option 7).\n\n0. Menu`); return; }
+      PH.t.st = 't_kpin'; show('t', `Shop ${tr.no} · ${tr.market}\n\nShop-keeper PIN:`); return; }
+    PH.t.st = 't_pin'; show('t', `${tr.name}\nSeller code ${tr.no}\n\nEnter your 4-digit PIN:`); return; }
   show(k, k === 't' ? tHome() : cHome()); }
 /* Language: English or Sesotho, chosen on each phone with 9 (or by typing "Sesotho" / "English" on WhatsApp). Saved per phone number, so the real USSD menu uses it too. */
 const I18N = window.RASITI_I18N;
@@ -749,8 +831,43 @@ const statusLbl = t => t.status === 'registered' ? 'Registered · SBT' : 'Enroll
 
 function tHome() { const tr = tByNo(PH.t.who);
   if (!tr) return 'Lumela! Rasiti keeps a free\nsales book on your phone and\nbrings customers who want\nreceipts.\n\n1. Join Rasiti (2 minutes)\n2. What do I get?\n3. Questions & tax help\n' + langOpt('t');
-  return `Lumela ${tr.name.split(' ').slice(0, 2).join(' ')}\nCode ${tr.no} · ${statusLbl(tr)}\n\n1. Confirm cash sales (${pendingOf(tr.no).length})\n2. My sales book\n3. ${tr.status === 'enrolled' ? 'Register for tax' : 'My tax & badge'}\n4. Payment codes\n5. Questions & tax help\n6. My shop moved\n${langOpt('t')}`; }
-function cHome() { return 'Rasiti receipts\n\n1. I paid cash\n2. I paid by card\n3. Check a receipt\n4. Rate a shop\n5. My draw entries\n6. Questions & answers\n' + langOpt('c'); }
+  if (PH.t.keeper) return `Shop-keeper · ${tr.market}\nShop ${tr.no} of ${tr.owner}\n\n1. Confirm cash sales (${pendingGroup(tr).length})\n0. Menu`;
+  return `Lumela ${tr.name.split(' ').slice(0, 2).join(' ')}\nCode ${tr.no} · ${statusLbl(tr)}\n\n1. Confirm cash sales (${pendingGroup(tr).length})\n2. My sales book\n3. ${tr.status === 'enrolled' ? 'Register for tax' : 'My tax & badge'}\n4. Payment codes\n5. Questions & tax help\n6. My shop moved\n7. My shops\n${langOpt('t')}`; }
+function cHome() { return 'Rasiti receipts\n\n1. I paid cash\n2. I paid by card\n3. Check a receipt\n4. Rate a shop\n5. My draw entries\n6. Questions & answers\n7. Paid to a number or bank\n' + langOpt('c'); }
+/* ---- owners with several shops: the owner answers for every shop; a shop-keeper only for their branch ---- */
+const pendingGroup = tr => (PH.t.keeper || tr.owner ? [tr.no] : groupOf(tr.no)).flatMap(pendingOf).sort((a, b) => a.t - b.t);
+const claimHow = (c, tr) => (c.m === 'bank' ? 'bank ' : c.m === 'p2p' ? 'sent ' : '') + (c.no !== tr.no ? '@' + c.no + ' ' : '');
+/* ---- money sent to a seller's personal number or bank account: only payments a buyer claims count ---- */
+const NETP = {mpesa:'M-Pesa', ecocash:'EcoCash'};
+const BANKP = {slb:'Standard Lesotho Bank', fnb:'FNB Lesotho', nedbank:'Nedbank Lesotho', postbank:'Lesotho PostBank'};
+const sellerPhones = () => { const m = {}; S.traders.forEach(t => { if (t.ph) m[t.ph] = m[t.ph] || t.no; if (t.pp) m[t.pp] = m[t.pp] || t.no; }); return m; };
+async function transferClaim(no, amt, method, ref) { const who = PH.c.who, tr = tByNo(no); amt = Math.round(amt); ref = String(ref || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (method === 'p2p' && !tr.pp) return `${tr.name} has not linked a\npersonal mobile money number.\nAsk for their merchant code, or\nclaim cash: option 1.\n\n0. Menu`;
+  if (method === 'bank' && !tr.pb) return `${tr.name} has not linked a\nbank account. Claim cash\ninstead: option 1.\n\n0. Menu`;
+  if (!/^[A-Z0-9]{6,20}$/.test(ref)) return 'The transaction ID has 6 to 20\nletters or digits. It is in the\nSMS or on the slip.\n\n0. Menu';
+  if (who === tr.ph || who === tr.pp) { addFake({code:null, kind:'selfpay', by:who, detail:`Transfer claim to own shop ${no}: ${M(amt)}. Refused.`}); return 'You cannot claim a payment to\nyour own number or shop.\n\n0. Menu'; }
+  if (saved()) { let j; try { j = await api('event', {kind:'transfer_claim', seller_no:no, amount:amt, method, ref, phone:who}, {quiet:true}); } catch (e) { return e.message + '\n\n0. Menu'; }
+    if (!j.ok) return j.msg + '\n\n0. Menu';
+    if (j.verified) { const r = {code:j.code, no, amt, ch:'p2p', ph:who, t:tick(), live:true, note:(tr.ppNet || 'mpesa') + ':' + ref + ' claim:' + j.id}; S.receipts.push(r); used.add(r.code); S.claims.push({id:j.id, no, amt, ph:who, t:clock, state:'confirmed', m:'p2p', ref, ver:true, code:j.code, dt:clock}); S.lastReceipt = r; reEval(); renderReceipt(); renderAll();
+      log('ok', `${NETP[tr.ppNet] || 'The network'} confirmed transaction ${ref}: ${M(amt)} to ${tr.name}'s personal number · receipt ${j.code}`);
+      return `🧾 Receipt ${j.code}\n${tr.name} · ${M(amt)}\n${NETP[tr.ppNet] || 'The network'} confirmed it\n(simulated).\n+${entriesFor(r)} draw entr${entriesFor(r) === 1 ? 'y' : 'ies'}.\n\n0. Menu`; }
+    S.claims.push({id:j.id, no, amt, ph:who, t:tick(), state:'pending', m:method, ref}); renderAll();
+    log('info', `Transfer claim: ${mask(who)} says they paid ${tr.name} ${M(amt)} by ${method === 'bank' ? 'bank transfer' : 'mobile money'} (ref ${ref}) · waiting for the seller`);
+    return `Sent to ${tr.name}\nto confirm: ${M(amt)} by bank.\n\nWhen the seller confirms, you\nget your receipt by SMS.\n\n0. Menu`; }
+  if (S.claims.some(c => c.m === method && c.ref === ref && c.state !== 'rejected')) return 'This transaction ID was already\nclaimed. Each payment counts once.\n\n0. Menu';
+  if (method === 'p2p') { const x = (S.net || []).find(n => n.ref === ref);
+    if (!x || x.to !== tr.pp || x.from !== who || Math.round(x.amt) !== amt) { addFake({code:ref, kind:'transfermiss', by:who, detail:`Transfer claim at seller ${no}: ${M(amt)}, ID ${ref}. The network has no such payment.`}); log('bad', `Transaction ID ${ref} not found by the network: claim refused`); renderAll();
+      return `${NETP[tr.ppNet] || 'The network'} has no payment of\n${M(amt)} with ID ${ref} from your\nphone to ${tr.name}.\nCheck the SMS and try again.\n\n0. Menu`; }
+    const id = rid(), code = mkCode(no, Math.random); const r = {code, no, amt, ch:'p2p', ph:who, t:tick(), live:true, note:(tr.ppNet || 'mpesa') + ':' + ref + ' claim:' + id}; S.receipts.push(r); used.add(code);
+    S.claims.push({id, no, amt, ph:who, t:clock, state:'confirmed', m:'p2p', ref, ver:true, code, dt:clock}); S.lastReceipt = r; reEval(); renderReceipt(); renderAll();
+    log('ok', `${NETP[tr.ppNet] || 'The network'} confirmed transaction ${ref} (simulated): receipt ${code}`);
+    return `🧾 Receipt ${code}\n${tr.name} · ${M(amt)}\n${NETP[tr.ppNet] || 'The network'} confirmed it\n(simulated).\n+${entriesFor(r)} draw entr${entriesFor(r) === 1 ? 'y' : 'ies'}.\n\n0. Menu`; }
+  S.claims.push({id:rid(), no, amt, ph:who, t:tick(), state:'pending', m:'bank', ref}); renderAll(); log('info', `Bank transfer claim to ${tr.name}: ${M(amt)}, ref ${ref} · waiting for the seller`);
+  return `Sent to ${tr.name}\nto confirm: ${M(amt)} by bank.\n\nWhen the seller confirms, you\nget your receipt by SMS.\n\n0. Menu`; }
+// Simulated network: the customer sends money to a person's number (in the pilot this happens on the real network). Returns the transaction ID.
+async function netSendDemo(from, to, amt, net) { net = net || 'mpesa';
+  if (API.online) { try { const r = await fetch('/api/momo', {method:'POST', headers:{'content-type':'application/json', 'x-rasiti-demo':'1'}, body:JSON.stringify({type:'p2p', network:net, from, to, amount:amt})}); const j = await r.json(); if (j.ok) return j.ref; } catch {} }
+  const ref = (net === 'ecocash' ? 'E' : 'Q') + rid().slice(0, 8).toUpperCase(); (S.net = S.net || []).push({ref, net, from, to, amt, t:clock}); return ref; }
 /* ---- cash: the buyer claims, the seller confirms ---- */
 const short = ph => ph ? '…' + String(ph).slice(-3) : 'no phone';
 const hhmm = t => { const d = new Date(t); return (new Date(clock).toDateString() === d.toDateString() ? '' : fD(t) + ' ') + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
@@ -764,18 +881,18 @@ async function cashClaim(no, amt, from) { const who = from || PH.c.who, tr = tBy
     if (!j.ok) return j.msg + '\n\n0. Menu'; id = j.id; }
   S.claims.push({id, no, amt, ph:who, t:tick(), state:'pending'});
   log('info', `Cash claim: ${mask(who)} says they paid ${tr.name} ${M(amt)} cash · waiting for the seller (SMS sent)`); renderAll();
-  if (PH.t.who === no && PH.t.auth && ['home', 'end'].includes(PH.t.st)) show('t', tHome());
-  return `Sent to ${tr.name}\nto confirm: ${M(amt)} cash.\n\nWhen the seller confirms, you\nget your receipt and draw\nentry by SMS. Nothing counts\nuntil then.\n\n0. Menu`; }
-function cashList(tr) { const open = pendingOf(tr.no); const list = open.slice(-5).reverse(); PH.t.d.list = list.map(c => c.id);
-  return `Cash sales to confirm: ${open.length}\n\n` + list.map((c, i) => `${i + 1}. ${M(c.amt)} ${short(c.ph)} ${hhmm(c.t)}`).join('\n') + `\n9. Confirm all ${open.length}\n0. Menu`; }
-async function cashDecide(tr, ids, decision) { const pick = ids === 'all' ? pendingOf(tr.no) : pendingOf(tr.no).filter(c => ids.includes(c.id)); if (!pick.length) return [];
+  if ((PH.t.who === no || PH.t.who === tr.owner) && PH.t.auth && ['home', 'end'].includes(PH.t.st)) show('t', tHome());
+  return `Sent to ${tr.name}\nto confirm: ${M(amt)} cash.\n\nWhen the seller confirms, you\nget your receipt and draw\nentry by SMS. Nothing counts\nuntil then.${tr.type === 'delivery' ? '\nPaid a delivery fee too? Claim\nit as its own sale.' : ''}\n\n0. Menu`; }
+function cashList(tr) { const open = pendingGroup(tr); const list = open.slice(-5).reverse(); PH.t.d.list = list.map(c => c.id);
+  return `Cash sales to confirm: ${open.length}\n\n` + list.map((c, i) => `${i + 1}. ${M(c.amt)} ${claimHow(c, tr)}${short(c.ph)} ${hhmm(c.t)}`).join('\n') + `\n9. Confirm all ${open.length}\n0. Menu`; }
+async function cashDecide(tr, ids, decision) { const pick = ids === 'all' ? pendingGroup(tr) : pendingGroup(tr).filter(c => ids.includes(c.id)); if (!pick.length) return [];
   let codes = {};
-  if (saved()) { let j; try { j = await api('event', {kind:'cash_decide', no:tr.no, pin:PH.t.pin, ids:ids === 'all' ? 'all' : ids, decision}, {quiet:true}); } catch (e) { toast(e.message); return []; }
+  if (saved()) { let j; try { j = await api('event', {kind:'cash_decide', no:tr.no, pin:PH.t.pin, keeper:!!PH.t.keeper, ids:ids === 'all' ? 'all' : ids, decision}, {quiet:true}); } catch (e) { toast(e.message); return []; }
     j.done.forEach(d => codes[d.id] = d.code || true); }
-  else pick.forEach(c => codes[c.id] = decision === 'confirm' ? mkCode(tr.no, Math.random) : true);
+  else pick.forEach(c => codes[c.id] = decision === 'confirm' ? mkCode(c.no, Math.random) : true);
   const out = [];
   for (const c of pick) { if (!codes[c.id]) continue; c.dt = tick();
-    if (decision === 'confirm') { c.state = 'confirmed'; c.code = codes[c.id]; const r = {code:c.code, no:tr.no, amt:c.amt, ch:'cash', ph:c.ph, t:clock, live:true, note:'claim:' + c.id}; S.receipts.push(r); used.add(r.code); out.push(r); S.lastReceipt = r; }
+    if (decision === 'confirm') { c.state = 'confirmed'; c.code = codes[c.id]; const r = {code:c.code, no:c.no, amt:c.amt, ch:['p2p', 'bank'].includes(c.m) ? c.m : 'cash', ph:c.ph, t:clock, live:true, note:'claim:' + c.id + (c.ref ? ' ref:' + c.ref : '')}; S.receipts.push(r); used.add(r.code); out.push(r); S.lastReceipt = r; }
     else { c.state = 'rejected'; out.push(c); } }
   reEval(); renderReceipt(); renderAll();
   log(decision === 'confirm' ? 'ok' : 'info', `${tr.name} ${decision === 'confirm' ? 'confirmed' : 'rejected'} ${out.length} cash sale${out.length === 1 ? '' : 's'} (${M(out.reduce((a, x) => a + x.amt, 0))})${decision === 'confirm' ? ': receipts sent to the buyers' : ': not in the sales book, not taxed'}`);
@@ -804,40 +921,57 @@ function tStep(inp) { const p = PH.t, tr = tByNo(p.who), v = String(inp).trim();
       else if (v === '3') faqStart('t', 'seller');
       else if (p.mode === 'wa' && !/^\d+$/.test(v)) { if (!faqFree('t', 'seller', v)) show('t', tHome()); }
       else if (v === '2') { p.st = 'end'; show('t', 'With Rasiti you get:\n- a free sales book\n- customers drawn by the\n  prize draw sign\n- a record banks can see\n- simple tax, no queues\n\n0. Back'); } return; }
-    if (v === '1') { if (!pendingOf(tr.no).length) { p.st = 'end'; show('t', 'No cash sales to confirm.\n\nWhen a customer says they paid\nyou cash, you get an SMS and\nthe sale shows here.\n\n0. Menu'); return; }
+    if (p.keeper && v !== '1') { show('t', 'Shop-keepers can only confirm\ncash sales. The owner does the\nrest.\n\n' + tHome()); return; }
+    if (v === '1') { if (!pendingGroup(tr).length) { p.st = 'end'; show('t', 'No cash sales to confirm.\n\nWhen a customer says they paid\nyou cash, you get an SMS and\nthe sale shows here.\n\n0. Menu'); return; }
       p.st = 't_cash'; show('t', cashList(tr)); }
-    else if (v === '2') { const rs = S.receipts.filter(r => r.no === tr.no && counts(r)); const d0 = new Date(clock); d0.setHours(0, 0, 0, 0);
+    else if (v === '7') { if (tr.owner) { p.st = 'end'; show('t', 'Only the main shop can do this.\n\n0. Menu'); return; } p.st = 't_shops'; show('t', shopsMenu(tr)); }
+    else if (v === '2') { const g = new Set(groupOf(tr.no)); const rs = S.receipts.filter(r => g.has(r.no) && counts(r)); const d0 = new Date(clock); d0.setHours(0, 0, 0, 0);
       const today = rs.filter(r => r.t >= d0.getTime()); const w = rs.filter(r => r.t > clock - 7 * DAY); const m = rs.filter(r => r.t > clock - 30 * DAY);
       const sm = a => a.reduce((x, r) => x + r.amt, 0); p.st = 'end';
-      show('t', `My sales book\n\nToday: ${today.length} sales, ${M(sm(today))}\n7 days: ${w.length} sales, ${M(sm(w))}\n30 days: ${m.length} sales, ${M(sm(m))}\nCash ${M(sm(m.filter(r => r.ch === 'cash')))} · mobile ${M(sm(m.filter(r => r.ch === 'momo')))} · card ${M(sm(m.filter(r => r.ch === 'card')))}\nMobile money and card come by\nthemselves. Cash: confirm with 1.\n\n0. Menu`); }
-    else if (v === '3') { const m = S.receipts.filter(r => r.no === tr.no && counts(r) && r.t > clock - 30 * DAY).reduce((x, r) => x + r.amt, 0);
+      const tf = sm(m.filter(r => r.ch === 'p2p' || r.ch === 'bank'));
+      show('t', `My sales book${g.size > 1 ? ' (' + g.size + ' shops)' : ''}\n\nToday: ${today.length} sales, ${M(sm(today))}\n7 days: ${w.length} sales, ${M(sm(w))}\n30 days: ${m.length} sales, ${M(sm(m))}\nCash ${M(sm(m.filter(r => r.ch === 'cash')))} · mobile ${M(sm(m.filter(r => r.ch === 'momo')))} · card ${M(sm(m.filter(r => r.ch === 'card')))}${tf ? ' · transfers ' + M(tf) : ''}\nMobile money and card come by\nthemselves. Cash: confirm with 1.\n\n0. Menu`); }
+    else if (v === '3' && tr.owner) { p.st = 'end'; show('t', `Tax for this shop is filed by the main shop ${tr.owner}, together with all its shops.\n\n0. Menu`); }
+    else if (v === '3') { const g = new Set(groupOf(tr.no)); const m = S.receipts.filter(r => g.has(r.no) && counts(r) && r.t > clock - 30 * DAY).reduce((x, r) => x + r.amt, 0);
       if (tr.status === 'enrolled') { p.st = 't_reg'; show('t', `Register for tax\n\nSales last 30 days: ${M(m)}\nYearly estimate: ${M(m * 12)}\nYou fit Simplified Business\nTax (under M2,000,000).\n\nRegistered sellers get double\ndraw entries for customers,\nbigger seller prizes and a\nbadge banks recognise.\n\n1. Register now\n2. Ask a helper to call me\n0. Menu`); }
       else { p.st = 't_tax'; show('t', taxMenu(tr)); } }
     else if (v === '5') faqStart('t', 'seller');
     else if (v === '6') { p.st = 't_move'; show('t', moveMenu(tr)); }
-    else if (v === '4') { p.st = 't_mc'; show('t', `Payment codes\nM-Pesa: ${tr.mp || 'not linked'}\nEcoCash: ${tr.ec || 'not linked'}\nCard machine: ${tr.pos || 'not linked'}\n\n1. Link M-Pesa merchant code\n2. Link EcoCash merchant code\n3. Link card machine\n\n0. Menu`); }
+    else if (v === '4') { p.st = 't_mc'; show('t', `Payment codes\nM-Pesa: ${tr.mp || 'not linked'}\nEcoCash: ${tr.ec || 'not linked'}\nCard machine: ${tr.pos || 'not linked'}${tr.pp ? '\nPersonal number: ' + short(tr.pp) : ''}${tr.pb ? '\nBank: ' + BANKP[tr.pb] + ' ••' + (tr.pbAcct || '') : ''}\n\n1. Link M-Pesa merchant code\n2. Link EcoCash merchant code\n3. Link card machine\n4. My personal number\n5. My bank account\n\n0. Menu`); }
     else if (p.mode === 'wa' && !/^\d+$/.test(v)) { if (!faqFree('t', 'seller', v)) show('t', tHome()); }
     return;
   case 't_cash': { if (v === '9') { p.st = 'end'; cashDecide(tr, 'all', 'confirm').then(o => show('t', `Confirmed ${o.length} cash sale${o.length === 1 ? '' : 's'}:\n${M(o.reduce((a, x) => a + x.amt, 0))}.\n\nYour customers got their\nreceipts. The sales are in your\nsales book.\n\n0. Menu`)); return; }
     const id = (p.d.list || [])[+v - 1]; const c = id && S.claims.find(x => x.id === id); if (!c) { show('t', cashList(tr)); return; }
-    p.d.cid = id; p.st = 't_cash_one'; show('t', `${M(c.amt)} cash from ${short(c.ph)}\n${hhmm(c.t)}\n\n1. Yes, I sold this\n2. No, reject\n0. Menu`); return; }
+    p.d.cid = id; p.st = 't_cash_one'; show('t', `${M(c.amt)} ${c.m === 'bank' ? 'bank transfer' : c.m === 'p2p' ? 'sent to your number' : 'cash'} from ${short(c.ph)}\n${hhmm(c.t)}${c.ref ? '\nRef ' + c.ref : ''}${c.no !== tr.no ? '\nShop ' + c.no : ''}\n\n1. Yes, I sold this\n2. No, reject\n0. Menu`); return; }
   case 't_cash_one': { if (v !== '1' && v !== '2') return; p.st = 'end';
     cashDecide(tr, [p.d.cid], v === '1' ? 'confirm' : 'reject').then(o => { const r = o[0];
-      show('t', !r ? 'This claim was already answered.\n\n0. Menu' : v === '1' ? `Confirmed. Receipt ${r.code}\nsent to the customer.\nIn your sales book: ${M(r.amt)}.\n\n` + (pendingOf(tr.no).length ? '1. Next cash sale\n0. Menu' : '0. Menu') : 'Rejected. It is not in your\nsales book and not taxed.\n\n0. Menu');
-      if (r && pendingOf(tr.no).length) p.st = 't_cash_next'; }); return; }
+      show('t', !r ? 'This claim was already answered.\n\n0. Menu' : v === '1' ? `Confirmed. Receipt ${r.code}\nsent to the customer.\nIn your sales book: ${M(r.amt)}.\n\n` + (pendingGroup(tr).length ? '1. Next cash sale\n0. Menu' : '0. Menu') : 'Rejected. It is not in your\nsales book and not taxed.\n\n0. Menu');
+      if (r && pendingGroup(tr).length) p.st = 't_cash_next'; }); return; }
   case 't_cash_next': if (v === '1') { p.st = 't_cash'; show('t', cashList(tr)); } else home('t'); return;
-  case 'j_name': if (!v) return; p.d.name = v.slice(0, 60); p.st = 'j_mkt'; show('t', 'Where do you trade?\n(e.g. Sefika rank)'); return;
-  case 'j_mkt': if (!v) return; p.d.mkt = v.slice(0, 60); p.st = 'j_trade'; show('t', 'What do you sell?'); return;
+  case 'j_name': if (!v) return; p.d.name = v.slice(0, 60); p.st = 'j_type'; show('t', 'Where do you usually sell?\n\n1. One place (shop or stall)\n2. I move around\n3. From home\n4. I deliver'); return;
+  case 'j_type': { const ty = {1:'fixed', 2:'mobile', 3:'home', 4:'delivery'}[v]; if (!ty) { show('t', 'Choose 1 to 4.\n\n1. One place (shop or stall)\n2. I move around\n3. From home\n4. I deliver'); return; } p.d.type = ty; p.st = 'j_mkt';
+    show('t', {fixed:'Where is your shop or stall?\n(e.g. Sefika rank)', mobile:'Where do you sell most?\n(e.g. Sefika rank)', home:'Which area do you live in?\nWe never show your home, only the area.', delivery:'Which area do you deliver in?\n(e.g. Ha Hoohlo)'}[ty]); return; }
+  case 'j_mkt': if (!v) return; p.d.mkt = v.slice(0, 60);
+    if (p.d.type === 'mobile') { p.st = 'j_more'; show('t', 'Other places you sell?\nType up to 2, e.g. Pitso, Kingsway\n(0 to skip):'); return; }
+    p.st = 'j_trade'; show('t', 'What do you sell?'); return;
+  case 'j_more': { const a0 = PLACES.areaOf(p.d.mkt) || p.d.mkt; const extra = v === '0' ? [] : v.split(/[,;]+/).map(x => PLACES.areaOf(x) || x.trim()).filter(x => x.length > 1).slice(0, 2);
+    p.d.places = [a0, ...extra.filter(x => x !== a0)]; p.st = 'j_trade'; show('t', 'What do you sell?'); return; }
+  case 'j_offer': { const tr2 = tByNo(p.who); p.st = 'end'; if (v !== '1' && v !== '2') { show('t', 'No problem. Get one later:\noption 4.\nNo tax number needed yet.\n\n0. Menu'); return; }
+    const net = v === '1' ? 'mpesa' : 'ecocash', key = net === 'mpesa' ? 'mp' : 'ec';
+    const done = code => { tr2[key] = code; log('ok', `${NETP[net]} opened merchant code ${code} for ${tr2.name} (simulated)`); show('t', `${NETP[net]} merchant code ${code}\nopened for you (simulated).\nPayments to it give your\ncustomers receipts by themselves.\n\n0. Menu`); renderAll(); fillSelects(); };
+    if (saved()) { api('event', {kind:'merchant_open', no:tr2.no, pin:p.pin, network:net}, {quiet:true}).then(j => j.ok ? done(j.code) : show('t', j.msg + '\n\n0. Menu')).catch(e => show('t', e.message + '\n\n0. Menu')); return; }
+    let code; do { code = net === 'mpesa' ? '58' + String(Math.floor(Math.random() * 1e4)).padStart(4, '0') : '2' + String(Math.floor(Math.random() * 1e4)).padStart(4, '0'); } while (S.traders.some(t => t[key] === code)); done(code); return; }
   case 'j_trade': if (!v) return; p.d.trade = v.slice(0, 60); p.st = 'j_pin'; show('t', 'Choose a 4-digit PIN.\nYou need it every time you open\nyour seller menu. Do not share it.'); return;
   case 'j_pin': { const bad = pinProblem(v); if (bad) { show('t', bad + '\n\nChoose a 4-digit PIN:'); return; } p.d.pin = v; p.st = 'j_pin2'; show('t', 'Enter the PIN again:'); return; }
   case 'j_pin2': if (v !== p.d.pin) { p.st = 'j_pin'; show('t', 'The two PINs are different.\n\nChoose a 4-digit PIN:'); return; }
   { let no; do { no = String(7000 + Math.floor(Math.random() * 2999)); } while (tByNo(no));
     const area = Object.keys(AREAS).find(a => p.d.mkt.toLowerCase().includes(a.split(' ')[0].toLowerCase())) || p.d.mkt;
-    const ll = placeLatLng('T' + no, area);
-    const tr2 = {no, name:p.d.name, trade:p.d.trade, market:p.d.mkt, status:'enrolled', joined:0, joinedAt:clock, ph:randPhone(Math.random), lat:ll[0], lng:ll[1]};
-    S.traders.push(tr2); tr2.pin = p.d.pin; persist({kind:'seller_join', no, pin:p.d.pin, name:tr2.name, trade:tr2.trade, market:tr2.market, phone:tr2.ph, lat:ll[0], lng:ll[1]}).catch(() => {});
-    log('ok', `New seller enrolled: ${tr2.name} (${tr2.market}), code ${no}`); p.who = no; p.auth = true; p.pin = p.d.pin; fillSelects(); p.st = 'end';
-    show('t', `Welcome ${tr2.name}!\nYour seller code: ${no}\nKeep your PIN secret.\n\nPut the Rasiti sticker where\ncustomers can see it. Then\nlink your payment codes:\noption 4.\nNo tax number needed yet.\n\n0. Menu`); renderAll(); return; }
+    const type = p.d.type || 'fixed';
+    // A home seller is shown at the centre of the area only, never at the home.
+    const ll = type === 'home' && AREAS[area] ? AREAS[area] : placeLatLng('T' + no, area);
+    const tr2 = {no, name:p.d.name, trade:p.d.trade, market:type === 'home' && AREAS[area] ? area : p.d.mkt, status:'enrolled', joined:0, joinedAt:clock, ph:randPhone(Math.random), lat:ll[0], lng:ll[1], type, places:type === 'mobile' ? p.d.places || [area] : null};
+    S.traders.push(tr2); tr2.pin = p.d.pin; persist({kind:'seller_join', no, pin:p.d.pin, name:tr2.name, trade:tr2.trade, market:tr2.market, phone:tr2.ph, lat:ll[0], lng:ll[1], sell_type:type, usual_places:tr2.places ? tr2.places.join(' | ') : null}).catch(() => {});
+    log('ok', `New seller enrolled: ${tr2.name} (${tr2.market}, ${SELLTYPE[type].toLowerCase()}), code ${no}`); p.who = no; p.auth = true; p.pin = p.d.pin; fillSelects(); p.st = 'j_offer';
+    show('t', `Welcome ${tr2.name}!\nYour seller code: ${no}\nKeep your PIN secret.\n\nPut the Rasiti sticker where\ncustomers can see it.\nRSL only sees payments buyers\nclaim, never your wallet.\n\nGet a merchant code? Receipts\nthen come by themselves.\n1. M-Pesa\n2. EcoCash\n3. Not now`); renderAll(); return; }
   case 't_tax': { const t = taxOf(tr.no); const lp = lastPer(), pn = perName(lp);
     if (v === '1') { if (t.last) { p.st = 'end'; show('t', `${pn} return filed: ${M(t.last.declared)}${t.last.nil ? ' (nil)' : ''}\nTax due ${M(t.last.tax)} by ${perDue(lp)}.\n\n2. Pay tax\n0. Menu`); p.st = 't_tax'; return; }
       p.st = 't_file'; show('t', `${pn} return\n\nSales book for ${pn}:\n${M(perSales(tr.no, lp))} (cash you confirmed,\nmobile money and card)\n\n1. File this amount\n2. Enter a different total\n3. I did not trade (nil)\n0. Menu`); }
@@ -870,12 +1004,18 @@ function tStep(inp) { const p = PH.t, tr = tByNo(p.who), v = String(inp).trim();
     else if (v === '2') { tr.helper = true; persist({kind:'seller_helper', no:tr.no}).catch(() => {}); log('info', `${tr.name} asked a tax helper to call`); p.st = 'end'; show('t', 'A tax helper will call you\nwithin 2 working days.\n\n0. Menu'); renderAll(); }
     return;
   case 't_id': { if (v.replace(/\D/g, '').length < 6) { show('t', 'ID number (at least 6 digits):'); return; }
+    const idd = v.replace(/\D/g, ''); const twin = S.traders.find(x => x.no !== tr.no && !x.owner && x.idd === idd);
+    const refuse = no => { p.st = 'end'; log('warn', `ID already used by seller ${no}: ${tr.name} was asked to add the shop as a branch`); show('t', `This ID already has a Rasiti\nshop (code ${no}).\nOne owner, one account: add this\nshop as a branch from shop\n${no}, option 7.\n\n0. Menu`); };
+    if (twin) { refuse(twin.no); return; }
     const look = RSLM.lookup(v); const tin = look.found ? look.tin : RSLM.newTin(v); // simulated RSL e-services TIN check
-    tr.status = 'registered'; tr.via = true; tr.tin = tin; tr.declared = null; tr.regAt = clock; tr.tinFound = look.found;
-    persist({kind:'seller_register', no:tr.no, tin}).catch(() => {});
-    log('ok', `${tr.name} registered through Rasiti · TIN ${tin} · customers now earn double entries`); fillSelects(); p.st = 'end';
-    show('t', `Checking RSL register...\n${look.found ? 'Found on RSL register.' : 'RSL issued your TIN.'}\nTIN ${tin}\nYou are a registered seller.\n\nYour customers now earn\ndouble draw entries.\nFirst return due ${dueDate()},\nprefilled from your book.\n\n0. Menu`);
-    narrate(`<b>Tax net widened.</b> ${esc(tr.name)} registered from her own phone. Her customers keep their entries and now earn double, which gives them a reason to choose her stall.`); renderAll(); return; }
+    const finish = () => {
+      tr.status = 'registered'; tr.via = true; tr.tin = tin; tr.declared = null; tr.regAt = clock; tr.tinFound = look.found; tr.idd = idd;
+      S.traders.filter(x => x.owner === tr.no).forEach(x => { x.status = 'registered'; x.tin = tin; x.via = true; x.regAt = clock; }); // branches follow the owner
+      log('ok', `${tr.name} registered through Rasiti · TIN ${tin} · customers now earn double entries`); fillSelects(); p.st = 'end';
+      show('t', `Checking RSL register...\n${look.found ? 'Found on RSL register.' : 'RSL issued your TIN.'}\nTIN ${tin}\nYou are a registered seller.\n\nYour customers now earn\ndouble draw entries.\nFirst return due ${dueDate()},\nprefilled from your book.\n\n0. Menu`);
+      narrate(`<b>Tax net widened.</b> ${esc(tr.name)} registered from her own phone. Her customers keep their entries and now earn double, which gives them a reason to choose her stall.`); renderAll(); };
+    if (saved()) { api('event', {kind:'seller_register', no:tr.no, tin, id_number:idd}, {quiet:true}).then(finish).catch(e => { const m = /already has a Rasiti shop \(code (\d{4})\)/.exec(e.message); if (m) refuse(m[1]); else { p.st = 'end'; show('t', e.message + '\n\n0. Menu'); } }); return; }
+    finish(); return; }
   case 't_pin': {
     if (!/^\d{4}$/.test(v)) { show('t', 'The PIN has 4 digits.\n\nEnter your 4-digit PIN:'); return; }
     if (tr.lockUntil > clock) { p.st = 'end'; show('t', 'Too many wrong PINs.\nTry again in 15 minutes, or call\nthe Rasiti help line 6808 8101.'); return; }
@@ -883,8 +1023,10 @@ function tStep(inp) { const p = PH.t, tr = tByNo(p.who), v = String(inp).trim();
     const ok = v === (tr.pin || DEMO_PIN); p.pinFails = ok ? 0 : (p.pinFails || 0) + 1;
     if (!ok && p.pinFails >= 3) { tr.lockUntil = clock + 15 * MIN; p.pinFails = 0; pinDone(false, 'Wrong PIN 3 times. The seller menu is locked for 15 minutes.', v); return; }
     pinDone(ok, ok ? '' : `Wrong PIN. ${3 - p.pinFails} ${3 - p.pinFails === 1 ? 'try' : 'tries'} left.`, v); return; }
-  case 't_mc': if (v === '3') { p.st = 't_pos_bank'; show('t', 'Your card machine bank\n\n1. Standard Lesotho Bank\n2. FNB Lesotho\n3. Nedbank Lesotho\n4. Lesotho PostBank\n\n0. Menu'); return; }
-    if (v !== '1' && v !== '2') { show('t', 'Choose 1, 2 or 3, or 0 for the menu.'); return; }
+  case 't_mc': if (v === '4') { p.st = 't_pp_net'; show('t', `Personal number${tr.pp ? ': ' + short(tr.pp) : ''}\nOnly payments your buyers claim\ncount. RSL never sees your wallet.\n\n1. M-Pesa\n2. EcoCash\n0. Menu`); return; }
+    if (v === '5') { p.st = 't_pb_bank'; show('t', 'Your bank\n\n1. Standard Lesotho Bank\n2. FNB Lesotho\n3. Nedbank Lesotho\n4. Lesotho PostBank\n0. Menu'); return; }
+    if (v === '3') { p.st = 't_pos_bank'; show('t', 'Your card machine bank\n\n1. Standard Lesotho Bank\n2. FNB Lesotho\n3. Nedbank Lesotho\n4. Lesotho PostBank\n\n0. Menu'); return; }
+    if (v !== '1' && v !== '2') { show('t', 'Choose 1 to 5, or 0 for the menu.'); return; }
     p.d.net = v === '1' ? 'mpesa' : 'ecocash'; p.st = 't_mc_code'; show('t', `Your ${NETNAME[p.d.net]} merchant code\n(5 to 7 digits, from ${p.d.net === 'mpesa' ? 'Vodacom' : 'Econet'}):`); return;
   case 't_mc_code': { const mc = v.replace(/\D/g, ''); const key = p.d.net === 'mpesa' ? 'mp' : 'ec', net = NETNAME[p.d.net];
     if (!/^\d{5,7}$/.test(mc)) { show('t', 'A merchant code has 5 to 7 digits.\n\nYour merchant code:'); return; }
@@ -913,8 +1055,52 @@ function tStep(inp) { const p = PH.t, tr = tByNo(p.who), v = String(inp).trim();
   case 't_move_ok': p.st = 'end';
     if (v !== '1') { show('t', `Nothing changed. Your shop is still at ${tr.market}.\n\n0. Menu`); return; }
     moveShop(tr, p.d.to, p.mode === 'wa' ? 'WhatsApp' : 'USSD').then(t => show('t', t + '\n\n0. Menu')); return;
+  case 't_pp_net': if (v !== '1' && v !== '2') return; p.d.net = v === '1' ? 'mpesa' : 'ecocash'; p.st = 't_pp_num'; show('t', 'Your number, e.g. 58123456:'); return;
+  case 't_pp_num': { let n = v.replace(/\D/g, ''); if (n.length === 8) n = '266' + n; if (!/^266[5-6]\d{7}$/.test(n)) { show('t', 'Type your number, e.g. 58123456:'); return; }
+    if (S.traders.some(x => x.no !== tr.no && x.pp === n && (x.owner || x.no) !== (tr.owner || tr.no))) { p.st = 'end'; show('t', 'This number is already linked to\nanother Rasiti seller. RSL will\ncheck it.\n\n0. Menu'); return; }
+    const done = () => { tr.pp = n; tr.ppNet = p.d.net; p.st = 'end'; log('ok', `${tr.name} linked a personal ${NETP[p.d.net]} number (only payments buyers claim count)`);
+      show('t', `${NETP[p.d.net]} number ${short(n)} linked.\nOnly payments your buyers claim\ncount. RSL never sees your wallet.\n\n0. Menu`); renderAll(); };
+    if (saved()) { api('event', {kind:'pay_personal', no:tr.no, pin:p.pin, number:n, network:p.d.net}, {quiet:true}).then(j => j.ok ? done() : (p.st = 'end', show('t', j.msg + '\n\n0. Menu'))).catch(e => { p.st = 'end'; show('t', e.message + '\n\n0. Menu'); }); return; }
+    done(); return; }
+  case 't_pb_bank': { const bank = {1:'slb', 2:'fnb', 3:'nedbank', 4:'postbank'}[v]; if (!bank) return; p.d.bank = bank; p.st = 't_pb_acct'; show('t', 'Account number:'); return; }
+  case 't_pb_acct': { const d = v.replace(/\D/g, ''); if (d.length < 6 || d.length > 16) { show('t', 'An account number has 6 to 16\ndigits.\n\nAccount number:'); return; }
+    const done = () => { tr.pb = p.d.bank; tr.pbAcct = d.slice(-4); p.st = 'end'; log('ok', `${tr.name} linked a ${BANKP[p.d.bank]} account ••${d.slice(-4)}`);
+      show('t', `${BANKP[p.d.bank]} account ••${d.slice(-4)}\nlinked.\nOnly transfers your buyers claim\nand you confirm count. RSL never\nsees your statement.\n\n0. Menu`); renderAll(); };
+    if (saved()) { api('event', {kind:'pay_bank', no:tr.no, pin:p.pin, bank:p.d.bank, account:d}, {quiet:true}).then(j => j.ok ? done() : (p.st = 'end', show('t', j.msg + '\n\n0. Menu'))).catch(e => { p.st = 'end'; show('t', e.message + '\n\n0. Menu'); }); return; }
+    done(); return; }
+  case 't_shops': {
+    if (v === '1') { p.st = 't_br_place'; show('t', 'Where is the new shop?\n(e.g. Ha Thetsane)\n\n0. Menu'); return; }
+    if (v === '2') { const g = groupOf(tr.no); const d0 = new Date(clock); d0.setHours(0, 0, 0, 0); p.st = 'end';
+      show('t', 'Today\n\n' + g.map(no => { const t2 = tByNo(no); const rs = S.receipts.filter(r => r.no === no && counts(r) && r.t >= d0.getTime()); const w = pendingOf(no).length; return `${no} ${t2.market.slice(0, 14)}: ${M(rs.reduce((a, r) => a + r.amt, 0))}${w ? ' (' + w + ' to confirm)' : ''}`; }).join('\n')
+        + `\nTotal ${M(S.receipts.filter(r => g.includes(r.no) && counts(r) && r.t >= d0.getTime()).reduce((a, r) => a + r.amt, 0))}\n\nYou also get this by SMS every\nevening.\n\n0. Menu`); return; }
+    if (v === '3') { const br = S.traders.filter(x => x.owner === tr.no).slice(0, 6); if (!br.length) { p.st = 'end'; show('t', 'Add a shop first (option 1).\n\n0. Menu'); return; }
+      p.d.br = br.map(x => x.no); p.st = 't_kp_pick'; show('t', 'Which shop?\n\n' + br.map((x, i) => `${i + 1}. ${x.no} ${x.market}`).join('\n') + '\n0. Menu'); return; }
+    show('t', shopsMenu(tr)); return; }
+  case 't_br_place': if (v.trim().length < 2) { show('t', 'Type where the new shop is.\n\n0. Menu'); return; }
+    p.d.place = v.trim().slice(0, 60); p.st = 't_br_ok'; show('t', `Add a shop at\n${PLACES.areaOf(p.d.place) || p.d.place}?\n\n1. Yes\n2. No\n0. Menu`); return;
+  case 't_br_ok': p.st = 'end'; if (v !== '1') { show('t', 'Nothing changed.\n\n0. Menu'); return; } addBranchLocal(tr, p.d.place).then(t => show('t', t + '\n\n0. Menu')); return;
+  case 't_kp_pick': { const no = (p.d.br || [])[+v - 1]; if (!no) return; p.d.kno = no; p.st = 't_kp_pin'; show('t', `New shop-keeper PIN for ${no}:\n(they can only confirm cash sales)`); return; }
+  case 't_kp_pin': { const bad = pinProblem(v); if (bad) { show('t', bad + '\n\nShop-keeper PIN:'); return; } const b = tByNo(p.d.kno); p.st = 'end';
+    const done = () => { b.kpin = v; b.hasKeeper = true; log('ok', `${tr.name} set a shop-keeper PIN for shop ${b.no} (${b.market})`); show('t', `Shop-keeper PIN set for shop\n${b.no}.\nThey sign in with code ${b.no}. They\ncan only confirm cash sales there.\n\n0. Menu`); renderAll(); };
+    if (saved()) { api('event', {kind:'keeper_pin', no:tr.no, pin:p.pin, branch:b.no, kpin:v}, {quiet:true}).then(j => j.ok ? done() : show('t', j.msg + '\n\n0. Menu')).catch(e => show('t', e.message + '\n\n0. Menu')); return; }
+    done(); return; }
+  case 't_kpin': {
+    if (!/^\d{4}$/.test(v)) { show('t', 'The PIN has 4 digits.\n\nShop-keeper PIN:'); return; }
+    const fin = (ok, msg) => { if (ok) { p.auth = true; p.keeper = true; p.pin = v; p.st = 'home'; log('info', `Shop-keeper signed in to shop ${tr.no} (${tr.market}): can only confirm cash sales`); show('t', tHome()); } else { p.st = /locked|Too many/.test(msg) ? 'end' : 't_kpin'; show('t', msg + (p.st === 'end' ? '\n\n0. Menu' : '\n\nShop-keeper PIN:')); } };
+    if (saved()) { api('event', {kind:'keeper_signin', no:tr.no, pin:v}, {quiet:true}).then(r => fin(r.ok, r.msg)).catch(e => show('t', e.message)); return; }
+    fin(v === tr.kpin, 'Wrong PIN.'); return; }
   case 'end': home('t'); return;
   } }
+const SELLTYPE = {fixed:'One place (shop or stall)', mobile:'Moves around', home:'Sells from home', delivery:'Delivers to customers'};
+function shopsMenu(tr) { const n = groupOf(tr.no).length; return `My shops: ${n}\n\n1. Add a shop\n2. Today's sales per shop\n3. Shop-keeper PIN\n0. Menu`; }
+async function addBranchLocal(owner, place) { const area = PLACES.areaOf(place); const market = area || place;
+  if (S.traders.filter(x => x.owner === owner.no).length >= 9) return 'You can add up to 9 shops here.\nCall the Rasiti help line 6808 8101.';
+  let no;
+  if (saved()) { let j; try { j = await api('event', {kind:'branch_add', no:owner.no, pin:PH.t.pin, place}, {quiet:true}); } catch (e) { return e.message; } if (!j.ok) return j.msg; no = j.no; }
+  else do { no = String(7000 + Math.floor(Math.random() * 2999)); } while (tByNo(no));
+  const ll = placeLatLng('T' + no, market); const b = {no, name:owner.name, trade:owner.trade, market, status:owner.status, tin:owner.tin, via:owner.via, joined:0, joinedAt:clock, ph:owner.ph, lat:ll[0], lng:ll[1], type:'fixed', owner:owner.no, regAt:owner.regAt};
+  S.traders.push(b); log('ok', `${owner.name} added a shop: code ${no} at ${market} (a branch; one tax return for all shops)`); fillSelects(); renderAll();
+  return `Shop added: code ${no} at\n${market}.\nPut its sticker up. Its sales go\nin your book and your one tax\nreturn.`; }
 /* ---- the seller's shop moved: the code, PIN and payment codes stay; the place, the map and the area figures move ---- */
 function moveMenu(tr) { const L = PLACES.LIST.filter(x => x !== tr.market); PH.t.d.mlist = L;
   return 'Where is your shop now?\n\n' + L.map((x, i) => `${i + 1}. ${x}`).join('\n') + `\n${L.length + 1}. Somewhere else\n0. Menu`; }
@@ -924,7 +1110,7 @@ async function moveShop(tr, typed, ch) { const area = PLACES.areaOf(typed); cons
   let id = rid();
   if (saved()) { let j; try { j = await api('event', {kind:'seller_move', no:tr.no, pin:PH.t.pin, market:to}, {quiet:true}); } catch (e) { return e.message; } if (!j.ok) return j.msg; id = j.id; }
   const from = tr.market; S.moves.push({id, no:tr.no, from, to, ch, t:tick()}); tr.market = to;
-  if (area) { const ll = PLACES.latLng('T' + tr.no + '-' + to, area); tr.lat = ll[0]; tr.lng = ll[1]; } else { tr.lat = null; tr.lng = null; }
+  if (area) { const ll = tr.type === 'home' ? AREAS[area] : PLACES.latLng('T' + tr.no + '-' + to, area); tr.lat = ll[0]; tr.lng = ll[1]; } else { tr.lat = null; tr.lng = null; }
   log('info', `${tr.name} (${tr.no}) moved the shop from ${from} to ${to}`); fillSelects(); renderAll();
   return `Shop moved to ${to}.\nYour seller code, PIN and payment\ncodes stay the same. Customers\nsee the new place.`; }
 function pinDone(ok, msg, v) { const p = PH.t, tr = tByNo(p.who);
@@ -933,7 +1119,7 @@ function pinDone(ok, msg, v) { const p = PH.t, tr = tByNo(p.who);
   show('t', msg + '\n\nEnter your 4-digit PIN:'); }
 
 function cStep(inp) { const p = PH.c, v = String(inp).trim();
-  if (v === '0' && !['c_camt', 'c_cl4', 'c_cash_amt', 'c_paper', 'c_place', 'c_reg0', 'c_reg_name'].includes(p.st)) { home('c'); return; }
+  if (v === '0' && !['c_camt', 'c_cl4', 'c_cash_amt', 'c_paper', 'c_place', 'c_reg0', 'c_reg_name', 'c_rhint'].includes(p.st)) { home('c'); return; }
   switch (p.st) {
   case 'faq': faqStep('c', v); return;
   case 'c_reg0':
@@ -956,6 +1142,7 @@ function cStep(inp) { const p = PH.c, v = String(inp).trim();
       const live = (pool({from:monthStart(), to:Infinity}).by[p.who] || {e:0}).e;
       const f = drawDay(); p.st = 'end'; show('c', `My draw entries (this month)\n\nLive: ${live}\nBeing checked: ${sum('held')}${wait ? `\nCash claims waiting for the\nseller: ${wait}` : ''}\n\nNext draw: ${f.getDate()} ${MON[f.getMonth()]}\nEvery receipt plays for\nevery prize.\n\n0. Menu`); }
     else if (v === '6') faqStart('c', 'buyer');
+    else if (v === '7') { p.st = 'c_tr_seller'; show('c', 'Paid to a number or bank\n\nSeller code (on the sticker):'); }
     else if (p.mode === 'wa' && !/^\d+$/.test(v)) { if (!faqFree('c', 'buyer', v)) show('c', cHome()); }
     return;
   case 'c_seller': { const tr = tByNo(v.replace(/\D/g, ''));
@@ -965,6 +1152,19 @@ function cStep(inp) { const p = PH.c, v = String(inp).trim();
   case 'c_cash_seller': { const tr = tByNo(v.replace(/\D/g, ''));
     if (!tr) { p.st = 'c_unk'; show('c', `Seller ${v} is not on Rasiti.\n\n1. Tell RSL about this seller\n0. Menu`); return; }
     p.d.no = tr.no; p.st = 'c_cash_amt'; show('c', `${tr.name}\n${tr.market}\n\nAmount you paid in cash (M):`); return; }
+  case 'c_tr_seller': { const tr = tByNo(v.replace(/\D/g, ''));
+    if (!tr) { p.st = 'c_unk'; show('c', `Seller ${v} is not on Rasiti.\n\n1. Tell RSL about this seller\n0. Menu`); return; }
+    p.d.no = tr.no; p.st = 'c_tr_amt'; show('c', `${tr.name}\n${tr.market}\n\nAmount you sent (M):`); return; }
+  case 'c_tr_amt': { const a = Math.round(parseFloat(v)); if (!(a > 0)) { show('c', 'Amount (M), numbers only:'); return; } p.d.amt = a; p.st = 'c_tr_how'; show('c', 'How did you pay?\n\n1. Mobile money to their number\n2. Bank transfer\n0. Menu'); return; }
+  case 'c_tr_how': { const m = {1:'p2p', 2:'bank'}[v]; if (!m) return; p.d.m = m; p.st = 'c_tr_ref';
+    show('c', m === 'p2p' ? 'Transaction ID\n(in your M-Pesa or EcoCash SMS):' : 'Bank reference\n(on your slip or bank SMS):'); return; }
+  case 'c_tr_ref': { const d = p.d; p.st = 'end'; transferClaim(d.no, d.amt, d.m, v).then(t => show('c', t)); return; }
+  case 'c_rkind': { const st = {1:'shop', 2:'mobile', 3:'delivery'}[v]; const r = p.d.rep; if (!st || !r) { home('c'); return; }
+    r.stype = st; (r.saved || Promise.resolve()).then(() => persist({kind:'report_more', id:r.id, seller_type:st})).catch(() => {});
+    if (st === 'shop' || r.target.no) { p.st = 'end'; show('c', p.d.thanks); return; }
+    p.st = 'c_rhint'; show('c', "Seller's name or phone, if you\nknow it (0 to skip):"); return; }
+  case 'c_rhint': { const r = p.d.rep; p.st = 'end'; if (r && v !== '0' && v.trim()) { r.hint = v.trim().slice(0, 60); (r.saved || Promise.resolve()).then(() => persist({kind:'report_more', id:r.id, seller_hint:r.hint})).catch(() => {}); log('info', `Rating: the customer named the seller "${r.hint}"`); renderAll(); }
+    show('c', p.d.thanks); return; }
   case 'c_cash_amt': { const a = Math.round(parseFloat(v)); if (!(a > 0)) { show('c', 'Amount (M), numbers only:'); return; }
     p.st = 'end'; cashClaim(p.d.no, a).then(t => show('c', t)); return; }
   case 'c_camt': { const a = Math.round(parseFloat(v)); if (!(a > 0)) { show('c', 'Amount (M), numbers only:'); return; } p.d.amt = a; p.st = 'c_cl4'; show('c', 'Last 4 digits of your card\n(on the card and the slip):'); return; }
@@ -1002,9 +1202,10 @@ function shareLocation() {
   if (navigator.geolocation) navigator.geolocation.getCurrentPosition(pos => { const ll = [pos.coords.latitude, pos.coords.longitude]; (ll[0] > -30.8 && ll[0] < -28.5 && ll[1] > 26.9 && ll[1] < 29.6) ? done(ll, true) : demo(); }, demo, {timeout:6000});
   else demo();
 }
-function finishRating(target, ll) { const p = PH.c; addReport(p.who, p.d.type, target, ll); p.st = 'end';
-  if (p.d.type === 'got') show('c', 'Thank you.\nShops that give receipts earn a\npublic "Gives receipts" badge.\n\n0. Menu');
-  else show('c', 'Thank you.\nYour number is never shown to\nthe seller. RSL acts when\nseveral customers report the\nsame shop.\n\n0. Menu'); }
+function finishRating(target, ll) { const p = PH.c; p.d.rep = addReport(p.who, p.d.type, target, ll);
+  p.d.thanks = p.d.type === 'got' ? 'Thank you.\nShops that give receipts earn a\npublic "Gives receipts" badge.\n\n0. Menu' : 'Thank you.\nYour number is never shown to\nthe seller. RSL acts when\nseveral customers report the\nsame shop.\n\n0. Menu';
+  // What kind of seller it was: one moving seller reported at 3 places is one seller, not 3 shops.
+  p.st = 'c_rkind'; show('c', 'Thank you. Was it\n\n1. A shop or stall\n2. A moving seller\n3. A delivery\n0. Skip'); }
 function verify(raw, who) { const pc = parseCode(raw);
   if (!pc.ok && pc.why === 'format') return {genuine:false, text:'That is not a Rasiti code.\nCodes look like RS-1234-ABCD-X\n\n0. Menu'};
   if (!pc.ok) { addFake({code:pc.code, kind:'forged', by:who, detail:'Check character does not match. Rasiti never issued this code.'}); log('bad', `Forged code checked and stopped: ${pc.code}`); renderAll();
@@ -1018,13 +1219,13 @@ function verify(raw, who) { const pc = parseCode(raw);
 
 function fillSelects() {
   const ts = $('#tSel'); if (!ts) return;
-  ts.innerHTML = S.traders.map(t => `<option value="${t.no}">${esc(t.name)} · ${esc(t.trade)} (${t.status})</option>`).join('') + '<option value="new">Someone not on Rasiti yet</option>';
+  ts.innerHTML = S.traders.map(t => `<option value="${t.no}">${esc(t.name)} · ${esc(t.trade)}${t.owner ? ' · ' + esc(t.market) + ' (branch ' + t.no + ')' : ''} (${t.status})</option>`).join('') + '<option value="new">Someone not on Rasiti yet</option>';
   ts.value = PH.t.who || 'new';
   const ms = $('#mmSeller'); if (ms) { const keep = ms.value; ms.innerHTML = S.traders.map(t => `<option value="${t.no}">${esc(t.name)} · ${t.no}</option>`).join(''); ms.value = keep && tByNo(keep) ? keep : (S.traders.find(t => t.mp) || S.traders[0] || {}).no || ''; mmFill(); }
   $('#cSel').innerHTML = PERSONAS.map(p => `<option value="${p.ph}">${p.name} · ${mask(p.ph)}</option>`).join(''); $('#cSel').value = PH.c.who;
 }
 // Guided cases sign the seller in with the demo PIN, as the seller would.
-function caseSeller(no) { setT(no); PH.t.auth = true; PH.t.pin = DEMO_PIN; PH.t.st = 'home'; show('t', tHome()); }
+function caseSeller(no) { setT(no); PH.t.auth = true; PH.t.keeper = false; PH.t.pin = DEMO_PIN; PH.t.st = 'home'; show('t', tHome()); }
 function setT(no) { if (PH.t.who !== no) resetPhone('t', no); $('#tSel').value = no; home('t'); }
 function setC(ph) { if (PH.c.who !== ph) resetPhone('c', ph); $('#cSel').value = ph; home('c'); }
 
@@ -1338,6 +1539,17 @@ function svgToPng(svg, scale) { scale = scale || 2; return new Promise((ok, no) 
   const img = new Image(); img.onload = () => { const c = document.createElement('canvas'); c.width = w * scale; c.height = h * scale; const x = c.getContext('2d'); x.scale(scale, scale); x.drawImage(img, 0, 0, w, h); ok({src:c.toDataURL('image/png'), w, h}); };
   img.onerror = () => no(new Error('Chart image failed')); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg.replace(/font-family="[^"]*"/, 'font-family="Arial, Helvetica, sans-serif"')); }); }
 const pdfTxt = s => String(s ?? '').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/[•]/g, '*').replace(/…/g, '...').replace(/[▲]/g, '+').replace(/[▼]/g, '').replace(/→/g, '->').replace(/[^\x09\x0a\x20-\x7e\xa0-\xff]/g, '');
+// Code card for sellers without a wall (moving sellers, runners, home sellers): credit-card size, 4 to a page, for a lanyard, cooler box or trolley.
+async function codeCardPdf(no) { const t = tByNo(no); if (!t) return; const {jsPDF} = await loadJsPDF(); const doc = new jsPDF({unit:'mm', format:'a4'});
+  const card = (x, y) => { doc.setFillColor(26, 27, 46); doc.roundedRect(x, y, 86, 54, 3, 3, 'F'); doc.setFillColor(232, 121, 58); doc.rect(x, y + 13, 86, 1.2, 'F');
+    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text('RASITI', x + 5, y + 9); doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.text('Ask for your receipt · win prizes', x + 81, y + 9, {align:'right'});
+    doc.setFontSize(8); doc.text('Seller code', x + 5, y + 21); doc.setFont('helvetica', 'bold'); doc.setFontSize(26); doc.text(t.no, x + 5, y + 32);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.text(pdfTxt(t.name).slice(0, 30), x + 40, y + 22); doc.setFontSize(7.5); doc.text(pdfTxt(SELLTYPE[t.type || 'fixed']), x + 40, y + 27);
+    const pay = [t.mp ? 'M-Pesa ' + t.mp : '', t.ec ? 'EcoCash ' + t.ec : ''].filter(Boolean).join(' · ') || 'Pay cash or to my number';
+    doc.text(pay, x + 40, y + 32); doc.setFontSize(8); doc.text('Paid cash? Dial *999# > 1 > 1, code ' + t.no, x + 5, y + 42); doc.text('Paid to my number or bank? *999# > 1 > 7', x + 5, y + 47);
+    doc.setFontSize(6); doc.setTextColor(200, 200, 210); doc.text('RSL Taxathon 2026 demo', x + 81, y + 51, {align:'right'}); };
+  [[14, 20], [110, 20], [14, 84], [110, 84]].forEach(([x, y]) => card(x, y)); doc.setTextColor(95, 100, 117); doc.setFontSize(9); doc.text('Cut out the cards. For a lanyard, a cooler box, a trolley or a delivery bag.', 14, 150);
+  doc.save(`rasiti-code-card-${t.no}.pdf`); log('info', `Code card printed for ${t.name} (${t.no})`); }
 async function makePdf(file, title, blocks) {
   const {jsPDF} = await loadJsPDF(); const doc = new jsPDF({unit:'mm', format:'a4'});
   const W = 210, MX = 14, CW = W - 2 * MX, BOT = 282; let y = 0;
@@ -1568,7 +1780,7 @@ function officerCSV(kind) {
   if (kind === 'complaints') downloadCSV(`rasiti-complaints-${stamp()}.csv`, [['Seller or shop', g => cgName(g)], ['On Rasiti', g => g.target.no ? 'Yes' : 'No'], ['Area', g => g.target.no ? (tByNo(g.target.no) || {}).market : g.target.area], ['Different customers', g => g.indep], ['Discounted reports', g => g.discounted], ['Gave a receipt reports', g => g.pos], ['Problems reported', g => [...new Set(g.list.filter(x => x.type !== 'got').map(x => REPTYPE[x.type]))].join(' | ')], ['Status', g => g.indep >= 3 ? 'Action' : 'Watching']], complaintGroups());
 }
 function officerPDF() { return withBusy(async () => { const wl = officerItems(); const hg = heldGroups(); const cg = complaintGroups();
-  const on = S.traders.length, reg = S.traders.filter(t => t.status === 'registered').length, via = S.traders.filter(t => t.via).length; const r30 = S.receipts.filter(r => r.t > clock - 30 * DAY);
+  const on = S.traders.length, reg = S.traders.filter(taxpayer).length, via = S.traders.filter(t => t.via).length; const r30 = S.receipts.filter(r => r.t > clock - 30 * DAY);
   const pc = q => wl.filter(i => i.pri === q).length; const map = await mapImg(leadMapSpec(wl)); const act = cg.filter(g => g.indep >= 3).length; const heldN = hg.reduce((a, g) => a + g.length, 0);
   await makePdf(`rasiti-officer-report-${stamp()}.pdf`, 'Officer console report', [
     {t:'meta', v:`Filters: ${officerLabel()}. Prepared for RSL General Clients.`},
@@ -1584,9 +1796,9 @@ function officerPDF() { return withBusy(async () => { const wl = officerItems();
     {t:'desc', v:`Receipts the Fraud Shield held, grouped into cases so an officer decides once per pattern. ${hg.length} cases cover ${heldN} receipts. Approving releases the draw entries; rejecting removes them from the draw. Either way the sale stays in the seller's sales book.`},
     {t:'table', cols:[['Seller', 30], ['Receipts', 12, 1], ['Amount', 16, 1], ['Why it was held', 80]], rows:hg.map(g => [(tByNo(g[0].no) || {}).name, g.length, M(g.reduce((a, r) => a + r.amt, 0)), S.eval[g[0].code].flags.map(f => f.why).join('; ')])},
     {t:'h', v:'Filing and payments'},
-    {t:'desc', v:(() => { const regs = S.traders.filter(t => t.status === 'registered'); const xs = regs.map(t => taxOf(t.no)); const rets = xs.flatMap(x => x.rets); const due = rets.filter(r => perDueT(r.period) < clock);
+    {t:'desc', v:(() => { const regs = S.traders.filter(taxpayer); const xs = regs.map(t => taxOf(t.no)); const rets = xs.flatMap(x => x.rets); const due = rets.filter(r => perDueT(r.period) < clock);
       return `How registered sellers are keeping up. Over the last ${rets.length ? 4 : 0} quarters ${rets.length} returns were filed, ${pctS(rets.filter(r => r.t <= perDueT(r.period)).length, rets.length)} on time, and ${pctS(due.filter(r => xs.find(x => x.rets.includes(r)).onTimePay(r)).length, due.length)} of the tax that was due was paid on time. ${xs.filter(x => x.overdueAmt).length} ${xs.filter(x => x.overdueAmt).length === 1 ? 'seller has' : 'sellers have'} overdue tax (${M(xs.reduce((a, x) => a + x.overdueAmt, 0))} in total); the worklist suggests a payment plan, not a penalty. Streak is the number of quarters in a row filed and paid on time. Tax amounts use a demo rate of ${TAXRATE * 100}% of declared sales; RSL sets the real SBT rate.`; })()},
-    {t:'table', cols:[['Seller', 34], ['Last return', 24], ['Filed on time', 18, 1], ['Overdue', 18, 1], ['Streak', 12, 1], ['Reminders', 16]], rows:S.traders.filter(t => t.status === 'registered').map(t => { const x = taxOf(t.no); return [t.name, x.last ? (x.last.declared ? M(x.last.declared) : 'Nil') : 'Not filed', x.rets.length ? x.rets.filter(x.onTimeFile).length + '/' + x.rets.length : '-', x.overdueAmt ? M(x.overdueAmt) : '-', x.streak, t.reminders === false ? 'Off' : 'On']; })},
+    {t:'table', cols:[['Seller', 34], ['Last return', 24], ['Filed on time', 18, 1], ['Overdue', 18, 1], ['Streak', 12, 1], ['Reminders', 16]], rows:S.traders.filter(taxpayer).map(t => { const x = taxOf(t.no); return [t.name, x.last ? (x.last.declared ? M(x.last.declared) : 'Nil') : 'Not filed', x.rets.length ? x.rets.filter(x.onTimeFile).length + '/' + x.rets.length : '-', x.overdueAmt ? M(x.overdueAmt) : '-', x.streak, t.reminders === false ? 'Off' : 'On']; })},
     {t:'h', v:`Complaints from customers (${cg.length})`},
     {t:'desc', v:`Shops that customers reported for not giving a receipt, charging extra or not being on Rasiti. Customers: different people who reported the shop; action starts at 3, so ${act} of these ${cg.length} shops are ready for action and the rest are being watched. Discounted: reports from phones that reported many shops in a short time, which are ignored. Reporters are never shown to sellers.`},
     {t:'table', cols:[['Seller or shop', 40], ['Customers', 14, 1], ['Discounted', 14, 1], ['Problems', 50], ['Status', 16]], rows:cg.map(g => [cgName(g), g.indep, g.discounted, [...new Set(g.list.filter(x => x.type !== 'got').map(x => REPTYPE[x.type]))].join(', '), g.indep >= 3 ? 'Action' : 'Watching'])}
@@ -1632,22 +1844,24 @@ let ACT = [];
    customer rating and the amount. While a download is made, only the matching records are used (and the report is made as of
    the "To" date), so every CSV and PDF on the page holds exactly the data chosen. Without filters, each report keeps the filters
    of its own page. */
-const RF = {period:'all', from:'', to:'', seller:'', area:'', status:'', paid:'', shield:'', cash:'', rating:'', min:'', max:''};
+const RF = {period:'all', from:'', to:'', seller:'', area:'', status:'', stype:'', paid:'', shield:'', cash:'', rating:'', min:'', max:''};
 let RF_ON = false;
-const RF_KEYS = ['from', 'to', 'seller', 'area', 'status', 'paid', 'shield', 'cash', 'rating', 'min', 'max'];
+const RF_KEYS = ['from', 'to', 'seller', 'area', 'status', 'stype', 'paid', 'shield', 'cash', 'rating', 'min', 'max'];
 const rfActive = () => RF_KEYS.some(k => RF[k] !== '');
 const dIn = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 function rfPeriod(v) { const d = new Date(Date.now()); const y = d.getFullYear(), m = d.getMonth(), q0 = Math.floor(m / 3) * 3; const day = 864e5;
   const r = {all:['', ''], today:[dIn(d), dIn(d)], d7:[dIn(d - 6 * day), dIn(d)], d30:[dIn(d - 29 * day), dIn(d)], month:[dIn(new Date(y, m, 1)), dIn(d)],
     lmonth:[dIn(new Date(y, m - 1, 1)), dIn(new Date(y, m, 0))], quarter:[dIn(new Date(y, q0, 1)), dIn(d)], lquarter:[dIn(new Date(y, q0 - 3, 1)), dIn(new Date(y, q0, 0))],
     year:[dIn(new Date(y, 0, 1)), dIn(d)]}[v]; return r || [RF.from, RF.to]; }
-const RF_PAID = {momo:'Mobile money (any)', mpesa:'M-Pesa', ecocash:'EcoCash', card:'Card', cash:'Cash (seller confirmed)'};
+const RF_PAID = {momo:'Mobile money (any)', mpesa:'M-Pesa', ecocash:'EcoCash', card:'Card', cash:'Cash (seller confirmed)', p2p:'Mobile money to a personal number', bank:'Bank transfer', stock:'Stock purchases (seller paying a shop)'};
 const RF_SHIELD = {clear:'Clear', held:'Held for an officer', blocked:'Blocked or rejected', approved:'Approved by an officer'};
 const RF_CASH = {pending:'Waiting for the seller', confirmed:'Confirmed', rejected:'Rejected', expired:'Ignored (expired)'};
 const RF_STATUS = {registered:'Registered for tax', enrolled:'On Rasiti, not registered', off:'Shops not on Rasiti'};
+const RF_STYPE = {fixed:'Sells in one place', mobile:'Moves around', home:'Sells from home', delivery:'Delivers (runner)', branch:'Branch of an owner', owner:'Owner with several shops'};
+const stypeOk = (t, v) => !v || (v === 'branch' ? !!t.owner : v === 'owner' ? S.traders.some(x => x.owner === t.no) : (t.type || 'fixed') === v);
 function rfLabel() { const L = [];
   L.push(RF.from || RF.to ? `${RF.from ? fD(Date.parse(RF.from + 'T00:00')) + ' ' + RF.from.slice(0, 4) : 'start'} to ${RF.to ? fD(Date.parse(RF.to + 'T00:00')) + ' ' + RF.to.slice(0, 4) : 'today'}` : 'all dates');
-  if (RF.seller) L.push('seller ' + ((tByNo(RF.seller) || {}).name || RF.seller) + ' (' + RF.seller + ')'); if (RF.area) L.push(RF.area); if (RF.status) L.push(RF_STATUS[RF.status].toLowerCase());
+  if (RF.seller) L.push('seller ' + ((tByNo(RF.seller) || {}).name || RF.seller) + ' (' + RF.seller + ')'); if (RF.area) L.push(RF.area); if (RF.status) L.push(RF_STATUS[RF.status].toLowerCase()); if (RF.stype) L.push(RF_STYPE[RF.stype].toLowerCase());
   if (RF.paid) L.push('paid by ' + RF_PAID[RF.paid]); if (RF.shield) L.push('Fraud Shield: ' + RF_SHIELD[RF.shield].toLowerCase()); if (RF.cash) L.push('cash claims: ' + RF_CASH[RF.cash].toLowerCase());
   if (RF.rating) L.push('ratings: ' + REPTYPE[RF.rating].toLowerCase()); if (RF.min !== '' || RF.max !== '') L.push(`amount ${RF.min !== '' ? 'from ' + M(+RF.min) : ''}${RF.max !== '' ? ' up to ' + M(+RF.max) : ''}`.replace('amount  ', 'amount '));
   return L.join(' · '); }
@@ -1655,15 +1869,15 @@ function rfLabel() { const L = [];
 function rfData() {
   const from = RF.from ? Date.parse(RF.from + 'T00:00:00') : -Infinity, to = RF.to ? Date.parse(RF.to + 'T23:59:59.999') : Infinity;
   const inT = t => t >= from && t <= to; const min = RF.min === '' ? -Infinity : +RF.min, max = RF.max === '' ? Infinity : +RF.max; const inA = a => a >= min && a <= max;
-  const trOk = t => !!t && (!RF.seller || t.no === RF.seller) && (!RF.area || t.market === RF.area) && (!RF.status || t.status === RF.status);
+  const trOk = t => !!t && (!RF.seller || t.no === RF.seller) && (!RF.area || t.market === RF.area) && (!RF.status || t.status === RF.status) && stypeOk(t, RF.stype);
   const traders = S.traders.filter(trOk); const ok = new Set(traders.map(t => t.no)); const sOk = no => ok.has(no);
-  const paidOk = r => !RF.paid || (RF.paid === 'momo' ? r.ch === 'momo' : RF.paid === 'card' ? r.ch === 'card' : RF.paid === 'cash' ? r.ch === 'cash' : r.ch === 'momo' && r.net === RF.paid);
+  const paidOk = r => !RF.paid || (RF.paid === 'momo' ? r.ch === 'momo' : ['card', 'cash', 'p2p', 'bank'].includes(RF.paid) ? r.ch === RF.paid : RF.paid === 'stock' ? isStock(r) : r.ch === 'momo' && r.net === RF.paid);
   const shOk = r => { if (!RF.shield) return true; const st = shieldState(r); return RF.shield === 'blocked' ? st === 'blocked' || st === 'rejected' : st === RF.shield; };
   const receipts = S.receipts.filter(r => sOk(r.no) && inT(r.t) && inA(r.amt) && paidOk(r) && shOk(r));
-  const claims = (RF.paid && RF.paid !== 'cash') || RF.shield ? [] : S.claims.filter(c => sOk(c.no) && inT(c.t) && inA(c.amt) && (!RF.cash || claimState(c) === RF.cash));
+  const claims = (RF.paid && !['cash', 'p2p', 'bank'].includes(RF.paid)) || RF.shield ? [] : S.claims.filter(c => sOk(c.no) && inT(c.t) && inA(c.amt) && (!RF.cash || claimState(c) === RF.cash) && (!RF.paid || (c.m || 'cash') === RF.paid));
   const reports = S.reports.filter(r => { if (!inT(r.t) || (RF.rating && r.type !== RF.rating)) return false;
     if (r.target.no) return sOk(r.target.no) && RF.status !== 'off';
-    return !RF.seller && (!RF.status || RF.status === 'off') && (!RF.area || r.target.area === RF.area); });
+    return !RF.seller && (!RF.status || RF.status === 'off') && !RF.stype && (!RF.area || r.target.area === RF.area); });
   const fakes = S.fakes.filter(f => { if (!inT(f.t)) return false; const no = (/^RS-(\d{4})-/.exec(f.code || '') || [])[1]; return no && tByNo(no) ? sOk(no) : !(RF.seller || RF.area || RF.status); });
   const returns = S.returns.filter(r => sOk(r.no) && inT(r.t)), payments = S.payments.filter(x => sOk(x.no) && inT(x.t) && inA(x.amt)), moves = S.moves.filter(m => sOk(m.no) && inT(m.t));
   const draws = S.draws.filter(d => inT(Date.parse(d.run_at)));
@@ -1688,17 +1902,19 @@ function rfFill() { if (!$('#rfSeller')) return;
   fillSel('#rfArea', [['', 'All areas'], ...areas.map(a => [a, a])], RF.area); rfCount(); }
 function rfWire() { if (!$('#rfBar')) return;
   fillSel('#rfRating', [['', 'Any rating'], ...Object.entries(REPTYPE)], '');
-  const read = () => { RF.period = $('#rfPeriod').value; RF.from = $('#rfFrom').value; RF.to = $('#rfTo').value; ['seller', 'area', 'status', 'paid', 'shield', 'cash', 'rating'].forEach(k => RF[k] = $('#rf' + k[0].toUpperCase() + k.slice(1)).value);
+  const read = () => { RF.period = $('#rfPeriod').value; RF.from = $('#rfFrom').value; RF.to = $('#rfTo').value; ['seller', 'area', 'status', 'stype', 'paid', 'shield', 'cash', 'rating'].forEach(k => RF[k] = $('#rf' + k[0].toUpperCase() + k.slice(1)).value);
     RF.min = $('#rfMin').value.trim(); RF.max = $('#rfMax').value.trim(); if (RF.min !== '' && !(+RF.min >= 0)) RF.min = ''; if (RF.max !== '' && !(+RF.max >= 0)) RF.max = ''; rfCount(); };
   $('#rfPeriod').addEventListener('change', () => { const [a, b] = rfPeriod($('#rfPeriod').value); if ($('#rfPeriod').value !== 'custom') { $('#rfFrom').value = a; $('#rfTo').value = b; } read(); });
   ['#rfFrom', '#rfTo'].forEach(id => $(id).addEventListener('change', () => { $('#rfPeriod').value = 'custom'; read(); }));
-  ['#rfSeller', '#rfArea', '#rfStatus', '#rfPaid', '#rfShield', '#rfCash', '#rfRating'].forEach(id => $(id).addEventListener('change', read));
+  ['#rfSeller', '#rfArea', '#rfStatus', '#rfStype', '#rfPaid', '#rfShield', '#rfCash', '#rfRating'].forEach(id => $(id).addEventListener('change', read));
   ['#rfMin', '#rfMax'].forEach(id => $(id).addEventListener('input', read));
   $('#rfReset').addEventListener('click', () => { $('#rfBar').querySelectorAll('select').forEach(x => x.selectedIndex = 0); $('#rfBar').querySelectorAll('input').forEach(x => x.value = ''); read(); }); }
 /* Sellers, shop moves and test accounts */
 function sellersCSV() { downloadCSV(`rasiti-sellers-${stamp()}.csv`, [['Seller code', t => t.no], ['Seller', t => t.name], ['Trade', t => t.trade], ['Market or area', t => t.market], ['Status', t => t.status === 'registered' ? 'Registered for tax' : 'On Rasiti, not registered'], ['TIN', t => t.tin || ''],
   ['Joined', t => t.joinedAt ? isoT(t.joinedAt).slice(0, 10) : ''], ['M-Pesa merchant code', t => t.mp || ''], ['EcoCash merchant code', t => t.ec || ''], ['Card machine bank', t => BANKS[t.bank] || ''], ['Card machine (speed point)', t => t.pos || ''],
-  ['Shop moves', t => S.moves.filter(m => m.no === t.no).length], ['Last move', t => { const m = S.moves.filter(x => x.no === t.no).sort((a, b) => b.t - a.t)[0]; return m ? `${isoT(m.t).slice(0, 10)}: ${m.from || '?'} -> ${m.to}` : ''; }]],
+  ['Shop moves', t => S.moves.filter(m => m.no === t.no).length], ['Last move', t => { const m = S.moves.filter(x => x.no === t.no).sort((a, b) => b.t - a.t)[0]; return m ? `${isoT(m.t).slice(0, 10)}: ${m.from || '?'} -> ${m.to}` : ''; }],
+  ['Kind of seller', t => SELLTYPE[t.type || 'fixed']], ['Usual places', t => (t.places || []).join('; ')], ['Branch of (owner code)', t => t.owner || ''], ['Shops (owner)', t => S.traders.some(x => x.owner === t.no) ? groupOf(t.no).length : ''],
+  ['Personal mobile money number', t => t.pp ? maskCsv(t.pp) + ' (' + (NETP[t.ppNet] || '') + ')' : ''], ['Bank account', t => t.pb ? BANKP[t.pb] + ' ••' + (t.pbAcct || '') : '']],
   S.traders.slice().sort((a, b) => a.no < b.no ? -1 : 1)); }
 function movesCSV() { downloadCSV(`rasiti-shop-moves-${stamp()}.csv`, [['Date and time', m => isoT(m.t)], ['Seller', m => (tByNo(m.no) || {}).name || m.no], ['Seller code', m => m.no], ['From', m => m.from || ''], ['To', m => m.to], ['Told Rasiti by', m => m.ch || '']],
   S.moves.slice().sort((a, b) => b.t - a.t)); }
@@ -1735,7 +1951,8 @@ async function taLinkAll() {
 function testCSV() { downloadCSV(`rasiti-test-accounts-${stamp()}.csv`, [['Seller code', r => r.no], ['Seller', r => r.name], ['Market', r => r.market], ['Test PIN', r => r.test_pin || ''], ['M-Pesa merchant code', r => r.mpesa_code || ''], ['EcoCash merchant code', r => r.ecocash_code || ''], ['Card machine bank', r => r.bank || ''], ['Card machine (speed point)', r => r.card_terminal || '']], TA.rows); }
 function cashCSV() { const ST = {pending:'Waiting for the seller', confirmed:'Confirmed by the seller', rejected:'Rejected by the seller', expired:'Ignored (expired after 3 days)'};
   downloadCSV(`rasiti-cash-claims-${stamp()}.csv`, [['Claimed', c => isoT(c.t)], ['Seller', c => (tByNo(c.no) || {}).name], ['Seller code', c => c.no], ['Market', c => (tByNo(c.no) || {}).market], ['Amount (M)', c => c.amt],
-    ['Customer', c => maskCsv(c.ph)], ['Status', c => ST[claimState(c)]], ['Answered', c => c.dt ? isoT(c.dt) : ''], ['Receipt', c => c.code || ''], ['Counts for tax', c => c.state === 'confirmed' ? 'Yes' : 'No']],
+    ['Customer', c => maskCsv(c.ph)], ['Status', c => ST[claimState(c)]], ['Answered', c => c.dt ? isoT(c.dt) : ''], ['Receipt', c => c.code || ''], ['Counts for tax', c => c.state === 'confirmed' ? 'Yes' : 'No'],
+    ['Paid by', c => ({cash:'Cash', p2p:'Mobile money to a personal number', bank:'Bank transfer'})[c.m || 'cash']], ['Transaction ID or reference', c => c.ref || ''], ['Checked by', c => c.ver ? 'The network (transaction ID)' : c.state === 'confirmed' ? 'The seller' : '']],
     S.claims.slice().sort((a, b) => b.t - a.t)); }
 function activityCSV() { downloadCSV(`rasiti-activity-log-${stamp()}.csv`, [['When', a => isoT(Date.parse(a.at))], ['Who', a => a.user_email || 'system'], ['Action', a => a.action.replace(/_/g, ' ')], ['Detail', a => a.detail ? JSON.stringify(a.detail) : '']], ACT.filter(a => !$('#actWho') || $('#actWho').value === 'all' || (a.user_email || 'system') === $('#actWho').value)); }
 
@@ -1755,13 +1972,14 @@ function worklist() {
     const rs = S.receipts.filter(r => r.no === tr.no); const r30 = rs.filter(r => r.t > clock - 30 * DAY); const s30 = r30.reduce((a, r) => a + r.amt, 0);
     const g = gT(tr.no); const extra = g ? g.list.filter(x => x.type === 'extra' && !spam.has(x.ph)).length : 0; const ll = traderLL(tr);
     const cs = cashStats(tr.no, 30);
-    if (cs.refusedBuyers >= 3 && cs.refused >= cs.claims / 2) items.push({id:'cash' + tr.no, pri:2, subj:tr, ll, act:'Visit: customers say they paid cash, the seller did not confirm',
+    const roam = ['mobile', 'home', 'delivery'].includes(tr.type); // no fixed stall: phone first, then meet where they sell (a home seller: never at home)
+    if (cs.refusedBuyers >= 3 && cs.refused >= cs.claims / 2) items.push({id:'cash' + tr.no, pri:2, subj:tr, ll, act:roam ? `Phone first, then meet ${tr.type === 'home' ? 'at a market or the RSL office (never at home)' : 'on their usual market day'}: customers say they paid, the seller did not confirm` : 'Visit: customers say they paid cash, the seller did not confirm',
       why:[`${cs.refused} of ${cs.claims} cash claims in 30 days were rejected or ignored, from ${cs.refusedBuyers} different customers who also pay by mobile money or card`, 'Never a bill on its own: a claim is what a buyer says, not proof', 'Explain cash confirmations, then look at the sales book and the return together'], btn:'Mark visited', kind:'done'});
     if (tr.status === 'enrolled') {
       if (tr.helper) items.push({id:'help' + tr.no, pri:3, subj:tr, ll, act:'Call back: seller asked for help registering', why:['Requested from the phone menu', `${r30.length} receipts worth ${M(s30)} in 30 days`], btn:'Mark called', kind:'done'});
       if (S.invited.has(tr.no)) items.push({id:'inv' + tr.no, pri:0, subj:tr, ll, act:'Invitation sent, waiting for seller', why:['Seller can register from the phone menu, option 3']});
       else if (s30 >= 1500) items.push({id:'inv' + tr.no, pri:s30 > 5000 ? 3 : 2, subj:tr, ll, act:'Invite to register for Simplified Business Tax', why:[`On Rasiti for ${tr.joined} days, ${r30.length} receipts worth ${M(s30)} in 30 days`, `Yearly estimate ${M(s30 * 12)}, well under the M2,000,000 SBT ceiling`, "Selling point: registering doubles the seller's customers' draw entries"], btn:'Send invitation', kind:'invite', target:tr.no});
-    } else {
+    } else if (!tr.owner) { // a branch files with its owner: tax items are on the owner
       const rec = Math.round(perSales(tr.no, lastPer()));
       const tx = taxOf(tr.no);
       if (tx.overdueAmt > 0) items.push({id:'arr' + tr.no + tx.overdue.map(r => r.period).join(''), pri:2, subj:tr, ll, act:`Offer a payment plan: ${M(tx.overdueAmt)} overdue`, why:[`Unpaid tax for ${tx.overdue.map(r => perName(r.period)).join(', ')}`, ...(tx.pays.length ? [`Has paid ${M(tx.pays.reduce((a, x) => a + x.amt, 0))} through Rasiti before, so the business is trading`] : []), 'A call first: small weekly payments by mobile money are allowed'], btn:'Mark contacted', kind:'done'});
@@ -1773,12 +1991,25 @@ function worklist() {
       else if (tr.declared < rec * 0.8) items.push({id:'und' + tr.no, pri:2, subj:tr, ll, act:'Check under-declaration', why:[`Declared ${M(tr.declared)} for ${mon}; receipts show ${M(rec)}`], btn:'Mark contacted', kind:'done'});
     }
   }
+  // "Possibly one business": separate sellers that share a phone or most of their buyers (one owner splitting shops to look small).
+  const tops = S.traders.filter(t => !t.owner); const buyersOf = {}; tops.forEach(t => { buyersOf[t.no] = new Set(S.receipts.filter(r => r.no === t.no && r.ph && r.t > clock - 60 * DAY).map(r => r.ph)); });
+  for (let i = 0; i < tops.length; i++) for (let j = i + 1; j < tops.length; j++) { const a = tops[i], b = tops[j]; const why = [];
+    if (a.ph && a.ph === b.ph) why.push('Both use the same phone number'); if (a.pp && a.pp === b.pp) why.push('Both are paid on the same personal number');
+    const A = buyersOf[a.no], B = buyersOf[b.no]; const sh = [...A].filter(x => B.has(x)).length; if (sh >= 5 && sh >= 0.6 * Math.min(A.size, B.size)) why.push(`${sh} of their buyers buy at both (${Math.round(sh / Math.min(A.size, B.size) * 100)}%)`);
+    if (why.length) items.push({id:'one' + a.no + b.no, pri:2, subj:a, ll:traderLL(a), act:`Possibly one business: ${a.name} (${a.no}) and ${b.name} (${b.no})`, why:[...why, 'Ask if one owner runs both. If so, the second shop becomes a branch: one ID, one owner, one tax return', 'Not a bill: many families run shops side by side'], btn:'Mark contacted', kind:'done'}); }
+  // Leads that may be one moving seller (customers gave the same name): an officer can join them with "Same seller".
+  const hintOf = g => { const h = g.list.map(x => (x.hint || '').toLowerCase().replace(/\b(ntate|mme|mr|mrs|the|sweets?|seller)\b/g, '').replace(/[^a-z]/g, ' ').trim().split(/\s+/)[0]).filter(Boolean); return h.length ? h.sort((x, y) => h.filter(v => v === y).length - h.filter(v => v === x).length)[0] : null; };
+  const placed = groups.filter(g => g.target.place); const byHint = {};
+  placed.forEach(g => { const h = hintOf(g); if (h && h.length >= 3) (byHint[h] = byHint[h] || []).push(g); });
+  for (const h in byHint) { const gs = byHint[h]; if (gs.length < 2) continue; const [g1, ...rest] = gs.sort((a, b) => b.list.length - a.list.length);
+    for (const g2 of rest) items.push({id:'same' + g1.key + g2.key, pri:2, subj:{name:g2.target.label, trade:'Informal, not on Rasiti', market:g2.target.area || ''}, ll:null,
+      act:`Possibly the same moving seller as "${g1.target.label}"`, why:[`Customers named the seller "${h[0].toUpperCase() + h.slice(1)}" at both places`, `${g1.indep} and ${g2.indep} different customers; joined: ${new Set([...g1.phones, ...g2.phones]).size}`, 'Joining the two leads counts one seller, not two shops'], btn:'Same seller', kind:'merge', from:g2.key, target:g1.key}); }
   for (const g of groups) { if (!g.target.place) continue;
     const neg = g.list.filter(x => x.type !== 'got').length, tot = g.list.length; const formal = g.target.kind === 'Formal shop';
     const ll = g.lls.length ? [g.lls.reduce((a, x) => a + x[0], 0) / g.lls.length, g.lls.reduce((a, x) => a + x[1], 0) / g.lls.length] : null;
     const subj = {name:g.target.label, trade:(formal ? 'Formal shop' : 'Informal') + ', not on Rasiti', market:g.target.area || ''};
     if (g.indep >= 3 && formal) items.push({id:'v' + g.key, pri:2, subj, ll, act:S.visits.has(g.key) ? 'Referred to compliance team' : 'Refer to compliance team: low receipt rate', why:[`Customers got a receipt ${Math.round((tot - neg) / tot * 100)}% of the time (${tot} ratings)`, `${g.indep} different customers said no receipt was given`, "Check the shop's registration and VAT records before any visit"], btn:S.visits.has(g.key) ? null : 'Refer', kind:'visit', target:g.key});
-    else if (g.indep >= 3) items.push({id:'v' + g.key, pri:3, subj, ll, act:S.visits.has(g.key) ? 'Field visit booked' : 'Assisted enrolment visit by a market tax helper', why:[`${g.indep} different customers reported this seller in ${Math.max(1, Math.round((Math.max(...g.list.map(x => x.t)) - Math.min(...g.list.map(x => x.t))) / DAY))} days`, ...new Set(g.list.filter(x => x.type !== 'got').map(x => REPTYPE[x.type]))], btn:S.visits.has(g.key) ? null : 'Book visit', kind:'visit', target:g.key});
+    else if (g.indep >= 3) items.push({id:'v' + g.key, pri:3, subj, ll, act:S.visits.has(g.key) ? 'Field visit booked' : g.moving ? `Meet on the usual market day: a moving seller reported at ${g.places.size} place${g.places.size > 1 ? 's' : ''}` : 'Assisted enrolment visit by a market tax helper', why:[...(g.moving ? [`Seen at: ${[...g.places].join('; ')}`] : []), `${g.indep} different customers reported this seller in ${Math.max(1, Math.round((Math.max(...g.list.map(x => x.t)) - Math.min(...g.list.map(x => x.t))) / DAY))} days`, ...new Set(g.list.filter(x => x.type !== 'got').map(x => REPTYPE[x.type]))], btn:S.visits.has(g.key) ? null : 'Book visit', kind:'visit', target:g.key});
     else if (g.indep > 0) items.push({id:'w' + g.key, pri:0, subj, ll, act:`Watching: ${g.indep} of 3 independent reports`, why:['No action until more customers report the same seller']}); }
   const held = S.receipts.filter(r => shieldState(r) === 'held').length;
   if (held) items.push({id:'held', pri:2, subj:{name:'Fraud Shield', trade:'', market:''}, act:`Review ${held} held receipts`, why:['Entries are paused, sales are not affected', 'See the review queue below']});
@@ -1787,7 +2018,7 @@ function worklist() {
 }
 const PRI = {3:'<span class="pill p-bad">High</span>', 2:'<span class="pill p-warn">Medium</span>', 1:'<span class="pill p-info">Low</span>', 0:'<span class="pill p-mute">Watching</span>', [-1]:'<span class="pill p-ok">No action</span>'};
 function renderOfficer() {
-  const on = S.traders.length; const reg = S.traders.filter(t => t.status === 'registered').length; const via = S.traders.filter(t => t.via).length;
+  const on = S.traders.length; const reg = S.traders.filter(taxpayer).length; const via = S.traders.filter(t => t.via).length;
   const r30 = S.receipts.filter(r => r.t > clock - 30 * DAY); const s30 = r30.reduce((a, r) => a + r.amt, 0);
   const groups = reportGroups(); const unlisted = groups.filter(g => g.target.place && g.indep > 0).length; const held = S.receipts.filter(r => shieldState(r) === 'held').length;
   const c30 = S.claims.filter(c => c.t > clock - 30 * DAY && claimState(c) !== 'pending'); const cOk = c30.filter(c => c.state === 'confirmed').length;
@@ -1800,7 +2031,7 @@ function renderOfficer() {
   $('#workTbl').innerHTML = '<tr><th>Priority</th><th>Seller</th><th>Recommended action and why</th><th></th></tr>' + wl.map(i => `<tr><td>${PRI[i.pri]}</td><td><b class="drill-link" data-drill="${i.subj.no ? 'seller:' + i.subj.no : 'item:' + esc(i.id)}" tabindex="0">${esc(i.subj.name)}</b><div class="note">${esc([i.subj.trade, i.subj.market].filter(Boolean).join(' · '))}${i.subj.no ? ' · code ' + i.subj.no : ''}</div></td><td>${esc(i.act)}<ul class="why">${i.why.map(w => `<li>${esc(w)}</li>`).join('')}</ul></td><td style="white-space:nowrap">${i.btn ? `<button class="btn small" data-w="${esc(i.id)}"${dis}>${i.btn}</button> ` : ''}${i.subj.no ? `<button class="btn small bh-ask" data-ask="${i.subj.no}" title="Ask Bohlale AI to explain this case">Ask Bohlale</button>` : ''}</td></tr>`).join('');
   $('#reviewTbl').innerHTML = '<tr><th>Case</th><th>Seller</th><th class="num">Amount</th><th>Why it was held</th><th>Decision</th></tr>' + heldGroups().map(rs => { const r = rs[0]; const e = S.eval[r.code]; const tr = tByNo(r.no) || {name:r.no}; const phs = new Set(rs.map(x => x.ph)); const codes = rs.map(x => x.code).join(',');
     return `<tr><td><b>${rs.length} receipt${rs.length > 1 ? 's' : ''}</b><div class="note">${phs.size} phone${phs.size > 1 ? 's' : ''} · latest ${fT(r.t)}</div><details><summary>Codes</summary><div class="mono">${rs.map(x => x.code + ' ' + mask(x.ph)).join('<br>')}</div></details></td><td>${esc(tr.name)}</td><td class="num">${M(rs.reduce((a, x) => a + x.amt, 0))}</td><td><ul class="why" style="margin:0">${e.flags.map(f => `<li>${esc(f.why)}</li>`).join('')}</ul>${r.note ? `<div class="note">Hint: ${esc(r.note)}</div>` : ''}</td><td style="white-space:nowrap"><button class="btn small" data-rv="approved" data-c="${codes}"${dis}>Approve entries</button> <button class="btn small" data-rv="rejected" data-c="${codes}"${dis}>Reject</button></td></tr>`; }).join('') + (heldGroups().length ? '<tr><td colspan="5" class="note">Either way, the sale stays in the seller\'s sales book. Only draw entries are decided here.</td></tr>' : '<tr><td colspan="5" class="note">Queue empty.</td></tr>');
-  const regs = S.traders.filter(t => t.status === 'registered' && (OF.area === 'all' || t.market === OF.area));
+  const regs = S.traders.filter(t => taxpayer(t) && (OF.area === 'all' || t.market === OF.area));
   $('#taxTbl').innerHTML = '<tr><th>Seller</th><th>' + esc(perName(lastPer())) + ' return</th><th class="num">Filed on time</th><th class="num">Paid on time</th><th class="num">Overdue</th><th class="num">Streak</th><th>Reminders</th></tr>' + regs.map(t => { const x = taxOf(t.no); const n = x.rets.length;
     return `<tr><td>${esc(t.name)}<div class="note">${esc(t.market)} · TIN ${esc(t.tin || '-')}</div></td><td>${x.last ? (x.last.declared ? M(x.last.declared) : 'Nil') + `<div class="note">${x.last.tax ? 'tax ' + M(x.last.tax) + (x.owedOf(x.last) > .5 ? ', unpaid' : ', paid') : 'no tax'}</div>` : `<span class="pill p-warn">Not filed</span><div class="note">due ${perDue(lastPer())}</div>`}</td><td class="num">${n ? x.rets.filter(x.onTimeFile).length + '/' + n : '–'}</td><td class="num">${n ? x.rets.filter(r => perDueT(r.period) < clock).filter(x.onTimePay).length + '/' + x.rets.filter(r => perDueT(r.period) < clock).length : '–'}</td><td class="num">${x.overdueAmt ? `<b style="color:var(--bad)">${M(x.overdueAmt)}</b>` : '–'}</td><td class="num">${x.streak}</td><td>${t.reminders === false ? 'Off' : 'On'}</td></tr>`; }).join('');
   const dueN = remindTargets().length; $('#remBtn').textContent = `Send reminders (${dueN})`; $('#remBtn').disabled = !canWork() || !dueN;
@@ -1809,7 +2040,7 @@ function renderOfficer() {
 
 /* ================= Draw ================= */
 function pool(per) { const from = per ? per.from : monthStart(), to = per ? per.to : Infinity; const wk = S.receipts.filter(r => r.t >= from && r.t < to).sort((a, b) => a.t - b.t); const o = {active:0, reg:0, held:0, excluded:0, waiting:0}; const by = {};
-  for (const r of wk) { const s = drawStatus(r); if (s === 'none') { if (r.ch === 'card') o.waiting++; continue; } const e = entriesFor(r);
+  for (const r of wk) { const s = drawStatus(r); if (s === 'stock') { o.stock = (o.stock || 0) + 1; continue; } if (s === 'none') { if (r.ch === 'card') o.waiting++; continue; } const e = entriesFor(r);
     o[s] += e; if (s === 'active') { const tr = tByNo(r.no); if (tr && tr.status === 'registered') o.reg += e; (by[r.ph] = by[r.ph] || {e:0, rs:[]}).e += e; by[r.ph].rs.push(r); } } return {o, by}; }
 /* Early in a month the new month has few entries, so the draw shown is the one for the month that just ended. */
 function drawPeriod() { const ms = monthStart(); const cur = {from:ms, to:Infinity, title:`This month's draw (${fD(ms)} to ${fD(drawDay())})`, name:'this month'};
@@ -1887,9 +2118,9 @@ function renderHist(busyNow) { const u = $('#undoBtn'), r = $('#redoBtn'); if (!
   u.disabled = busyNow || !lu; r.disabled = busyNow || !lr;
   u.title = lu ? 'Undo ' + lu.label + ' (Ctrl+Z)' : 'Nothing to undo'; r.title = lr ? 'Redo ' + lr.label + ' (Ctrl+Y)' : 'Nothing to redo'; }
 async function setReview(cs, d) { if (saved()) await api('admin', d ? {op:'review', codes:cs, decision:d} : {op:'unreview', codes:cs}); cs.forEach(c => { if (d) S.reviews[c] = d; else delete S.reviews[c]; }); }
-const ITEMSETS = it => it.kind === 'invite' ? [S.invited, it.target] : it.kind === 'visit' ? [S.visits, it.target] : [S.done, it.id];
-async function setAction(it, on) {
-  if (saved()) await api('admin', on ? {op:'action', item_id:it.id, kind:it.kind || 'done', target:it.target || '', label:it.act} : {op:'unaction', item_id:it.id});
+const ITEMSETS = it => it.kind === 'merge' ? [{add:() => { S.merges[it.from] = it.target; }, delete:() => { delete S.merges[it.from]; }}, null] : it.kind === 'invite' ? [S.invited, it.target] : it.kind === 'visit' ? [S.visits, it.target] : [S.done, it.id];
+async function setAction(it, on) { const aid = it.kind === 'merge' ? 'merge:' + it.from : it.id;
+  if (saved()) await api('admin', on ? {op:'action', item_id:aid, kind:it.kind || 'done', target:it.target || '', label:it.act} : {op:'unaction', item_id:aid});
   const [set, key] = ITEMSETS(it); if (on) set.add(key); else set.delete(key); }
 
 /* ================= guided cases ================= */
@@ -1928,7 +2159,19 @@ const CASES = [
    const tr = tByNo('3902'); if (!tr || tr.status !== 'registered') { narrate('Mme Nthabiseng is not a registered seller in this data. Reset and load the demo data first.'); return; }
    caseSeller('3902'); tStep('3');
    const x = taxOf('3902');
-   narrate(`<b>Sustained payment.</b> Nthabiseng owes ${M(x.owed)}${x.overdueAmt ? `, of which ${M(x.overdueAmt)} is overdue` : ''}. On her phone, choose <b>1</b> to file the ${perName(lastPer())} return straight from her sales book (cash she confirmed, mobile money and card), then <b>2</b> to pay part now. The officer console suggests a payment plan, not a penalty.`); }}
+   narrate(`<b>Sustained payment.</b> Nthabiseng owes ${M(x.owed)}${x.overdueAmt ? `, of which ${M(x.overdueAmt)} is overdue` : ''}. On her phone, choose <b>1</b> to file the ${perName(lastPer())} return straight from her sales book (cash she confirmed, mobile money and card), then <b>2</b> to pay part now. The officer console suggests a payment plan, not a penalty.`); }},
+ {tag:'New', cls:'', t:"Paid to a home seller's number", d:"Lerato sends M40 by M-Pesa to Mme Dineo's personal number for fat cakes, then claims it with the transaction ID.", async run() {
+   const tr = tByNo('8261'); if (!tr || !tr.pp) { narrate('Mme Dineo (8261) is not in this data. Reset and load the demo data first.'); return; }
+   setC(PERSONAS[0].ph); caseSeller('8261'); const ref = await netSendDemo(PERSONAS[0].ph, tr.pp, 40, tr.ppNet || 'mpesa');
+   show('c', `M-Pesa: you sent M40.00 to\n${tr.name} (${short(tr.pp)}).\nTransaction ID ${ref}.`);
+   const text = await transferClaim('8261', 40, 'p2p', ref); PH.c.st = 'end'; show('c', text);
+   narrate(`<b>A seller with no merchant code.</b> Mme Dineo sells from home and is paid on her <b>personal</b> M-Pesa number. Rasiti never reads her wallet: family money and loans there are not sales. Lerato chose <b>7. Paid to a number or bank</b> and typed the seller code, M40 and the transaction ID <b>${esc(ref)}</b> from her SMS. The network confirmed that this payment really went from Lerato to Dineo (simulated), so it counts at once: receipt and 1 draw entry (a merchant code would give more). A made-up ID is refused. On the map Dineo shows only by area, never her home.`); }},
+ {tag:'New', cls:'', t:'Owner with 3 shops', d:"Mme Masechaba runs 3 spaza shops. Her shop-keeper at Ha Thetsane confirms a cash sale; she sees every shop and files one return.", async run() {
+   const b = tByNo('8481'); if (!b) { narrate('Mme Masechaba (8480) is not in this data. Reset and load the demo data first.'); return; }
+   setT('8481'); PH.t.auth = true; PH.t.keeper = true; PH.t.pin = '1357'; PH.t.st = 'home'; show('t', tHome());
+   setC(PERSONAS[0].ph); const text = await cashClaim('8481', 30); PH.c.st = 'end'; show('c', text);
+   if (PH.t.keeper) { PH.t.st = 't_cash'; show('t', cashList(b)); }
+   narrate(`<b>One owner, several shops.</b> Mme Masechaba (code 8480) added two shops from <b>7. My shops</b>; each has its own code, sticker and place on the map (8481 Ha Thetsane, 8482 Kingsway). Her shop-keeper signs in to 8481 with a <b>shop-keeper PIN</b> (demo 1357) and can <b>only confirm cash sales</b> there: no tax, no payment codes. Lerato just claimed M30 cash at 8481; confirm it on the seller phone (pick it, then 1). The sale goes into Masechaba's one sales book and her <b>one</b> quarterly return. She gets a summary SMS for every shop each evening. The same ID cannot open a second, separate account: new shops become branches.`); }}
 ];
 
 /* ================= users view ================= */
@@ -1984,7 +2227,7 @@ function bhContext(focusNo) {
   const {o} = pool();
   return {
     today: new Date(clock).toDateString(), last_quarter: perName(lastPer()), sbt_income_limit_per_year: 2000000,
-    kpis: {sellers_on_rasiti:S.traders.length, registered:S.traders.filter(t => t.status === 'registered').length, registered_through_rasiti:S.traders.filter(t => t.via).length,
+    kpis: {sellers_on_rasiti:S.traders.length, registered:S.traders.filter(taxpayer).length, registered_through_rasiti:S.traders.filter(t => t.via).length,
       receipts_30d:S.receipts.filter(r => r.t > clock - 30 * DAY).length, receipted_sales_30d:Math.round(sum(S.receipts.filter(r => r.t > clock - 30 * DAY))),
       receipts_held:hr.length, fake_codes_stopped:S.fakes.length, draw_live_entries_this_month:o.active},
     worklist: worklist().slice(0, 14).map(i => ({priority:{3:'High',2:'Medium',1:'Low',0:'Watching',[-1]:'No action'}[i.pri], seller:i.subj.name, code:i.subj.no || null, action:i.act, reasons:i.why})),
@@ -2012,7 +2255,7 @@ function bhExtra() {
       tin:t.tin || null, registered_through_rasiti:!!t.via, invited:S.invited.has(t.no), visit_planned:S.visits.has(t.no)}; });
   return {
     receipts:{today:{count:today.length, value:Math.round(sum(today))}, last_7_days:{count:r7.length, value:Math.round(sum(r7))}, last_30_days:{count:r30.length, value:Math.round(sum(r30)), average_sale:r30.length ? Math.round(sum(r30) / r30.length) : 0},
-      by_payment_30d:{cash_confirmed_by_seller:r30.filter(r => r.ch === 'cash').length, mobile_money:r30.filter(r => r.ch === 'momo').length, card:r30.filter(r => r.ch === 'card').length, reversed_or_paid_back:r30.filter(r => r.flag).length}, daily_last_14_days:daily},
+      by_payment_30d:{cash_confirmed_by_seller:r30.filter(r => r.ch === 'cash').length, mobile_money:r30.filter(r => r.ch === 'momo').length, card:r30.filter(r => r.ch === 'card').length, transfers_to_personal_number:r30.filter(r => r.ch === 'p2p').length, bank_transfers:r30.filter(r => r.ch === 'bank').length, stock_purchases_no_entries:r30.filter(isStock).length, reversed_or_paid_back:r30.filter(r => r.flag).length}, daily_last_14_days:daily},
     seller_details:sellerX,
     fraud_shield:{how_it_works:'Each receipt gets points from the rules. 30 or more: draw entries held for an officer. 60 or more: blocked. The sale always stays in the seller\'s book.',
       receipts_by_state:states, rules:RULES.map(r => ({rule:r.name, points:r.pts, what:r.what, receipts_hit:hits[r.id] || 0})),
@@ -2026,8 +2269,14 @@ function bhExtra() {
     cash_claims:(() => { const c30 = S.claims.filter(c => c.t > clock - 30 * DAY); return {how_it_works:`The buyer claims a cash sale on *999# (seller code and amount). It counts only when the seller confirms it; rejected claims and claims ignored for ${CASH.expireDays} days never reach the sales book or the tax. Limits: ${CASH.perPhoneDay} claims per phone a day, M${CASH.maxAmount} a claim, 1 draw entry per cash receipt.`,
       waiting_now:S.claims.filter(c => claimState(c) === 'pending').length, last_30_days:{claims:c30.length, confirmed:c30.filter(c => c.state === 'confirmed').length, rejected:c30.filter(c => c.state === 'rejected').length, ignored_expired:c30.filter(c => claimState(c) === 'expired').length}}; })(),
     officer_actions:{invitations_sent:S.invited.size, visits_planned:S.visits.size, items_marked_done:S.done.size},
+    sellers_by_kind:(() => { const c30 = S.claims.filter(c => c.t > clock - 30 * DAY); return {rule:'Sellers who move, sell from home or deliver work like any seller; a home seller is shown by area only. Payments into a PERSONAL number or bank account count only when the buyer claims them (transaction ID): the network confirms it, or the seller confirms it like cash. Rasiti never reads a wallet. A seller paying another shop is buying stock (no draw entries). An owner with several shops has one ID, one account and one tax return; each branch has its own code; a shop-keeper PIN can only confirm cash sales.',
+      kinds:Object.fromEntries(Object.keys(SELLTYPE).map(k => [SELLTYPE[k], S.traders.filter(t => (t.type || 'fixed') === k && !t.owner).map(t => ({code:t.no, name:t.name, area:t.market, usual_places:t.places || undefined, personal_number:!!t.pp, bank_account:!!t.pb}))])),
+      owners_with_branches:S.traders.filter(t => S.traders.some(x => x.owner === t.no)).map(t => ({owner:t.name, code:t.no, shops:groupOf(t.no).map(b => b + ' ' + (tByNo(b) || {}).market)})),
+      transfer_claims_30d:{to_personal_number:c30.filter(c => c.m === 'p2p').length, checked_by_network:c30.filter(c => c.ver).length, bank_transfers:c30.filter(c => c.m === 'bank').length, waiting_for_seller:S.claims.filter(c => c.m !== 'cash' && claimState(c) === 'pending').length},
+      stock_purchases_30d:S.receipts.filter(r => r.t > clock - 30 * DAY && isStock(r)).length,
+      possibly_one_business:worklist().filter(i => /^one/.test(i.id)).map(i => i.act), possibly_same_moving_seller:worklist().filter(i => i.kind === 'merge').map(i => i.subj.name + ': ' + i.act)}; })(),
     filing_and_payments:{note:`Demo schedule: one return a quarter for the quarter just ended, due on the 20th of the next month; demo tax rate ${TAXRATE * 100}% of declared sales (RSL sets the real SBT rate).`, current_period:perName(lastPer()) + ' (due ' + perDue(lastPer()) + ')',
-      sellers:S.traders.filter(t => t.status === 'registered').map(t => { const x = taxOf(t.no); return {code:t.no, name:t.name, last_return:x.last ? {declared:x.last.declared, nil_reason:x.last.nil, tax_due:x.last.tax, paid:x.paid(x.last.period)} : 'not filed', returns_12m:x.rets.length, filed_on_time:x.rets.filter(x.onTimeFile).length, overdue_tax:x.overdueAmt, overdue_quarters:x.overdue.map(r => perName(r.period)), on_time_streak:x.streak, reminders:t.reminders !== false}; }),
+      sellers:S.traders.filter(taxpayer).map(t => { const x = taxOf(t.no); return {code:t.no, name:t.name, last_return:x.last ? {declared:x.last.declared, nil_reason:x.last.nil, tax_due:x.last.tax, paid:x.paid(x.last.period)} : 'not filed', returns_12m:x.rets.length, filed_on_time:x.rets.filter(x.onTimeFile).length, overdue_tax:x.overdueAmt, overdue_quarters:x.overdue.map(r => perName(r.period)), on_time_streak:x.streak, reminders:t.reminders !== false}; }),
       total_paid_12m:S.payments.reduce((a, x) => a + x.amt, 0)},
     community_watch:watchContext(watchData({days:30, area:'all', who:'all', sig:'all', ctype:'all'})),
     forecasts:(() => { const ml = mlRun(); const sum = (a, k) => a.reduce((x, y) => x + y[k], 0); return {how:'Learned by Rasiti from its own data (Holt-Winters forecast with a weekly pattern; logistic regression for late returns). Re-trained whenever data changes. Forecasts rank what to look at; they never decide.',
@@ -2047,6 +2296,7 @@ const BH_TOPICS = {
   draw:/draw|winner|win|prize|airtime|entr|lottery|jackpot|seed|budget/i,
   cash_claims:/cash|claim|pending|confirm|request|reject|refus|ignor/i,
   officer_actions:/invit|visit|contact|done|action|officer|follow/i,
+  sellers_by_kind:/move|moving|mobile seller|home|deliver|runner|branch|several shops|owner|personal|bank|transfer|stock|one business|same seller|merge|keeper/i,
   community_watch:/area|rating|rate|communit|watch|complain|report|market|hotspot|time of day|hour|lead|badge|unlisted|extra|where/i,
   recent_activity:/recent|just|latest|happen|activity|log/i,
   filing_and_payments:/fil|return|pay|arrear|overdue|owe|debt|reminder|streak|on time|late|sbt|tax due|plan/i,
@@ -2302,14 +2552,14 @@ function dashData(days) { days = days || DASHD;
   const d0 = new Date(now); d0.setHours(0, 0, 0, 0); const first = d0.getTime() - (days - 1) * DAY;
   const daily = Array.from({length:days}, (_, i) => { const a = first + i * DAY; const x = S.receipts.filter(r => r.t >= a && r.t < a + DAY); return {t:a, n:x.length, v:Math.round(sum(x))}; });
   const per = drawPeriod(); const {o, by} = pool(per);
-  const reg = S.traders.filter(t => t.status === 'registered').length, via = S.traders.filter(t => t.via).length;
+  const reg = S.traders.filter(taxpayer).length, via = S.traders.filter(t => t.via).length;
   const enrolled = S.traders.filter(t => t.status === 'enrolled').length; const filed = S.traders.filter(t => t.status === 'registered' && t.declared != null).length;
   const wl = worklist(); const top = S.traders.map(t => { const x = rs.filter(r => r.no === t.no); return {t, n:x.length, v:sum(x)}; }).sort((a, b) => b.v - a.v);
   const chg = (a, b) => b ? Math.round((a - b) / b * 100) : null;
   return {days, rs, prs, w, held, fakes, daily, per, o, by, reg, via, enrolled, filed, wl, top,
     k:{receipts:rs.length, receiptsChg:chg(rs.length, prs.length), value:sum(rs), valueChg:chg(sum(rs), sum(prs)), customers:cust(rs), customersChg:chg(cust(rs), cust(prs)),
       sellers:S.traders.length, reg, via, rate:w.kp.rate, leads:w.kp.leads, held, fakes, entries:o.active, pending:S.claims.filter(c => claimState(c) === 'pending').length,
-      high:wl.filter(i => i.pri >= 3).length, ...(() => { const xs = S.traders.filter(t => t.status === 'registered').map(t => taxOf(t.no)); const rets = xs.flatMap(x => x.rets);
+      high:wl.filter(i => i.pri >= 3).length, ...(() => { const xs = S.traders.filter(taxpayer).map(t => taxOf(t.no)); const rets = xs.flatMap(x => x.rets);
         return {onTime:pctS(rets.filter(r => r.t <= perDueT(r.period)).length, rets.length), returns:rets.length, taxPaid:S.payments.filter(x => x.t >= from).reduce((a, x) => a + x.amt, 0), overdue:xs.reduce((a, x) => a + x.overdueAmt, 0)}; })()}}; }
 const dChg = (c, word) => c == null ? `<span class="d">no earlier data</span>` : `<span class="d ${c > 0 ? 'up' : c < 0 ? 'down' : ''}">${c > 0 ? '▲' : c < 0 ? '▼' : '■'} ${Math.abs(c)}% ${word}</span>`;
 const dkpi = (v, l, extra, go) => `<a class="kpi dk" href="#${go}"><div class="v">${v}</div><div class="l">${l}</div>${extra || ''}</a>`;
@@ -2320,10 +2570,17 @@ function chartCount(daily, p, W) { W = W || 640; const H = 210, L = 34, R = 10, 
     s += `<rect x="${L + i * bw}" y="${T}" width="${bw}" height="${ch}" fill="transparent" data-tip="${esc(fD(d.t))}: ${d.n} receipts worth ${M(d.v)}"/>`;
     const step = daily.length > 20 ? 7 : daily.length > 10 ? 3 : 1; if (i % step === 0) s += `<text x="${x + w / 2}" y="${H - 9}" font-size="10.5" text-anchor="middle" fill="${p.muted}">${esc(fD(d.t))}</text>`; });
   return s + '</svg>'; }
-function dashMapSpec(D) { const pts = [];
-  for (const t of S.traders) { const ll = traderLL(t); if (ll) pts.push({ll, color:t.status === 'registered' ? '#1d9e57' : '#3b82f6', r:11, drill:'seller:' + t.no, name:t.name}); }
+// Map markers by kind of seller: a fixed stall is a dot; a moving seller is a ring at each usual place; a runner is a ring over the area served;
+// a home seller is only a shaded area (never the home).
+function dashMapSpec(D) { const pts = [], circles = [];
+  for (const t of S.traders) { const ll = traderLL(t); if (!ll) continue; const color = t.status === 'registered' ? '#1d9e57' : '#3b82f6';
+    if (t.type === 'home') { circles.push({ll:AREAS[t.market] || ll, color:'#8b5cf6', meters:550, label:'', drill:'seller:' + t.no, name:`${t.name}: sells from home in the ${t.market} area (area only)`, kind:'home'}); continue; }
+    if (t.type === 'mobile') (t.places || [t.market]).forEach(pl => { if (AREAS[pl]) circles.push({ll:AREAS[pl], color:'#0ea5a4', meters:260, label:'', drill:'seller:' + t.no, name:`${t.name}: moving seller, sells at ${pl}`, kind:'mobile'}); });
+    if (t.type === 'delivery') circles.push({ll:AREAS[t.market] || ll, color:'#f97316', meters:800, label:'', drill:'seller:' + t.no, name:`${t.name}: delivers in the ${t.market} area`, kind:'delivery'});
+    if (t.type === 'delivery') continue;
+    pts.push({ll, color, r:11, drill:'seller:' + t.no, name:t.name + (t.owner ? ` (shop ${t.no}, branch of ${t.owner})` : t.type === 'mobile' ? ' (moves around)' : '')}); }
   for (const x of D.w.st) if (!x.on && x.ll && (x.sig === 'lead' || x.sig === 'low')) pts.push({ll:x.ll, color:x.sig === 'lead' ? '#d93025' : '#f0a020', r:10, drill:'shop:' + x.key, name:x.label});
-  return {points:pts, labels:Object.entries(AREAS).map(([n, ll]) => ({ll, text:n})), legend:[['#1d9e57', 'Registered seller'], ['#3b82f6', 'On Rasiti, not registered'], ['#d93025', 'New lead (not on Rasiti)'], ['#f0a020', 'Low receipts']]}; }
+  return {points:pts, circles, labels:Object.entries(AREAS).map(([n, ll]) => ({ll, text:n})), legend:[['#1d9e57', 'Registered seller'], ['#3b82f6', 'On Rasiti, not registered'], ['#0ea5a4', 'Moving seller (usual places)'], ['#8b5cf6', 'Sells from home (area only)'], ['#f97316', 'Runner (area served)'], ['#d93025', 'New lead (not on Rasiti)'], ['#f0a020', 'Low receipts']]}; }
 function renderDash() {
   if (!$('#dashKpis')) return; const D = dashData(); const k = D.k; const ml = mlRun();
   $('#dashFilters').innerHTML = [[7, 'Last 7 days'], [14, 'Last 14 days'], [30, 'Last 30 days']].map(([v, l]) => `<button type="button" data-dd="${v}" aria-pressed="${DASHD === v}">${l}</button>`).join('');
@@ -2344,6 +2601,7 @@ function renderDash() {
   if (currentView() === 'dash') renderDashMap(D);
 }
 function renderDashMap(D) { const m = getMap('dashMap'); if (!m) return; m.layer.clearLayers(); const spec = dashMapSpec(D);
+  for (const c of spec.circles) L.circle(c.ll, {radius:c.meters, color:c.color, weight:2, dashArray:c.kind === 'home' ? null : '5 5', fillColor:c.color, fillOpacity:c.kind === 'home' ? .22 : .08}).bindTooltip(esc(c.name) + '. Click for details.').on('click', () => openDrill(c.drill)).addTo(m.layer);
   for (const x of spec.points) L.circleMarker(x.ll, {radius:8, color:'#fff', weight:2, fillColor:x.color, fillOpacity:1}).bindTooltip(esc(x.name || '') + '. Click for details.').on('click', () => openDrill(x.drill)).addTo(m.layer);
   if (!m.fitted) { m.fitted = true; m.map.fitBounds(L.latLngBounds(Object.values(AREAS)).pad(.12)); } setTimeout(() => m.map.invalidateSize(), 50); }
 function dashPDF() { return withBusy(async () => { const D = dashData(); const k = D.k;
@@ -2416,12 +2674,12 @@ function renderContactsBtn() { const b = $('#phBtn'); if (!b) return; const can 
 // Offline demo: the same filters run over the data in this browser.
 const SX = {rows:[], total:0, sum:null, busy:false, seq:0};
 const SXK = {receipt:'Receipt', return:'Tax return', payment:'Tax payment'};
-const SXP = {cash:'Cash (seller confirmed)', momo:'Mobile money', mpesa:'M-Pesa', ecocash:'EcoCash', card:'Card'};
+const SXP = {cash:'Cash (seller confirmed)', momo:'Mobile money', mpesa:'M-Pesa', ecocash:'EcoCash', card:'Card', p2p:'Mobile money to a personal number', bank:'Bank transfer'};
 const SXR = {seller:'Seller', network:'Network', bank:'Bank'};
 const SXF = {reversed:'Payment reversed', payback:'Money sent back to the payer'};
 const SHL = {clear:'Clear', held:'Held for review', blocked:'Blocked', approved:'Approved by an officer', rejected:'Rejected by an officer'};
 function sxParams() { const v = id => ($(id) || {}).value || ''; return {q:v('#sxQ').trim(), kind:v('#sxKind'), paid:v('#sxPaid'), rec:v('#sxRec'), flag:v('#sxFlag'), seller:v('#sxSeller'), market:v('#sxMarket'), from:v('#sxFrom'), to:v('#sxTo'), min:v('#sxMin'), max:v('#sxMax'), sort:v('#sxSort') || 'new'}; }
-const sxPaidOf = r => r.ch === 'cash' ? 'cash' : r.ch === 'card' ? 'card' : r.net || (/^mpesa:/.test(r.note || '') ? 'mpesa' : /^ecocash:/.test(r.note || '') ? 'ecocash' : 'momo');
+const sxPaidOf = r => r.ch === 'cash' ? 'cash' : r.ch === 'card' ? 'card' : r.ch === 'p2p' ? 'p2p' : r.ch === 'bank' ? 'bank' : r.net || (/^mpesa:/.test(r.note || '') ? 'mpesa' : /^ecocash:/.test(r.note || '') ? 'ecocash' : 'momo');
 function sxLocalRows() { const iso = t => new Date(t).toISOString(); const out = [];
   for (const r of S.receipts) { const tr = tByNo(r.no) || {}; out.push({kind:'receipt', ref:r.code, seller_no:r.no, seller_name:tr.name, market:tr.market, amount:r.amt, at:iso(r.t), paid:sxPaidOf(r), rec:r.ch === 'momo' ? 'network' : r.ch === 'card' ? 'bank' : 'seller', flag:r.flag || null, card_last4:r.c4 || null, phone:r.ph, period:null, note:r.note && !/^(confirmed|disputed|mpesa:|ecocash:|card:|claim:)/.test(r.note) ? r.note : null}); }
   for (const x of S.returns) { const tr = tByNo(x.no) || {}; out.push({kind:'return', ref:x.id, seller_no:x.no, seller_name:tr.name, market:tr.market, amount:x.declared, at:iso(x.t), paid:null, rec:'seller', flag:null, phone:null, period:x.period, note:x.declared ? 'Tax due M' + Math.round(x.tax) : 'Nil return' + (x.nil ? ': ' + x.nil : '')}); }
@@ -2511,10 +2769,10 @@ function mlRun() {
     const ps = lr ? perSales(t.no, lr.period) : 0; const under = lr && ps > 0 ? Math.max(0, 1 - lr.declared / ps) : 0;
     return [prev.length ? lf / prev.length : 0, prev.length ? lp / prev.length : 0, prev.some(r => x.owedOf(r) > 0.5) ? 1 : 0, under]; };
   const X = [], Y = [];
-  for (const t of S.traders.filter(t => t.status === 'registered')) { const x = taxOf(t.no);
+  for (const t of S.traders.filter(taxpayer)) { const x = taxOf(t.no);
     x.rets.forEach((r, i) => { if (perDueT(r.period) > clock) return; X.push(featOf(t, x.rets.slice(0, i), x)); Y.push(!x.onTimeFile(r) || !x.onTimePay(r) ? 1 : 0); }); }
   const model = X.length >= 6 && Y.some(v => v) && Y.some(v => !v) ? ML.logistic(X, Y, {l2:0.05, iters:1500}) : null;
-  const risk = model ? S.traders.filter(t => t.status === 'registered').map(t => { const x = taxOf(t.no); const f = featOf(t, x.rets.filter(r => perDueT(r.period) <= clock), x);
+  const risk = model ? S.traders.filter(taxpayer).map(t => { const x = taxOf(t.no); const f = featOf(t, x.rets.filter(r => perDueT(r.period) <= clock), x);
     const p = model.predict(f); const why = f.map((v, j) => ({name:FEAT[j], v, push:(v - model.mu[j]) / model.sg[j] * model.weights[j]})).sort((a, b) => b.push - a.push);
     return {t, p, f, why}; }).sort((a, b) => b.p - a.p) : [];
   // expected draw entries this month
@@ -2572,7 +2830,7 @@ const dRow = (cells, drill) => `<tr${drill ? ` class="drill" data-drill="${esc(d
 const dKpis = list => `<div class="kpis small-kpis">${list.map(k => `<div class="kpi"><div class="v">${k[0]}</div><div class="l">${k[1]}</div></div>`).join('')}</div>`;
 const dBtns = list => `<div class="drw-btns">${list.filter(Boolean).join('')}</div>`;
 const goBtn = (label, hash, extra) => `<button type="button" class="btn small" data-go="${hash}"${extra || ''}>${label}</button>`;
-const PAYS = r => r.ch === 'cash' ? 'Cash' : r.ch === 'card' ? 'Card' : r.net === 'ecocash' ? 'EcoCash' : 'M-Pesa';
+const PAYS = r => r.ch === 'cash' ? 'Cash' : r.ch === 'card' ? 'Card' : r.ch === 'p2p' || r.ch === 'bank' ? 'Transfer' : r.net === 'ecocash' ? 'EcoCash' : 'M-Pesa';
 const workBtns = items => items.map(i => `<div class="drw-item"><span>${PRI[i.pri]}</span><div><b>${esc(i.act)}</b><ul class="why">${i.why.map(w => `<li>${esc(w)}</li>`).join('')}</ul>${i.btn && canWork() ? `<button class="btn small primary" data-w="${esc(i.id)}">${i.btn}</button>` : ''}</div></div>`).join('');
 const DRILL = {
   seller(no) { const t = tByNo(no); if (!t) return null; const ml = mlRun(); const s = ml.sellers.find(x => x.t.no === no) || {}; const rk = ml.risk.find(x => x.t.no === no);
@@ -2587,11 +2845,14 @@ const DRILL = {
       ${rk ? `<p class="note"><b>Why this risk score:</b> ${rk.why.filter(w => w.push > 0.05 && w.v > 0).map(w => `${esc(w.name.toLowerCase())}${w.name.startsWith('Unpaid') ? (w.v ? ': yes' : ': no') : ': ' + Math.round(w.v * 100) + '%'}`).join('; ') || 'nothing in the history points to lateness'}.</p>` : ''}
       ${x ? `<p class="note"><b>Tax:</b> ${x.last ? perName(x.last.period) + ' return ' + (x.last.declared ? M(x.last.declared) : 'nil') : 'last return not filed yet'} · ${x.overdueAmt ? M(x.overdueAmt) + ' overdue' : 'nothing overdue'} · on-time streak ${x.streak}.</p>` : ''}
       <p class="note"><b>Payment accounts:</b> M-Pesa ${esc(t.mp || 'not linked')} · EcoCash ${esc(t.ec || 'not linked')} · card machine ${t.pos ? esc(t.pos) + ' (' + esc(BANKS[t.bank] || 'bank') + ')' : 'not linked'}.</p>
+      <p class="note"><b>Kind of seller:</b> ${esc(SELLTYPE[t.type || 'fixed'])}${t.type === 'mobile' && t.places ? ' · usual places: ' + esc(t.places.join(', ')) : ''}${t.type === 'home' ? ' · shown on maps by area only, never the home' : ''}${t.type === 'delivery' ? ' · area served: ' + esc(t.market) : ''}${t.pp ? ` · personal ${esc(NETP[t.ppNet] || 'mobile money')} number ${esc(mask(t.pp))}` : ''}${t.pb ? ` · ${esc(BANKP[t.pb])} account ••${esc(t.pbAcct || '')}` : ''}. Only payments buyers claim count on personal accounts.</p>
+      ${t.owner ? `<p class="note"><b>Branch</b> of shop <span class="drill-link" data-drill="seller:${t.owner}" tabindex="0">${esc(t.owner)}</span>: the owner files one return for all shops.${t.hasKeeper || t.kpin ? ' A shop-keeper PIN is set (can only confirm cash sales here).' : ''}</p>`
+        : S.traders.some(x => x.owner === no) ? `<p class="note"><b>Shops (${groupOf(no).length}):</b> ${groupOf(no).map(b => `<span class="drill-link" data-drill="seller:${b}" tabindex="0">${b} ${esc((tByNo(b) || {}).market || '')}</span>`).join(' · ')}. One owner, one ID, one tax return.</p>` : ''}
       ${(() => { const mv = S.moves.filter(m => m.no === no).sort((x, y) => y.t - x.t); return mv.length ? `<p class="note"><b>Shop moves:</b> ${mv.slice(0, 5).map(m => `${fD(m.t)}: ${esc(m.from || '?')} → ${esc(m.to)} (${esc(m.ch || '')})`).join('; ')}.</p>` : ''; })()}
       <h4 class="sub">What to do</h4>${wl.length ? workBtns(wl) : '<p class="note">No action needed right now.</p>'}
-      ${dBtns([`<button type="button" class="btn small" data-ask="${no}">Ask Bohlale</button>`, goBtn('All transactions', 'search', ` data-q="${no}"`), goBtn('Officer console', 'officer')])}`}; },
+      ${dBtns([`<button type="button" class="btn small" data-ask="${no}">Ask Bohlale</button>`, goBtn('All transactions', 'search', ` data-q="${no}"`), goBtn('Officer console', 'officer'), `<button type="button" class="btn small" data-card="${no}" title="A printable card with the seller code, for a lanyard, cooler box or trolley">Code card (PDF)</button>`])}`}; },
   day(t) { t = +t; const rs = S.receipts.filter(r => r.t >= t && r.t < t + DAY && counts(r)); const by = {}; rs.forEach(r => { (by[r.no] = by[r.no] || {n:0, v:0}).n++; by[r.no].v += r.amt; });
-    const pays = ['Cash', 'M-Pesa', 'EcoCash', 'Card'].map(k => [k, rs.filter(r => PAYS(r) === k)]); const held = rs.filter(r => shieldState(r) === 'held').length;
+    const pays = ['Cash', 'M-Pesa', 'EcoCash', 'Card', 'Transfer'].map(k => [k, rs.filter(r => PAYS(r) === k)]).filter(x => x[0] !== 'Transfer' || x[1].length); const held = rs.filter(r => shieldState(r) === 'held').length;
     return {title:`${fD(t)} <small>${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(t).getDay()]}</small>`, body:dKpis([[rs.length, 'Receipts'], [M(rs.reduce((a, r) => a + r.amt, 0)), 'Sales'], [held, 'Held by the Fraud Shield']])
       + `<p class="note">${pays.map(([k, a]) => `${k}: ${a.length} (${M(a.reduce((x, r) => x + r.amt, 0))})`).join(' · ')}</p><h4 class="sub">By seller (click one)</h4><div class="tbl-wrap"><table><tr><th>Seller</th><th class="num">Receipts</th><th class="num">Sales</th></tr>`
       + Object.entries(by).sort((a, b) => b[1].v - a[1].v).map(([no, x]) => dRow([esc((tByNo(no) || {name:no}).name), `<span class="num">${x.n}</span>`, M(x.v)], 'seller:' + no)).join('') + '</table></div>'
@@ -2620,7 +2881,7 @@ const DRILL = {
     return {title:`Purchases ${h[0]}${+i === 5 ? '' : 'h'}`, body:`<p class="note">${rs.length} ratings in this time slot. Areas where receipts were missed most (click one):</p><div class="tbl-wrap"><table><tr><th>Area</th><th class="num">Ratings</th><th class="num">No receipt</th></tr>` + Object.entries(by).sort((a, b) => b[1].no / b[1].n - a[1].no / a[1].n).map(([a, e]) => dRow([esc(a), e.n, Math.round(e.no / e.n * 100) + '%'], 'area:' + a)).join('') + '</table></div><p class="note">Tax helpers are most useful in the slots and areas at the top.</p>'}; },
   stage(k) { const ml = {reported:() => shopStats().filter(x => !x.on && x.negP.size > 0).map(x => dRow([esc(x.label), SIG[x.sig]], 'shop:' + x.key)),
       enrolled:() => S.traders.filter(t => t.status === 'enrolled').map(t => dRow([esc(t.name), esc(t.market)], 'seller:' + t.no)),
-      registered:() => S.traders.filter(t => t.status === 'registered').map(t => dRow([esc(t.name), 'TIN ' + esc(t.tin || '-')], 'seller:' + t.no)),
+      registered:() => S.traders.filter(taxpayer).map(t => dRow([esc(t.name), 'TIN ' + esc(t.tin || '-')], 'seller:' + t.no)),
       filed:() => S.traders.filter(t => t.status === 'registered' && t.declared != null).map(t => dRow([esc(t.name), t.declared ? M(t.declared) : 'nil'], 'seller:' + t.no))};
     const T = {reported:'Reported by customers, not on Rasiti', enrolled:'On Rasiti, sales book only', registered:'Registered for tax', filed:'Filed last quarter'}; if (!ml[k]) return null;
     return {title:T[k], body:'<p class="note">Click a row for details and actions.</p><div class="tbl-wrap"><table>' + ml[k]().join('') + '</table></div>'}; },
@@ -2642,7 +2903,7 @@ function renderForecast() { if (!$('#fcKpis')) return; const ml = mlRun(); const
   const act = ml.vY.slice(-45).map((v, i, a) => ({t:ml.today - (a.length - i) * DAY, v, n:ml.nY[ml.nY.length - a.length + i]}));
   $('#fcMain').innerHTML = chartForecast(act, ml.fV.slice(0, 30), p, W('#fcMain'));
   $('#fcWeek').innerHTML = ml.week ? chartWeek(ml.week, p, W('#fcWeek')) : '<p class="note">Needs at least 2 weeks of data.</p>';
-  const tx = ml.sellers.filter(s => s.t.status === 'registered').sort((a, b) => b.qTax - a.qTax);
+  const tx = ml.sellers.filter(s => taxpayer(s.t)).sort((a, b) => b.qTax - a.qTax);
   $('#fcTax').innerHTML = chartHBars(tx.map(s => ({label:s.t.name, v:s.qTax, drill:'seller:' + s.t.no, tip:`${s.t.name}: about ${M(s.qTax)} tax on ${M(s.qSales)} sales this quarter (${M(s.soFar)} so far). Click for details.`})), p, W('#fcTax'), M);
   $('#fcRisk').innerHTML = ml.risk.length ? chartHBars(ml.risk.map(r => ({label:r.t.name, v:Math.round(r.p * 100), drill:'seller:' + r.t.no, tip:`${r.t.name}: ${Math.round(r.p * 100)}% chance of a late return or payment. Main reason: ${(r.why[0].push > 0.05 ? r.why[0].name.toLowerCase() : 'no warning signs in the history')}. Click for details.`})), p, W('#fcRisk'), v => v + '%') : '<p class="note">Needs at least 6 past returns to learn from.</p>';
   $('#fcAlerts').innerHTML = ml.alerts.map((a, i) => `<li class="drill" data-drill="alert:${i}" tabindex="0"><span class="pill ${a.lvl >= 2 ? 'p-warn' : 'p-info'}">${a.lvl >= 2 ? 'Act' : 'Watch'}</span><div><b>${esc(a.t)}</b><div class="note">${esc(a.why)}</div></div></li>`).join('') || '<li class="note">Nothing unusual is predicted.</li>';
@@ -2817,6 +3078,7 @@ function wire() {
     pushHist({label:`"${it.btn}" for ${it.subj.name}`, undo:() => setAction(it, false), redo:() => setAction(it, true)});
     if (it.kind === 'invite') toast('Invitation SMS sent (simulated)');
     else if (it.kind === 'visit') toast(it.btn === 'Refer' ? 'Referred to the compliance team' : "Visit added to the market tax helper's route");
+    else if (it.kind === 'merge') toast('Leads joined: counted as one seller');
     else toast('Marked done');
     log('info', `${it.act}: ${it.btn}`); renderAll(); if (!$('#drawer').hidden && DRW.stack.length) openDrill(DRW.stack[DRW.stack.length - 1], true); };
   $('#workTbl').addEventListener('click', doWork);
@@ -2862,6 +3124,7 @@ function wire() {
     try { seed(); const res = await api('admin', {op:'seed', data:exportSeed()}); toast(`Loaded ${res.counts.receipts} receipts and ${res.counts.sellers} sellers`); await refresh(true); }
     catch (e) { toast(e.message); } finally { b.disabled = false; b.textContent = 'Load demo dataset'; } });
   document.addEventListener('click', async e => {
+    const cc = e.target.closest && e.target.closest('[data-card]'); if (cc) { codeCardPdf(cc.dataset.card).catch(er => toast(er.message)); return; }
     if (e.target.id === 'loginBtn') { location.hash = '#officer'; }
     if (e.target.id === 'logoutBtn') { await api('auth', {op:'logout'}).catch(() => {}); API.user = null; renderNav(); updateBanner(); location.hash = '#guide'; route(); toast('Signed out'); }
   });

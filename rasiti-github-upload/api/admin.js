@@ -45,7 +45,7 @@ export default route(async (req, res) => {
 
   if (b.op === 'action') {
     const me = await requireRole(req, res, WORKERS); if (!me) return;
-    if (!['invite', 'visit', 'done'].includes(b.kind)) throw bad('Unknown action.');
+    if (!['invite', 'visit', 'done', 'merge'].includes(b.kind)) throw bad('Unknown action.'); // merge: "same seller" joins two community-watch leads
     await q('INSERT INTO actions(item_id, kind, target, done_by) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
       [String(b.item_id).slice(0, 80), b.kind, String(b.target || '').slice(0, 80), me.uid]);
     await audit(q, me, 'worklist_' + b.kind, { item: b.item_id, target: b.target, label: String(b.label || '').slice(0, 120) });
@@ -104,19 +104,26 @@ export default route(async (req, res) => {
     if (n > 0) throw bad('The database already has data. Reset it first.');
     const d = b.data || {};
     const counts = {
-      sellers: await bulk(q, 'sellers', [['no', 'text'], ['name', 'text'], ['trade', 'text'], ['market', 'text'], ['status', 'text'], ['tin', 'text'], ['joined_at', 'timestamptz'], ['via_rasiti', 'boolean'], ['phone', 'text'], ['declared_last', 'numeric'], ['lat', 'double precision'], ['lng', 'double precision'], ['mpesa_code', 'text'], ['ecocash_code', 'text'], ['card_terminal', 'text'], ['card_bank', 'text']], d.sellers),
+      sellers: await bulk(q, 'sellers', [['no', 'text'], ['name', 'text'], ['trade', 'text'], ['market', 'text'], ['status', 'text'], ['tin', 'text'], ['joined_at', 'timestamptz'], ['via_rasiti', 'boolean'], ['phone', 'text'], ['declared_last', 'numeric'], ['lat', 'double precision'], ['lng', 'double precision'], ['mpesa_code', 'text'], ['ecocash_code', 'text'], ['card_terminal', 'text'], ['card_bank', 'text'],
+        ['sell_type', 'text'], ['usual_places', 'text'], ['owner_no', 'text'], ['pay_personal', 'text'], ['pay_personal_net', 'text'], ['pay_bank', 'text'], ['pay_bank_acct', 'text'], ['keeper_test_pin', 'text'], ['registered_at', 'timestamptz']],
+        (d.sellers || []).map(x => ({ ...x, sell_type: ['fixed', 'mobile', 'home', 'delivery'].includes(x.sell_type) ? x.sell_type : 'fixed', keeper_test_pin: /^\d{4}$/.test(String(x.keeper_pin || '')) ? String(x.keeper_pin) : null }))),
       receipts: await bulk(q, 'receipts', [['code', 'text'], ['seller_no', 'text'], ['amount', 'numeric'], ['channel', 'text'], ['phone', 'text'], ['issued_at', 'timestamptz'], ['note', 'text'], ['source', 'text'], ['card_last4', 'text'], ['flag', 'text']], (d.receipts || []).map(r => ({ ...r, source: 'demo', card_last4: /^\d{4}$/.test(String(r.card_last4 || '')) ? String(r.card_last4) : null, flag: ['reversed', 'payback'].includes(r.flag) ? r.flag : null }))),
-      reports: await bulk(q, 'reports', [['id', 'text'], ['phone', 'text'], ['type', 'text'], ['seller_no', 'text'], ['place_key', 'text'], ['place_label', 'text'], ['area', 'text'], ['kind', 'text'], ['lat', 'double precision'], ['lng', 'double precision'], ['created_at', 'timestamptz']], d.reports),
+      reports: await bulk(q, 'reports', [['id', 'text'], ['phone', 'text'], ['type', 'text'], ['seller_no', 'text'], ['place_key', 'text'], ['place_label', 'text'], ['area', 'text'], ['kind', 'text'], ['lat', 'double precision'], ['lng', 'double precision'], ['created_at', 'timestamptz'], ['seller_type', 'text'], ['seller_hint', 'text']], d.reports),
+      net_txns: await bulk(q, 'net_txns', [['ref', 'text'], ['network', 'text'], ['from_msisdn', 'text'], ['to_msisdn', 'text'], ['amount', 'numeric'], ['created_at', 'timestamptz']], d.net_txns),
       fakes: await bulk(q, 'fakes', [['id', 'text'], ['code', 'text'], ['kind', 'text'], ['phone', 'text'], ['detail', 'text'], ['created_at', 'timestamptz']], d.fakes),
       returns: await bulk(q, 'returns', [['id', 'text'], ['seller_no', 'text'], ['period', 'text'], ['sales', 'numeric'], ['declared', 'numeric'], ['nil_reason', 'text'], ['tax_due', 'numeric'], ['channel', 'text'], ['filed_at', 'timestamptz']], d.returns),
-      claims: await bulk(q, 'claims', [['id', 'text'], ['seller_no', 'text'], ['amount', 'numeric'], ['phone', 'text'], ['state', 'text'], ['created_at', 'timestamptz'], ['decided_at', 'timestamptz'], ['receipt_code', 'text']], (d.claims || []).filter(c => ['pending', 'confirmed', 'rejected'].includes(c.state))),
+      claims: await bulk(q, 'claims', [['id', 'text'], ['seller_no', 'text'], ['amount', 'numeric'], ['phone', 'text'], ['state', 'text'], ['created_at', 'timestamptz'], ['decided_at', 'timestamptz'], ['receipt_code', 'text'], ['method', 'text'], ['ref', 'text'], ['verified', 'boolean']],
+        (d.claims || []).filter(c => ['pending', 'confirmed', 'rejected'].includes(c.state)).map(c => ({ ...c, method: ['cash', 'p2p', 'bank'].includes(c.method) ? c.method : 'cash', ref: c.ref || null, verified: !!c.verified }))),
       payments: await bulk(q, 'payments', [['id', 'text'], ['seller_no', 'text'], ['period', 'text'], ['amount', 'numeric'], ['ref', 'text'], ['channel', 'text'], ['paid_at', 'timestamptz']], d.payments),
       moves: await bulk(q, 'seller_moves', [['id', 'text'], ['seller_no', 'text'], ['from_market', 'text'], ['to_market', 'text'], ['from_lat', 'double precision'], ['from_lng', 'double precision'], ['to_lat', 'double precision'], ['to_lng', 'double precision'], ['channel', 'text'], ['created_at', 'timestamptz']], d.moves)
     };
     // Demo sellers all use the demo PIN (shown on the Start here page). Real sellers choose their own when they join.
-    await q('UPDATE sellers SET pin_hash=$1, test_pin=$2 WHERE pin_hash IS NULL', [await hashPin(DEMO_PIN), DEMO_PIN]);
-    // every demo seller gets dummy M-Pesa, EcoCash and card machine accounts (codes already in the dataset are kept)
-    for (const sl of await q('SELECT * FROM sellers WHERE mpesa_code IS NULL OR ecocash_code IS NULL OR card_terminal IS NULL')) await linkDummy(q, sl);
+    // Branches have no PIN of their own (the owner signs in with the main shop); a demo shop-keeper PIN is hashed here.
+    await q('UPDATE sellers SET pin_hash=$1, test_pin=$2 WHERE pin_hash IS NULL AND owner_no IS NULL', [await hashPin(DEMO_PIN), DEMO_PIN]);
+    for (const k of await q('SELECT no, keeper_test_pin FROM sellers WHERE keeper_test_pin IS NOT NULL')) await q('UPDATE sellers SET keeper_pin_hash=$1 WHERE no=$2', [await hashPin(k.keeper_test_pin), k.no]);
+    // every demo seller gets dummy M-Pesa, EcoCash and card machine accounts (codes already in the dataset are kept),
+    // except sellers who are paid on a personal number or bank account (home sellers and runners in the demo)
+    for (const sl of await q('SELECT * FROM sellers WHERE (mpesa_code IS NULL OR ecocash_code IS NULL OR card_terminal IS NULL) AND pay_personal IS NULL AND pay_bank IS NULL')) await linkDummy(q, sl);
     await audit(q, me, 'demo_data_loaded', counts);
     return res.status(200).json({ ok: true, counts });
   }
@@ -140,7 +147,7 @@ export default route(async (req, res) => {
 
   if (b.op === 'reset') {
     const me = await requireRole(req, res, ['owner']); if (!me) return;
-    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'returns', 'payments', 'seller_moves', 'sellers', 'phone_prefs']) await q(`DELETE FROM ${t}`);
+    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'returns', 'payments', 'seller_moves', 'net_txns', 'sellers', 'phone_prefs']) await q(`DELETE FROM ${t}`);
     await audit(q, me, 'demo_data_reset');
     return res.status(200).json({ ok: true });
   }
@@ -148,7 +155,7 @@ export default route(async (req, res) => {
   if (b.op === 'clear') {
     const me = await requireRole(req, res, ['owner']); if (!me) return;
     if (b.confirm !== 'CLEAR') throw bad('Type CLEAR to confirm.');
-    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'returns', 'payments', 'seller_moves', 'sellers', 'phone_prefs', 'audit_log']) await q(`DELETE FROM ${t}`);
+    for (const t of ['receipts', 'claims', 'reports', 'fakes', 'reviews', 'actions', 'draws', 'returns', 'payments', 'seller_moves', 'net_txns', 'sellers', 'phone_prefs', 'audit_log']) await q(`DELETE FROM ${t}`);
     const gone = await q('DELETE FROM admin_users WHERE id <> $1 RETURNING id', [me.uid]);
     await audit(q, me, 'all_data_cleared', { users_removed: gone.length });
     return res.status(200).json({ ok: true, users_removed: gone.length });

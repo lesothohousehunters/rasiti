@@ -6,7 +6,9 @@ import { db, audit } from './_lib/db.js';
 import { reqCtx, clientIp } from './_lib/ctx.js';
 import { mkCode, normCode } from './_lib/codes.js';
 import { checkPin, hashPin, pinProblem } from './_lib/pin.js';
-import { CASH, claimCash, pendingCash, decideCash } from './_lib/cash.js';
+import { CASH, claimCash, pendingCash, decideCash, shopGroup } from './_lib/cash.js';
+import { claimTransfer, linkPersonal, linkBank, openMerchant, addBranch, setKeeperPin, branchSummary, branchesOf, idHash, placeFor, isSellerPhone, NETS, BANKN, SELL_TYPES } from './_lib/more.js';
+import { createHash } from 'node:crypto';
 import { places, moveShop } from './_lib/accounts.js';
 import { readFile } from 'node:fs/promises';
 
@@ -36,7 +38,8 @@ function parseBody(req) {
 }
 const cleanPhone = p => { const d = String(p || '').replace(/\D/g, ''); return d.length >= 8 && d.length <= 15 ? d : null; };
 // Draw entries: 1 per M10 paid by mobile money or card (up to 5); a cash receipt the seller confirmed is always 1. Double at registered sellers.
-const entries = (amt, registered, ch) => (ch === 'cash' ? 1 : Math.max(1, Math.min(5, Math.floor(amt / 10)))) * (registered ? 2 : 1);
+// Money sent to a seller's personal number or bank account counts like cash: 1 entry (2 at a registered seller), so merchant codes win more.
+const entries = (amt, registered, ch) => (['cash', 'p2p', 'bank'].includes(ch) ? 1 : Math.max(1, Math.min(5, Math.floor(amt / 10)))) * (registered ? 2 : 1);
 const hm = d => { const x = new Date(d); const t = x.toLocaleTimeString('en-GB', { timeZone: 'Africa/Maseru', hour: '2-digit', minute: '2-digit' });
   return new Date().toDateString() === x.toDateString() ? t : x.getDate() + ' ' + MON[x.getMonth()] + ' ' + t; };
 const drawDay = () => { const d = new Date(); const e = new Date(d.getFullYear(), d.getMonth() + 1, 0); return e.getDate() + ' ' + MON[e.getMonth()]; };
@@ -55,9 +58,10 @@ const perShort = p => { if (!/-Q[1-4]$/.test(p)) return MON[+String(p).slice(5) 
 const perName = p => perShort(p) + ' ' + String(p).slice(0, 4);
 const perDue = p => { const [y, q] = perYQ(p); const d = new Date(y, q * 3, 20); return '20 ' + MON[d.getMonth()]; };
 const perRange = p => { const [y, q] = perYQ(p); return [new Date(y, (q - 1) * 3, 1), new Date(y, q * 3, 1)]; };
-async function taxState(q, no) {
+// nos: the seller's shops (an owner files one return for all branches).
+async function taxState(q, no, nos) {
   const per = lastPeriod(); const [from, to] = perRange(per);
-  const [{ s }] = await q('SELECT COALESCE(sum(amount),0)::float AS s FROM receipts WHERE seller_no=$1 AND flag IS NULL AND issued_at >= $2 AND issued_at < $3', [no, from, to]);
+  const [{ s }] = await q('SELECT COALESCE(sum(amount),0)::float AS s FROM receipts WHERE seller_no = ANY($1::text[]) AND flag IS NULL AND issued_at >= $2 AND issued_at < $3', [nos || [no], from, to]);
   const rets = await q('SELECT period, declared::float AS declared, tax_due::float AS tax_due, nil_reason FROM returns WHERE seller_no=$1 ORDER BY period', [no]);
   const pays = await q('SELECT period, amount::float AS amount FROM payments WHERE seller_no=$1', [no]);
   const paid = p => pays.filter(x => x.period === p).reduce((a, x) => a + x.amount, 0);
@@ -94,8 +98,24 @@ async function respond(q, parts, phone, sessionId, ctx) {
   /* ---------- customer ---------- */
   if (who === '1') {
     const [m, a, b, c] = p;
-    if (m === undefined) return con('Customer\n1. I paid cash\n2. I paid by card\n3. Check a receipt\n4. Rate a shop\n5. My draw entries\n6. Questions & answers' + BACK);
+    if (m === undefined) return con('Customer\n1. I paid cash\n2. I paid by card\n3. Check a receipt\n4. Rate a shop\n5. My draw entries\n6. Questions & answers\n7. Paid to a number or bank' + BACK);
     if (m === '6') return con((await faq()).ussd('buyer', p.slice(1), ctx.lang) + BACK);
+    if (m === '7') {
+      // Money sent to the seller's personal M-Pesa or EcoCash number, or to their bank account. Only payments a buyer claims count.
+      const d = p[4];
+      if (a === undefined) return con('Paid to a number or bank\nSeller code (on the sticker):');
+      const seller = await s(a.replace(/\D/g, ''));
+      if (!seller) return end(`Seller ${a} is not on Rasiti.\nYou can report them: Customer > 4. Rate a shop.`);
+      if (b === undefined) return con(`${seller.name}\nAmount you sent (M):`);
+      if (!(Math.round(parseFloat(b)) > 0)) return end('Amount not valid. Please start again.');
+      if (c === undefined) return con('How did you pay?\n1. Mobile money to their number\n2. Bank transfer');
+      const method = c === '1' ? 'p2p' : c === '2' ? 'bank' : null; if (!method) return end('Please choose 1 or 2. Start again.');
+      if (d === undefined) return con(method === 'p2p' ? 'Transaction ID\n(in your M-Pesa or EcoCash SMS):' : 'Bank reference\n(on your slip or bank SMS):');
+      const r = await claimTransfer(q, { phone, seller, amount: b, method, ref: d });
+      if (!r.ok) return end(r.msg);
+      if (r.verified) return end(`Receipt ${r.code}\n${seller.name} · ${M(r.amount)}\n${NETS[seller.pay_personal_net] || 'The network'} confirmed it (simulated).\n+${entries(r.amount, seller.status === 'registered', 'p2p')} draw entr${entries(r.amount, seller.status === 'registered', 'p2p') === 1 ? 'y' : 'ies'}.`);
+      return end(`Sent to ${seller.name} to confirm: ${M(r.amount)} by bank.\nWhen the seller confirms, you get your receipt by SMS.`);
+    }
 
     if (m === '1') {
       // Cash: the buyer's claim waits for the seller. Until the seller confirms it, it is not in the sales book, not taxed and gives no entry.
@@ -105,7 +125,7 @@ async function respond(q, parts, phone, sessionId, ctx) {
       if (b === undefined) return con(`${seller.name}\nAmount you paid in cash (M):`);
       const r = await claimCash(q, { phone, seller, amount: parseFloat(b) });
       if (!r.ok) return end(r.msg);
-      return end(`Sent to ${seller.name} to confirm: ${M(r.amount)} cash.\nWhen the seller confirms, you get your receipt and draw entry by SMS.`);
+      return end(`Sent to ${seller.name} to confirm: ${M(r.amount)} cash.\nWhen the seller confirms, you get your receipt and draw entry by SMS.${seller.sell_type === 'delivery' ? '\nPaid a delivery fee too? Claim it as its own sale.' : ''}`);
     }
 
     if (m === '2') {
@@ -134,7 +154,7 @@ async function respond(q, parts, phone, sessionId, ctx) {
       }
       if (!r.phone) await q('UPDATE receipts SET phone=$1 WHERE code=$2 AND phone IS NULL', [phone, r.code]);
       await ulog(q, 'card_receipt_claimed', 'Customer ' + mk(phone), { code:r.code, seller:seller.no, amount:amt });
-      return end(`Receipt ${r.code}\n${seller.name} · ${M(amt)} by card\n+${entries(amt, seller.status === 'registered', 'card')} draw entries.`);
+      return end(`Receipt ${r.code}\n${seller.name} · ${M(amt)} by card\n${await isSellerPhone(q, phone) ? 'Stock purchase: no draw entries.' : `+${entries(amt, seller.status === 'registered', 'card')} draw entries.`}`);
     }
 
     if (m === '3') {
@@ -173,20 +193,31 @@ async function respond(q, parts, phone, sessionId, ctx) {
       const no = txt.replace(/\D/g, '');
       const seller = no.length === 4 ? await s(no) : null;
       const key = 'u-' + txt.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60);
-      await q('INSERT INTO reports(id,phone,type,seller_no,place_key,place_label,area,kind) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-        [rid(), phone, type, seller ? seller.no : null, seller ? null : key, seller ? null : txt, seller ? null : 'Area not given', seller ? null : 'Informal']);
-      await ulog(q, 'shop_rated', 'Customer ' + mk(phone), { rating:type, seller:seller ? seller.no : null, shop:seller ? null : txt.slice(0, 60) });
-      return end(type === 'got' ? 'Thank you.\nShops that give receipts earn a public "Gives receipts" badge.'
-        : 'Thank you.\nYour number is never shown to the seller. RSL acts when several customers report the same shop.');
+      // One report per session: the gateway sends the whole path again with every answer, so the id comes from the session.
+      const repId = 'u' + createHash('sha1').update(String(sessionId || rid()) + '|' + phone + '|' + txt).digest('hex').slice(0, 18);
+      const ins = await q('INSERT INTO reports(id,phone,type,seller_no,place_key,place_label,area,kind) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (id) DO NOTHING RETURNING id',
+        [repId, phone, type, seller ? seller.no : null, seller ? null : key, seller ? null : txt, seller ? null : 'Area not given', seller ? null : 'Informal']);
+      if (ins.length) await ulog(q, 'shop_rated', 'Customer ' + mk(phone), { rating:type, seller:seller ? seller.no : null, shop:seller ? null : txt.slice(0, 60) });
+      const thanks = type === 'got' ? 'Thank you.\nShops that give receipts earn a public "Gives receipts" badge.'
+        : 'Thank you.\nYour number is never shown to the seller. RSL acts when several customers report the same shop.';
+      // What kind of seller it was (a stall, a moving seller or a delivery), and their name or number if known: one moving seller is not counted as 3 shops.
+      const ST = { 1: 'shop', 2: 'mobile', 3: 'delivery' };
+      if (c === undefined) return con('Thank you. Was it\n1. A shop or stall\n2. A moving seller\n3. A delivery\n0. Skip');
+      if (ST[c]) await q('UPDATE reports SET seller_type=$1 WHERE id=$2', [ST[c], repId]);
+      if (seller || !ST[c] || ST[c] === 'shop') return end(thanks);
+      if (p[4] === undefined) return con("Seller's name or phone, if you know it\n(0 to skip):");
+      if (p[4] !== '0') await q('UPDATE reports SET seller_hint=$1 WHERE id=$2', [p[4].trim().slice(0, 60), repId]);
+      return end(thanks);
     }
 
     if (m === '5') {
       // Receipts only: a reversed payment, or one paid back to the buyer, does not count; a cash claim counts once the seller confirms it.
       const rows = await q(`SELECT r.amount::float AS amount, r.channel, s.status FROM receipts r JOIN sellers s ON s.no=r.seller_no
                             WHERE r.phone=$1 AND r.issued_at >= date_trunc('month', now()) AND r.flag IS NULL`, [phone]);
-      const n = rows.reduce((a, r) => a + entries(r.amount, r.status === 'registered', r.channel), 0);
+      const stock = await isSellerPhone(q, phone); // a Rasiti seller paying another shop is buying stock: recorded, no entries
+      const n = stock ? 0 : rows.reduce((a, r) => a + entries(r.amount, r.status === 'registered', r.channel), 0);
       const [{ w }] = await q("SELECT count(*)::int AS w FROM claims WHERE phone=$1 AND state='pending' AND created_at > now() - interval '3 days'", [phone]);
-      return end(`My draw entries this month: ${n}${w ? `\nCash claims waiting for the seller: ${w}` : ''}\nNext draw: ${drawDay()}\nEvery receipt plays for every prize.`);
+      return end(`My draw entries this month: ${n}${stock ? '\nYou are a Rasiti seller: your buying counts as stock, no entries.' : ''}${w ? `\nCash claims waiting for the seller: ${w}` : ''}\nNext draw: ${drawDay()}\nEvery receipt plays for every prize.`);
     }
 
     return end('Please choose a number from the menu.');
@@ -199,27 +230,53 @@ async function respond(q, parts, phone, sessionId, ctx) {
     const [code, pin, m, a, b, c] = p;
     if (code === undefined) return con('Seller\nEnter your 4-digit seller code\n(or 0 to join Rasiti):' + BACK);
 
-    if (code === '0') { // join: name, place, goods, PIN, PIN again
-      const [, name, place, goods, pin1, pin2] = p;
+    if (code === '0') { // join: name, where you sell (one place, moving, home, delivery), place, goods, PIN, PIN again, merchant code offer
+      let i = 1; const name = p[i++], kind = p[i++];
       if (name === undefined) return con('Join Rasiti\nYour name:');
-      if (place === undefined) return con('Where do you trade?\n(e.g. Sefika rank)');
+      const TYPES = { 1: 'fixed', 2: 'mobile', 3: 'home', 4: 'delivery' };
+      if (kind === undefined) return con('Where do you usually sell?\n1. One place (shop or stall)\n2. I move around\n3. From home\n4. I deliver');
+      const type = TYPES[kind]; if (!type) return end('Please choose 1 to 4. Dial again to start.');
+      const place = p[i++];
+      if (place === undefined) return con({ fixed: 'Where is your shop or stall?\n(e.g. Sefika rank)', mobile: 'Where do you sell most?\n(e.g. Sefika rank)',
+        home: 'Which area do you live in?\nWe never show your home, only the area.', delivery: 'Which area do you deliver in?\n(e.g. Ha Hoohlo)' }[type]);
+      let more = null; if (type === 'mobile') { more = p[i++]; if (more === undefined) return con('Other places you sell?\nType up to 2, e.g. Pitso, Kingsway\n(0 to skip):'); }
+      const goods = p[i++], pin1 = p[i++], pin2 = p[i++], offer = p[i++];
       if (goods === undefined) return con('What do you sell?');
       if (pin1 === undefined) return con('Choose a 4-digit PIN.\nYou need it every time you open your seller menu. Do not share it.');
       const bad1 = pinProblem(pin1); if (bad1) return end(bad1 + '\nDial again to start.');
       if (pin2 === undefined) return con('Enter the PIN again:');
       if (pin2 !== pin1) return end('The two PINs are different.\nDial again to start.');
-      let no, tries = 0;
-      do { no = String(7000 + Math.floor(Math.random() * 2999)); tries++; } while ((await s(no)) && tries < 20);
-      await q("INSERT INTO sellers(no,name,trade,market,status,joined_at,phone,pin_hash) VALUES ($1,$2,$3,$4,'enrolled',now(),$5,$6)",
-        [no, name.slice(0, 60), goods.slice(0, 60), place.slice(0, 60), phone, await hashPin(pin1)]);
-      await audit(q, null, 'seller_joined', { actor:'Seller ' + no, channel:'USSD', no });
-      return end(`Welcome ${name.slice(0, 40)}!\nYour seller code: ${no}\nKeep your PIN secret. Next: link M-Pesa, EcoCash or a card machine (option 4). No tax number needed yet.`);
+      // The account is made once per session (the gateway sends the whole path again with the next answer).
+      let [me] = sessionId ? await q('SELECT * FROM sellers WHERE join_sid=$1', [sessionId]) : [];
+      if (!me) {
+        let no, tries = 0;
+        do { no = String(7000 + Math.floor(Math.random() * 2999)); tries++; } while ((await s(no)) && tries < 20);
+        const P = await places(); const pl = await placeFor(type, place, 'T' + no);
+        const extra = more && more !== '0' ? more.split(/[,;]+/).map(x => P.areaOf(x) || x.trim()).filter(x => x.length > 1).slice(0, 2) : [];
+        const usual = type === 'mobile' ? [pl.market, ...extra.filter(x => x !== pl.market)].join(' | ') : null;
+        [me] = await q("INSERT INTO sellers(no,name,trade,market,status,joined_at,phone,pin_hash,sell_type,usual_places,lat,lng,join_sid) VALUES ($1,$2,$3,$4,'enrolled',now(),$5,$6,$7,$8,$9,$10,$11) RETURNING *",
+          [no, name.slice(0, 60), goods.slice(0, 60), pl.market, phone, await hashPin(pin1), type, usual, pl.lat, pl.lng, sessionId || null]);
+        await audit(q, null, 'seller_joined', { actor:'Seller ' + no, channel:'USSD', no, sells: SELL_TYPES[type], market: pl.market, usual_places: usual });
+      }
+      if (offer === undefined) return con(`Welcome ${me.name.slice(0, 16)}! Code ${me.no}\nKeep your PIN secret. RSL only sees payments buyers claim, never your wallet.\nGet a merchant code?\n1. M-Pesa\n2. EcoCash\n3. Not now`);
+      if (offer === '1' || offer === '2') { const r = await openMerchant(q, me, offer === '1' ? 'mpesa' : 'ecocash', 'USSD'); if (!r.ok) return end(r.msg);
+        return end(`${NETS[r.network]} merchant code ${r.code} opened for you (simulated).\nPayments to it give your customers receipts by themselves.`); }
+      return end('No problem. Get one later: option 4.\nNo tax number needed yet.');
     }
 
-    const seller = await s(code.replace(/\D/g, ''));
+    let seller = await s(code.replace(/\D/g, ''));
     if (!seller) return end(`Seller code ${code} not found.\nDial again and choose 0 to join.`);
+    if (seller.owner_no) { // a branch: the owner works from the main shop's code; the shop-keeper signs in here with a limited PIN
+      if (!seller.keeper_pin_hash) return end(`Shop ${seller.no} is a branch of shop ${seller.owner_no}.\nThe owner signs in with code ${seller.owner_no}. Ask the owner for a shop-keeper PIN (option 7).`);
+      if (pin === undefined) return con(`Shop ${seller.no} · ${seller.market}\nShop-keeper PIN:` + BACK);
+      const ok = await checkPin(q, { ...seller, pin_hash: seller.keeper_pin_hash }, pin);
+      if (!ok.ok) { if (ok.lockedNow) await audit(q, null, 'keeper_pin_locked', { actor:'Shop-keeper ' + seller.no, channel:'USSD' }); return end(ok.msg); }
+      seller = { ...seller, keeper: true };
+      if (m === undefined) { const n = (await pendingCash(q, seller.no)).length; return con(`Shop-keeper · ${seller.market}\nShop ${seller.no} of ${seller.owner_no}\n1. Confirm cash sales (${n})` + BACK); }
+      if (m !== '1') return end('Shop-keepers can only confirm cash sales. The owner does the rest.');
+    }
 
-    if (!seller.pin_hash) { // older accounts: create a PIN once, only from the seller's own registered phone
+    if (!seller.pin_hash && !seller.keeper) { // older accounts: create a PIN once, only from the seller's own registered phone
       if (!phone || phone !== seller.phone) return end('No PIN yet for this seller code.\nDial from your registered phone to create one, or call the Rasiti help line 6808 8101.');
       if (pin === undefined) return con(`${seller.name}\nCreate a 4-digit PIN for your seller menu:`);
       const bad1 = pinProblem(pin); if (bad1) return end(bad1 + '\nDial again to start.');
@@ -229,31 +286,49 @@ async function respond(q, parts, phone, sessionId, ctx) {
       await audit(q, null, 'seller_pin_set', { actor:'Seller ' + seller.no, channel:'USSD' });
       return end('PIN saved.\nDial *999# again and sign in with your seller code and PIN.');
     }
+    if (!seller.keeper) {
     if (pin === undefined) return con(`Seller ${seller.no}\nEnter your 4-digit PIN:` + BACK);
     const ok = await checkPin(q, seller, pin); // every wrong PIN counts, whatever follows it
     if (!ok.ok) {
       if (ok.lockedNow) await audit(q, null, 'seller_pin_locked', { actor:'Seller ' + seller.no, channel:'USSD', phone: mk(phone) });
       return end(ok.msg);
     }
+    }
+    const group = await shopGroup(q, seller); // the owner's shops: main shop and branches
     // The seller records nothing: mobile money and card receipts come by themselves; cash sales only need a Yes.
-    if (m === undefined) { const n = (await pendingCash(q, seller.no)).length;
-      return con(`${seller.name}\nCode ${seller.no} · ${seller.status === 'registered' ? 'Registered' : 'Not yet registered'}\n1. Confirm cash sales (${n})\n2. My sales book\n3. ${seller.status === 'registered' ? 'My tax & badge' : 'Register for tax'}\n4. Payment codes\n5. Questions & tax help\n6. My shop moved` + BACK); }
-    if (m === '1') { // confirm cash sales the buyers claimed: one by one, or all at once
-      const open = await pendingCash(q, seller.no);
+    if (m === undefined) { const n = (await pendingCash(q, group)).length;
+      return con(`${seller.name.slice(0, 18)}\nCode ${seller.no} · ${seller.status === 'registered' ? 'Registered' : 'Not yet registered'}\n1. Confirm cash sales (${n})\n2. My sales book\n3. ${seller.status === 'registered' ? 'My tax & badge' : 'Register for tax'}\n4. Payment codes\n5. Questions & tax help\n6. My shop moved\n7. My shops` + BACK); }
+    if (m === '1') { // confirm cash sales the buyers claimed (and transfers waiting for the seller): one by one, or all at once
+      const open = await pendingCash(q, group);
+      const how = c => (c.method === 'bank' ? 'bank ' : c.method === 'p2p' ? 'sent ' : '') + (group.length > 1 && c.seller_no !== seller.no ? '@' + c.seller_no + ' ' : '');
       if (!open.length) return end('No cash sales to confirm.\nWhen a customer claims a cash sale, you get an SMS.');
       const show = open.slice(-5).reverse();
-      if (a === undefined) return con(`Cash sales to confirm: ${open.length}\n` + show.map((c, i) => `${i + 1}. ${M(c.amount)} ${mask(c.phone)} ${hm(c.created_at)}`).join('\n') + `\n9. Confirm all ${open.length}` + BACK);
+      if (a === undefined) return con(`Cash sales to confirm: ${open.length}\n` + show.map((c, i) => `${i + 1}. ${M(c.amount)} ${how(c)}${mask(c.phone)} ${hm(c.created_at)}`).join('\n') + `\n9. Confirm all ${open.length}` + BACK);
       if (a === '9') { const d = await decideCash(q, seller, 'all', 'confirm');
         return end(`Confirmed ${d.length} cash sale${d.length === 1 ? '' : 's'}: ${M(d.reduce((x, c) => x + c.amount, 0))}.\nYour customers got their receipts. The sales are in your sales book.`); }
       const c = show[Number(a) - 1]; if (!c) return end('Please choose a number from the list.');
-      if (b === undefined) return con(`${M(c.amount)} cash from ${mask(c.phone)}\n${hm(c.created_at)}\n1. Yes, I sold this\n2. No, reject`);
+      if (b === undefined) return con(`${M(c.amount)} ${c.method === 'bank' ? 'bank transfer' : c.method === 'p2p' ? 'sent to your number' : 'cash'} from ${mask(c.phone)}\n${hm(c.created_at)}${c.ref ? '\nRef ' + c.ref : ''}${c.seller_no !== seller.no ? '\nShop ' + c.seller_no : ''}\n1. Yes, I sold this\n2. No, reject`);
       if (b !== '1' && b !== '2') return end('Please choose 1 or 2.');
       const [d] = await decideCash(q, seller, [c.id], b === '1' ? 'confirm' : 'reject');
       if (!d) return end('This claim was already answered.');
       return end(b === '1' ? `Confirmed. Receipt ${d.code}\nsent to the customer.\nIn your sales book: ${M(d.amount)}.` : 'Rejected. It is not in your sales book and not taxed.');
     }
     if (m === '4') { // link the seller's own M-Pesa (Vodacom) or EcoCash (Econet) merchant code, or their bank card machine
-      if (a === undefined) return con(`Payment codes\nM-Pesa: ${seller.mpesa_code || 'not linked'}\nEcoCash: ${seller.ecocash_code || 'not linked'}\nCard: ${seller.card_terminal || 'not linked'}\n1. Link M-Pesa\n2. Link EcoCash\n3. Link card machine` + BACK);
+      if (a === undefined) return con(`Payment codes\nM-Pesa: ${seller.mpesa_code || 'not linked'}\nEcoCash: ${seller.ecocash_code || 'not linked'}\nCard: ${seller.card_terminal || 'not linked'}\n1. Link M-Pesa\n2. Link EcoCash\n3. Link card machine\n4. My personal number\n5. My bank account` + BACK);
+      if (a === '4') { // personal M-Pesa or EcoCash number: only payments buyers claim count, Rasiti never reads the wallet
+        if (b === undefined) return con(`Personal number${seller.pay_personal ? ': ' + mask(seller.pay_personal) : ''}\n1. M-Pesa\n2. EcoCash`);
+        if (b !== '1' && b !== '2') return end('Please choose 1 or 2. Dial again to start.');
+        if (c === undefined) return con('Your number, e.g. 58123456:');
+        const r = await linkPersonal(q, seller, c, b === '1' ? 'mpesa' : 'ecocash', 'USSD'); if (!r.ok) return end(r.msg);
+        return end(`${NETS[r.network]} number ${mask(r.number)} linked.\nOnly payments your buyers claim count. RSL never sees your wallet.`);
+      }
+      if (a === '5') {
+        if (b === undefined) return con('Your bank\n1. Standard Lesotho Bank\n2. FNB Lesotho\n3. Nedbank Lesotho\n4. Lesotho PostBank');
+        const bank = { 1: 'slb', 2: 'fnb', 3: 'nedbank', 4: 'postbank' }[b]; if (!bank) return end('Please choose 1 to 4. Dial again to start.');
+        if (c === undefined) return con('Account number:');
+        const r = await linkBank(q, seller, bank, c, 'USSD'); if (!r.ok) return end(r.msg);
+        return end(`${BANKN[bank]} account ••${r.last4} linked.\nOnly transfers your buyers claim and you confirm count. RSL never sees your statement.`);
+      }
       if (a === '3') {
         const BK = { 1: 'slb', 2: 'fnb', 3: 'nedbank', 4: 'postbank' }, BN = { slb: 'Standard Lesotho Bank', fnb: 'FNB Lesotho', nedbank: 'Nedbank Lesotho', postbank: 'Lesotho PostBank' };
         if (b === undefined) return con('Your card machine bank\n1. Standard Lesotho Bank\n2. FNB Lesotho\n3. Nedbank Lesotho\n4. Lesotho PostBank');
@@ -269,7 +344,7 @@ async function respond(q, parts, phone, sessionId, ctx) {
         await audit(q, null, 'card_terminal_linked', { actor:'Seller ' + seller.no, channel:'USSD', bank: BN[bank], terminal: term, check: BN[bank] + ' confirmed (simulated)' });
         return end(`Card machine ${term} linked.\n${BN[bank]} confirmed it is yours (simulated).\nCard payments now give receipts.`);
       }
-      if (a !== '1' && a !== '2') return end('Please choose 1, 2 or 3. Dial again to start.');
+      if (a !== '1' && a !== '2') return end('Please choose 1 to 5. Dial again to start.');
       const col = a === '1' ? 'mpesa_code' : 'ecocash_code', net = a === '1' ? 'M-Pesa' : 'EcoCash', opr = a === '1' ? 'Vodacom' : 'Econet';
       if (b === undefined) return con(`Your ${net} merchant code\n(5 to 7 digits, from ${opr}):`);
       const mc = b.replace(/\D/g, '');
@@ -296,25 +371,47 @@ async function respond(q, parts, phone, sessionId, ctx) {
       return end(`Shop moved to ${r.to}.\nYour seller code, PIN and payment codes stay the same. Customers see the new place.`);
     }
 
+    if (m === '7') { // My shops: add a shop (its own code, sticker and place), a shop-keeper PIN, and today's figures per shop
+      if (seller.owner_no) return end('Only the main shop can do this.');
+      const br = await branchesOf(q, seller.no);
+      if (a === undefined) return con(`My shops: ${br.length + 1}\n1. Add a shop\n2. Today's sales per shop\n3. Shop-keeper PIN` + BACK);
+      if (a === '1') { if (b === undefined) return con('Where is the new shop?\n(e.g. Ha Thetsane)');
+        if (c === undefined) return con(`Add a shop at\n${(await places()).areaOf(b) || b.trim().slice(0, 40)}?\n1. Yes\n2. No`);
+        if (c !== '1') return end('Nothing changed.');
+        const r = await addBranch(q, seller, b, 'USSD'); if (!r.ok) return end(r.msg);
+        return end(`Shop added: code ${r.no} at ${r.market}.\nPut its sticker up. Its sales go in your book and your one tax return.`); }
+      if (a === '2') { const t = await branchSummary(q, seller);
+        return end('Today\n' + t.shops.map(x => `${x.no} ${x.market.slice(0, 14)}: ${M(x.v)}${x.wait ? ' (' + x.wait + ' to confirm)' : ''}`).join('\n') + `\nTotal ${M(t.total)}`); }
+      if (a === '3') { if (!br.length) return end('Add a shop first (option 1).');
+        const L = br.slice(0, 6); if (b === undefined) return con('Which shop?\n' + L.map((x, i) => `${i + 1}. ${x.no} ${x.market}`).join('\n'));
+        const sh = L[Number(b) - 1]; if (!sh) return end('Please choose a number from the list. Dial again to start.');
+        if (c === undefined) return con(`New shop-keeper PIN for ${sh.no}:\n(they can only confirm cash sales)`);
+        const r = await setKeeperPin(q, seller, sh.no, c, 'USSD'); if (!r.ok) return end(r.msg + '\nDial again to start.');
+        return end(`Shop-keeper PIN set for shop ${r.no}.\nThey sign in with code ${r.no}. They can only confirm cash sales there.`); }
+      return end('Please choose 1, 2 or 3.');
+    }
+
     if (m === '2') {
       const [t] = await q(`SELECT
           count(*) FILTER (WHERE issued_at >= date_trunc('day', now()))::int AS dn, COALESCE(sum(amount) FILTER (WHERE issued_at >= date_trunc('day', now())),0)::float AS ds,
           count(*) FILTER (WHERE issued_at > now() - interval '7 days')::int AS wn, COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '7 days'),0)::float AS ws,
           count(*) FILTER (WHERE issued_at > now() - interval '30 days')::int AS mn, COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '30 days'),0)::float AS ms,
           COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '30 days' AND channel='card'),0)::float AS mc,
-          COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '30 days' AND channel='cash'),0)::float AS mk
-        FROM receipts WHERE seller_no=$1 AND flag IS NULL`, [seller.no]);
-      return end(`My sales book\nToday: ${t.dn} sales, ${M(t.ds)}\n7 days: ${t.wn} sales, ${M(t.ws)}\n30 days: ${t.mn} sales, ${M(t.ms)}\nCash ${M(t.mk)} · mobile ${M(t.ms - t.mc - t.mk)} · card ${M(t.mc)}`);
+          COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '30 days' AND channel='cash'),0)::float AS mk,
+          COALESCE(sum(amount) FILTER (WHERE issued_at > now() - interval '30 days' AND channel IN ('p2p','bank')),0)::float AS mt
+        FROM receipts WHERE seller_no = ANY($1::text[]) AND flag IS NULL`, [group]);
+      return end(`My sales book${group.length > 1 ? ' (' + group.length + ' shops)' : ''}\nToday: ${t.dn} sales, ${M(t.ds)}\n7 days: ${t.wn} sales, ${M(t.ws)}\n30 days: ${t.mn} sales, ${M(t.ms)}\nCash ${M(t.mk)} · mobile ${M(t.ms - t.mc - t.mk - t.mt)} · card ${M(t.mc)}${t.mt ? ' · transfers ' + M(t.mt) : ''}`);
     }
 
     if (m === '3') {
-      const [t] = await q("SELECT COALESCE(sum(amount),0)::float AS s FROM receipts WHERE seller_no=$1 AND flag IS NULL AND issued_at > now() - interval '30 days'", [seller.no]);
+      if (seller.owner_no) return end(`Tax for this shop is filed by the main shop ${seller.owner_no}, together with all its shops.`);
+      const [t] = await q("SELECT COALESCE(sum(amount),0)::float AS s FROM receipts WHERE seller_no = ANY($1::text[]) AND flag IS NULL AND issued_at > now() - interval '30 days'", [group]);
       if (seller.status === 'registered') {
-        const st = await taxState(q, seller.no); const pn = perName(st.per);
+        const st = await taxState(q, seller.no, group); const pn = perName(st.per);
         if (a === undefined) return con(`My tax · TIN ${seller.tin || '-'}\n1. File ${pn} return${st.ret ? ' (done)' : ''}\n2. Pay tax (${M(st.owed)} due)\n3. My tax record\n4. Reminders: ${seller.reminders === false ? 'OFF' : 'ON'}` + BACK);
         if (a === '1') {
           if (st.ret) return end(`${pn} return filed: ${M(st.ret.declared)}${st.ret.nil_reason ? ' (nil)' : ''}.\nTax due ${M(st.ret.tax_due)} by ${perDue(st.per)}.\nPay: option 3 > 2.`);
-          if (b === undefined) return con(`${pn} return\nSales book: ${M(st.sales)}\n1. File this amount\n2. Enter a different total\n3. I did not trade (nil)`);
+          if (b === undefined) return con(`${pn} return${group.length > 1 ? ' · ' + group.length + ' shops' : ''}\nSales book: ${M(st.sales)}\n1. File this amount\n2. Enter a different total\n3. I did not trade (nil)`);
           let declared, reason = null;
           if (b === '1') declared = Math.round(st.sales);
           else if (b === '2') { if (c === undefined) return con(`Your sales for ${pn} (M):`); declared = Math.round(parseFloat(c)); if (!(declared >= 0 && declared < 2000000)) return end('Amount not valid. Please start again.'); }
@@ -347,9 +444,14 @@ async function respond(q, parts, phone, sessionId, ctx) {
       if (a !== '1') return end('Please choose 1 or 2.');
       if (b === undefined) return con('Enter your ID number:');
       if (b.replace(/\D/g, '').length < 6) return end('ID number must have at least 6 digits. Please start again.');
+      // One ID, one owner: the same ID cannot own separate seller accounts. A new shop becomes a branch of the first one.
+      const h = idHash(b); const [twin] = await q('SELECT no FROM sellers WHERE id_hash=$1 AND no<>$2 AND owner_no IS NULL', [h, seller.no]);
+      if (twin) { await audit(q, null, 'id_already_used', { actor:'Seller ' + seller.no, channel:'USSD', owner_of_id: twin.no });
+        return end(`This ID already has a Rasiti shop (code ${twin.no}).\nOne owner, one account: add this shop as a branch from shop ${twin.no}, option 7.`); }
       // Simulated RSL e-services TIN check: an ID already on RSL's register is linked to its TIN; otherwise RSL issues a new one.
       const R = await rslm(); const found = R.lookup(b); const tin = found.found ? found.tin : R.newTin(b);
-      await q("UPDATE sellers SET status='registered', tin=$1, via_rasiti=TRUE, registered_at=now(), declared_last=NULL WHERE no=$2", [tin, seller.no]);
+      await q("UPDATE sellers SET status='registered', tin=$1, via_rasiti=TRUE, registered_at=now(), declared_last=NULL, id_hash=$3 WHERE no=$2", [tin, seller.no, h]);
+      await q("UPDATE sellers SET status='registered', tin=$1, via_rasiti=TRUE, registered_at=now() WHERE owner_no=$2", [tin, seller.no]); // branches follow the owner
       await audit(q, null, 'rsl_tin_check', { actor:'Seller ' + seller.no, channel:'RSL e-services (simulated)', result: found.found ? 'already registered: TIN linked' : 'not found: new TIN issued', tin });
       await audit(q, null, 'seller_registered_for_tax', { actor:'Seller ' + seller.no, channel:'USSD', no: seller.no, tin });
       return end(`${found.found ? 'Found on RSL register.' : 'RSL issued your TIN.'}\nTIN ${tin}\nYou are a registered seller.\nYour customers now earn double draw entries.\nFirst return due ${dueDate()}.`);
@@ -390,7 +492,11 @@ async function handler(req, res) {
     let changed = null; while (parts[0] === '4' || parts[0] === '5') { changed = parts[0] === '4' ? 'st' : 'en'; parts = parts.slice(1); }
     if (changed && changed !== ctx.lang) { ctx.lang = changed; if (phone) { await q('INSERT INTO phone_prefs(phone, lang) VALUES ($1,$2) ON CONFLICT (phone) DO UPDATE SET lang=EXCLUDED.lang', [phone, changed]); await audit(q, null, 'language_changed', { actor:'Customer ' + mk(phone), channel:'USSD', lang: changed === 'st' ? 'Sesotho' : 'English' }); } }
     const out = await respond(q, parts, phone, String(b.sessionId || '').slice(0, 80), ctx);
-    send(ctx.lang === 'st' ? out.slice(0, 4) + (await i18n()).tr(out.slice(4), 'st') : out);
+    let txt = ctx.lang === 'st' ? out.slice(0, 4) + (await i18n()).tr(out.slice(4), 'st') : out;
+    // A screen over 182 characters (long names, Sesotho) drops "00. Main menu" (00 still works), then the seller's name line.
+    if (txt.length > 182) txt = txt.replace(/\n00\. [^\n]*$/, '');
+    if (txt.length > 182) { const ls = txt.split('\n'); if (/^(Code|Khoutu) \d{4}/.test(ls[1] || '')) txt = txt.slice(0, 4) + ls.slice(1).join('\n'); }
+    send(txt);
   } catch (e) {
     console.error(e);
     send(end('Sorry, Rasiti is busy. Please try again.'));

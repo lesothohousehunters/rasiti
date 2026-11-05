@@ -10,6 +10,7 @@
 // Optional: set MOMO_KEY and give the networks .../api/momo?key=MOMO_KEY. The demo panel on the Phones page is allowed without the key.
 import { db, audit } from './_lib/db.js';
 import { reqCtx, clientIp } from './_lib/ctx.js';
+import { netSend, isSellerPhone } from './_lib/more.js';
 import { mkCode } from './_lib/codes.js';
 
 const NET = { mpesa: 'M-Pesa', ecocash: 'EcoCash' };
@@ -46,6 +47,10 @@ async function handler(req, res) {
       if (rows[0]) await audit(q, null, flag === 'reversed' ? 'payment_reversed' : 'payment_paid_back', { actor: NET[net], channel: NET[net], code: rows[0].code, seller: rows[0].seller_no, amount: rows[0].amount });
       return json(res, 200, { ok: true, voided: rows.length ? rows[0].code : null });
     }
+    // Simulated network: a person sends money to another person's number (not a merchant code). Rasiti is not told about it:
+    // it only counts if the buyer claims it (*999# > 1 > 7) and the network then confirms the transaction ID.
+    if (b.type === 'p2p') { const q = await db(); const r = await netSend(q, { network: net, from: b.from, to: b.to, amount: b.amount });
+      return json(res, r.ok ? 200 : 400, r.ok ? { ok: true, ref: r.ref, network: NET[net], amount: r.amount } : { error: r.msg }); }
     const code = String(b.merchant_code || '').replace(/\D/g, '');
     if (!/^\d{5,7}$/.test(code)) return json(res, 400, { error: 'merchant_code must be 5 to 7 digits' });
     const amt = Math.round(Number(b.amount));
@@ -64,7 +69,8 @@ async function handler(req, res) {
     await q("INSERT INTO receipts(code,seller_no,amount,channel,phone,issued_at,source,note) VALUES ($1,$2,$3,'momo',$4,now(),$5,$6)",
       [rc, seller.no, amt, ph, net, txn ? `${net}:${txn}` : null]);
     await audit(q, null, 'receipt_issued', { actor: 'Customer ' + mk(ph), channel: NET[net], code: rc, amount: amt, seller: seller.no, paid_by: `${NET[net]} merchant ${code}` });
-    const per = Math.max(1, Math.min(5, Math.floor(amt / 10))) * (seller.status === 'registered' ? 2 : 1);
+    // A Rasiti seller paying another shop is buying stock: the receipt is recorded, but gives no draw entries.
+    const per = (await isSellerPhone(q, ph)) ? 0 : Math.max(1, Math.min(5, Math.floor(amt / 10))) * (seller.status === 'registered' ? 2 : 1);
     return json(res, 200, { ok: true, receipt: { code: rc, seller_no: seller.no, seller: seller.name, amount: amt, network: NET[net], merchant_code: code, entries: per } });
   } catch (e) {
     console.error(e); return json(res, 500, { error: 'Rasiti could not record this payment. The network should retry.' });

@@ -32,23 +32,32 @@ export async function claimCash(q, { phone, seller, amount, channel }) {
 }
 
 // Pending claims the seller still has to answer (newest last). Older than 3 days = expired, not shown.
+// no = one seller code, or a list of codes (an owner sees the claims of all their shops). Cash, and money sent to the
+// seller's personal number or bank account that the network could not check yet (method 'p2p' or 'bank'), wait here alike.
 export async function pendingCash(q, no) {
-  return q(`SELECT id, amount::float AS amount, phone, created_at FROM claims WHERE seller_no=$1 AND state='pending'
-            AND created_at > now() - interval '${CASH.expireDays} days' ORDER BY created_at`, [no]);
+  const nos = Array.isArray(no) ? no : [no];
+  return q(`SELECT id, seller_no, amount::float AS amount, phone, created_at, method, ref FROM claims WHERE seller_no = ANY($1::text[]) AND state='pending'
+            AND created_at > now() - interval '${CASH.expireDays} days' ORDER BY created_at`, [nos]);
+}
+// The shops a seller answers claims for: an owner answers for every branch; a branch (shop-keeper) only for itself.
+export async function shopGroup(q, seller) {
+  if (seller.owner_no || seller.keeper) return [seller.no];
+  return [seller.no, ...(await q('SELECT no FROM sellers WHERE owner_no=$1 ORDER BY no', [seller.no])).map(r => r.no)];
 }
 
 // The seller's answer: ids is an array of claim ids, or 'all'. decision is 'confirm' or 'reject'.
 // Returns [{id, code, phone, amount}] for what was changed.
 export async function decideCash(q, seller, ids, decision, channel) {
-  const open = await pendingCash(q, seller.no);
+  const open = await pendingCash(q, await shopGroup(q, seller));
   const pick = ids === 'all' ? open : open.filter(c => ids.includes(c.id));
   const out = [];
   for (const c of pick) {
     if (decision === 'confirm') {
-      const code = mkCode(seller.no);
+      const shop = c.seller_no || seller.no, code = mkCode(shop);
       const rows = await q("UPDATE claims SET state='confirmed', decided_at=now(), receipt_code=$1 WHERE id=$2 AND state='pending' RETURNING id", [code, c.id]);
       if (!rows.length) continue;
-      await q("INSERT INTO receipts(code,seller_no,amount,channel,phone,issued_at,note,source) VALUES ($1,$2,$3,'cash',$4,now(),$5,'confirmed')", [code, seller.no, c.amount, c.phone, 'claim:' + c.id]);
+      const ch = ['p2p', 'bank'].includes(c.method) ? c.method : 'cash';
+      await q("INSERT INTO receipts(code,seller_no,amount,channel,phone,issued_at,note,source) VALUES ($1,$2,$3,$4,$5,now(),$6,'confirmed')", [code, shop, c.amount, ch, c.phone, 'claim:' + c.id + (c.ref ? ' ref:' + c.ref : '')]);
       out.push({ id: c.id, code, phone: c.phone, amount: c.amount });
     } else {
       const rows = await q("UPDATE claims SET state='rejected', decided_at=now() WHERE id=$1 AND state='pending' RETURNING id", [c.id]);
